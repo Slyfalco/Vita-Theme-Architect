@@ -1362,6 +1362,53 @@ def remove_runtime():
     shutil.rmtree(ICON_AI_DIR, ignore_errors=True)
 
 
+def app_downloaded_ai_bytes():
+    """Total size of AI data the app downloaded itself (the private Python
+    runtime, the app's own model cache and the fetched example sets). Excludes
+    anything the user provided — a custom model, a custom/shared model cache,
+    curated extra artwork — and the small calibration/hardware data."""
+    total = 0
+    targets = [RUNTIME_DIR, EXAMPLES_DIR, RUNTIME_MARKER]
+    if not using_shared_models():
+        targets.append(MODELS_DIR)      # the app's own cache, not a custom path
+    for path in targets:
+        if os.path.isfile(path):
+            try:
+                total += os.path.getsize(path)
+            except OSError:
+                pass
+        elif os.path.isdir(path):
+            for root, _dirs, files in os.walk(path):
+                for name in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, name))
+                    except OSError:
+                        pass
+    return total
+
+
+def remove_app_downloaded_ai_data():
+    """Delete only the AI data the app downloaded (runtime, the app's own model
+    cache, fetched examples). Deliberately KEEPS user-provided data: a custom
+    base model, a custom/shared model cache (lives outside icon_ai), curated
+    extra artwork, and the calibration/hardware data + per-install key — so
+    switching AI->standard frees space without discarding the user's own work.
+    Returns the list of paths removed."""
+    removed = []
+    targets = [RUNTIME_DIR, EXAMPLES_DIR, RUNTIME_MARKER]
+    if not using_shared_models():
+        targets.append(MODELS_DIR)
+    for path in targets:
+        try:
+            if os.path.isfile(path):
+                os.remove(path); removed.append(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True); removed.append(path)
+        except OSError:
+            pass
+    return removed
+
+
 # --- storage per part, and removing one model setup -----------------------------------
 # (model key, with poses, label). A model's files are what it needs beyond the
 # shared helper models; a pose add-on is what poses need beyond its model.

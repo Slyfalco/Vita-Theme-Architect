@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 
-from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL
+from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL, ONLINE_FEATURES_AVAILABLE
 from widgets import DragDropLineEdit
 
 
@@ -56,12 +56,10 @@ def _ftp_test(ip, port):
         return (False, f"Could not connect ({exc})")
 
 
-def _latest_version():
-    """The latest release tag from GitHub, or None."""
-    import requests
-    response = requests.get(UPDATE_URL, allow_redirects=True, timeout=10)
-    response.raise_for_status()
-    return response.url.split('/tag/')[-1] if '/tag/' in response.url else None
+def _latest_release():
+    """The latest release from GitHub (dict with tag/body/assets), or None."""
+    import app_updater
+    return app_updater.fetch_latest()
 
 
 class SettingsDialog(QDialog):
@@ -149,6 +147,27 @@ class SettingsDialog(QDialog):
         footer_row.addWidget(self.check_update_btn)
         general_outer = QVBoxLayout(self.general_tab)
         general_outer.addLayout(general_layout)
+
+        # Switch between the AI and Standard official builds (same version). Only
+        # offered in an installed official build (needs the releases online).
+        import app_updater
+        if app_updater.running_frozen() and ONLINE_FEATURES_AVAILABLE:
+            other = "Standard" if self.ai_icons else "AI"
+            this_edition = "AI" if self.ai_icons else "Standard"
+            build_label = QLabel(f"Build edition: {this_edition}")
+            build_label.setStyleSheet("color: grey;")
+            self.switch_build_btn = QPushButton(f"Switch to {other} build")
+            self.switch_build_btn.setToolTip(
+                f"Download and switch to the {other} build at this same version. "
+                "Your settings and data are kept.")
+            self.switch_build_btn.clicked.connect(self._switch_build)
+            build_row = QHBoxLayout()
+            build_row.addWidget(build_label)
+            build_row.addStretch()
+            build_row.addWidget(self.switch_build_btn)
+            general_outer.addSpacing(10)
+            general_outer.addLayout(build_row)
+
         general_outer.addStretch()          # push the footer to the bottom
         general_outer.addWidget(separator)
         general_outer.addLayout(footer_row)
@@ -367,37 +386,39 @@ class SettingsDialog(QDialog):
         self.conn_status.setText(("✓ " if ok else "✗ ") + message)
         self.conn_status.setStyleSheet("color: #4cb86a;" if ok else "color: #e5645f;")
 
+    def _switch_build(self):
+        parent = self.parent()
+        if parent is not None and hasattr(parent, 'switch_edition'):
+            self.accept()                 # close Settings so the dialogs are in front
+            parent.switch_edition()
+
     def _check_updates_now(self):
         self.check_update_btn.setEnabled(False)
         self.update_status.setText("Checking…"); self.update_status.setStyleSheet("color: grey;")
-        self._update_thread = _CallThread(_latest_version, self)
+        self._update_thread = _CallThread(_latest_release, self)
         self._update_thread.done.connect(self._update_checked)
         self._update_thread.start()
 
     def _update_checked(self, result):
+        import app_updater
         self.check_update_btn.setEnabled(True)
-        if isinstance(result, tuple) and result and result[0] == 'error':
+        if not isinstance(result, dict) or (isinstance(result, tuple) and result and result[0] == 'error'):
             self.update_status.setText("Couldn't check for updates.")
             self.update_status.setStyleSheet("color: #e5645f;")
             return
-        latest = result
-        if not latest:
+        rel = result
+        tag = rel.get('tag') or ''
+        if not tag:
             self.update_status.setText("Couldn't check for updates.")
             self.update_status.setStyleSheet("color: #e5645f;")
             return
-        try:
-            newer = float(str(latest).lstrip('v')) > float(CURRENT_VERSION)
-        except ValueError:
-            newer = str(latest).lstrip('v') != str(CURRENT_VERSION)
-        if newer:
-            self.update_status.setText(f"Update available: {latest}")
+        if app_updater.is_newer(tag, CURRENT_VERSION):
+            self.update_status.setText(f"Update available: {tag}")
             self.update_status.setStyleSheet("color: #4cb86a;")
             parent = self.parent()
-            if parent is not None and hasattr(parent, 'download_and_apply_update'):
-                if QMessageBox.question(self, "Update Available",
-                                        f"Version {latest} is available (you have v{CURRENT_VERSION}). "
-                                        "Install it now?") == QMessageBox.StandardButton.Yes:
-                    parent.download_and_apply_update(latest)
+            if parent is not None and hasattr(parent, 'offer_update'):
+                self.accept()  # close Settings so the update dialog is in front
+                parent.offer_update(rel)
         else:
             self.update_status.setText("You're up to date.")
             self.update_status.setStyleSheet("color: grey;")

@@ -24,11 +24,12 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QComboBox, QListWidget, QAbstractItemView,
     QSlider, QStyle, QCheckBox, QSizePolicy, QInputDialog, QMenu
 )
-from PyQt6.QtGui import QFont, QIcon, QColor, QPixmap, QIntValidator, QAction, QKeySequence
+from PyQt6.QtGui import QFont, QIcon, QColor, QPixmap, QIntValidator, QAction, QKeySequence, QDesktopServices
 from PyQt6.QtCore import Qt, QSize, QUrl, QTimer, QDir, QPoint, QStandardPaths
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 from constants import CURRENT_VERSION, UPDATE_URL, SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, crypted, ONLINE_FEATURES_AVAILABLE, ONLINE_FEATURES_UNAVAILABLE_MSG, theme_pages
+import app_updater
 from audio import (convert_at9_to_wav, convert_to_at9, removeTemp, AudioPlayerDialog, find_at9tool, AT9TOOL_REQUIRED_MSG, ENCODABLE_AUDIO_EXTS)
 from wine_setup import shutdown_wine
 from widgets import ColorPickerButton, play_done_sound
@@ -70,6 +71,15 @@ class VitaThemeArchitect(QMainWindow):
                     pass
         self.temp_zip_for_upload = None # For repository submission
         self.central_widget = QWidget(); self.setCentralWidget(self.central_widget); self.main_layout = QHBoxLayout(self.central_widget)
+        # Migrate local data formats if this build is newer than the one that
+        # last wrote it (e.g. after an update). Never deletes user data.
+        try:
+            import data_migrations
+            applied = data_migrations.run_migrations()
+            if applied:
+                print(f"Applied data migrations: {', '.join(applied)}")
+        except Exception as e:
+            print(f"Data migration step skipped: {e}")
         self.load_paths_from_settings()
         self.check_for_updates() # Run update check on startup
         self.show_manager_ui()
@@ -1443,49 +1453,200 @@ class VitaThemeArchitect(QMainWindow):
     # -------------------------------------------------------------------------
     # Update Check Logic
     # -------------------------------------------------------------------------
-    def check_for_updates(self):
-        """Checks GitHub for the latest release version if auto-check is enabled."""
-        if not self.settings.get('auto_update_check', True): print("Auto-update check disabled in settings."); return
-        print("Checking for updates...");
+    def check_for_updates(self, manual=False):
+        """Check GitHub for a newer release and offer to install it.
+
+        `manual=True` (from Settings) reports "up to date"/errors to the user;
+        the silent startup check stays quiet unless an update is found."""
+        if not manual and not self.settings.get('auto_update_check', True):
+            print("Auto-update check disabled in settings."); return
+        print("Checking for updates...")
         try:
-            latest_version_str = self.get_latest_version_from_github()
-            if not latest_version_str: print("Could not determine latest version."); return
-            print(f"Latest version found: {latest_version_str}, Current version: {CURRENT_VERSION}")
-            try: latest_v = float(latest_version_str.lstrip('v')); current_v = float(CURRENT_VERSION)
-            except ValueError: print("Could not compare versions."); return
-            if latest_v > current_v:
-                reply = QMessageBox.information(self, "Update Available", f"A new version ({latest_version_str}) of VitaTheme Architect is available!\nYour current version is v{CURRENT_VERSION}.\n\nWould you like to download and install it now?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.Yes: self.download_and_apply_update(latest_version_str)
-            else: print("Application is up to date.")
-        except Exception as e: print(f"Update check failed: {e}")
-    def get_latest_version_from_github(self):
-        """Gets the tag name (version) of the latest release from GitHub."""
-        try:
-            response = requests.get(UPDATE_URL, allow_redirects=True, timeout=10); response.raise_for_status(); final_url = response.url
-            if '/tag/' in final_url:
-                version_tag = final_url.split('/tag/')[-1]; return version_tag
+            rel = app_updater.fetch_latest()
         except Exception as e:
-            print(f"Error fetching latest release URL: {e}")
-        return None
-    def download_and_apply_update(self, version_tag):
-        """Downloads the update zip, extracts it, and prompts for restart (placeholder)."""
-        # **IMPORTANT**: Assumes zip named 'VitaThemeArchitect_vX.Y.zip'
-        download_url = f"https://github.com/slyfalco/The-MoonHack-Project/releases/download/{version_tag}/VitaThemeArchitect_{version_tag}.zip"; temp_zip_path = os.path.join(tempfile.gettempdir(), f"update_{version_tag}.zip")
+            print(f"Update check failed: {e}")
+            if manual:
+                QMessageBox.warning(self, "Update Check Failed",
+                                    f"Couldn't check for updates:\n{e}")
+            return
+        tag = rel.get('tag') or ''
+        print(f"Latest version found: {tag}, Current version: v{CURRENT_VERSION}")
+        if not app_updater.is_newer(tag, CURRENT_VERSION):
+            print("Application is up to date.")
+            if manual:
+                QMessageBox.information(self, "No Updates",
+                                       f"You're up to date (v{CURRENT_VERSION}).")
+            return
+        self.offer_update(rel)
+
+    def offer_update(self, rel):
+        """Show the new version with a short summary of changes and offer to
+        download + install it."""
+        tag = rel.get('tag') or ''
+        summary = app_updater.summarize_notes(rel.get('body', ''))
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Update Available")
+        box.setText(f"Version {tag} is available — you have v{CURRENT_VERSION}.")
+        box.setInformativeText("Download and install it now?")
+        if summary:
+            box.setDetailedText("What's new:\n\n" + summary)
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.Yes)
+        if box.exec() == QMessageBox.StandardButton.Yes:
+            self.download_and_apply_update(rel)
+
+    def _build_edition(self):
+        """'ai' when this build has the icon generator, else 'standard'."""
+        return 'ai' if ICON_AI_AVAILABLE else 'standard'
+
+    def download_and_apply_update(self, rel):
+        """Normal update: the newer build of the SAME edition this one is."""
+        asset = app_updater.pick_asset(rel.get('assets', []), edition=self._build_edition())
+        self._install_release(
+            rel, asset, clean=False,
+            confirm=f"Update {rel.get('tag')} is ready.\n\nThe app will now close, update "
+                    "itself and reopen automatically. Your settings and data are kept.")
+
+    def switch_edition(self):
+        """Switch between the AI and Standard official builds, staying on the
+        same version. Keeps the user's data; optionally frees the space used by
+        the app-downloaded AI runtime/models when leaving the AI edition."""
+        if not app_updater.running_frozen():
+            QMessageBox.information(
+                self, "Switch Build",
+                "Switching between the AI and Standard builds is only available in an "
+                "installed official build.")
+            return
+        target = 'standard' if ICON_AI_AVAILABLE else 'ai'
+        target_name = "AI" if target == 'ai' else "Standard"
         try:
-            progress = QProgressDialog(f"Downloading update {version_tag}...", "Cancel", 0, 0, self); progress.setWindowModality(Qt.WindowModality.WindowModal)
-            response = requests.get(download_url, stream=True, timeout=60); response.raise_for_status(); total_size = int(response.headers.get('content-length', 0)); progress.setMaximum(total_size); downloaded_size = 0
-            with open(temp_zip_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk); downloaded_size += len(chunk); progress.setValue(downloaded_size); QApplication.processEvents();
-                    if progress.wasCanceled(): f.close(); os.remove(temp_zip_path); return
-            progress.close(); extract_path = os.path.join(tempfile.gettempdir(), f"update_extracted_{version_tag}")
-            if os.path.exists(extract_path): shutil.rmtree(extract_path)
-            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref: zip_ref.extractall(extract_path)
-            os.remove(temp_zip_path); QMessageBox.information(self, "Update Ready", f"Update {version_tag} has been downloaded and extracted to:\n{extract_path}\n\nPlease close the application and manually replace the current files with the updated ones.")
+            rel = app_updater.fetch_release_by_tag(CURRENT_VERSION) or app_updater.fetch_latest()
         except Exception as e:
-            if 'progress' in locals(): progress.close()
-            if os.path.exists(temp_zip_path): os.remove(temp_zip_path)
-            QMessageBox.critical(self, "Update Error", f"Could not download or apply update:\n{e}")
+            QMessageBox.warning(self, "Switch Build", f"Couldn't reach the releases:\n{e}")
+            return
+        asset = app_updater.pick_asset(rel.get('assets', []), edition=target, require_edition=True)
+        if not asset:
+            os_name, arch = app_updater.platform_tag()
+            QMessageBox.warning(
+                self, "Build Not Available",
+                f"The {target_name} build for your system ({os_name}-{arch}) isn't "
+                f"available in release {rel.get('tag')}.")
+            return
+
+        before_apply = None
+        if target == 'standard' and ICON_AI_AVAILABLE:
+            try:
+                import icon_generator as ig
+                nbytes = ig.app_downloaded_ai_bytes()
+            except Exception:
+                nbytes = 0
+            if nbytes > 0:
+                box = QMessageBox(self)
+                box.setWindowTitle("Switch to Standard Build")
+                box.setIcon(QMessageBox.Icon.Question)
+                box.setText("Switching to the Standard build removes the AI icon generator.")
+                box.setInformativeText(
+                    f"The AI runtime and app-downloaded models use {self._human_size(nbytes)}. "
+                    "Remove them to free space?\n\nEither way your custom models, custom "
+                    "model paths, extra artwork and hardware/calibration data are kept.")
+                keep_btn = box.addButton("Keep them", QMessageBox.ButtonRole.NoRole)
+                free_btn = box.addButton("Free space", QMessageBox.ButtonRole.YesRole)
+                cancel_btn = box.addButton(QMessageBox.StandardButton.Cancel)
+                box.setDefaultButton(keep_btn)
+                box.exec()
+                clicked = box.clickedButton()
+                if clicked is cancel_btn:
+                    return
+                if clicked is free_btn:
+                    def before_apply():
+                        try:
+                            import icon_generator as ig
+                            removed = ig.remove_app_downloaded_ai_data()
+                            print(f"Freed AI data: {removed}")
+                        except Exception as e:
+                            print(f"AI data cleanup skipped: {e}")
+
+        self._install_release(
+            rel, asset, clean=True, before_apply=before_apply,
+            confirm=f"The app will switch to the {target_name} build ({rel.get('tag')}), "
+                    "then close and reopen automatically. Your settings and data are kept.")
+
+    def _install_release(self, rel, asset, clean=False, confirm=None, before_apply=None):
+        """Shared installer for updates and edition switches: download, extract,
+        confirm, then hand off to the detached helper and quit.
+
+        `clean=True` mirrors the install folder (removes files from the previous
+        edition); `before_apply` runs just before the handoff (used to free AI
+        data on a switch)."""
+        tag = rel.get('tag') or ''
+        if not app_updater.running_frozen():
+            if QMessageBox.question(
+                    self, "Update",
+                    "You're running from source. Open the releases page to update manually?"
+            ) == QMessageBox.StandardButton.Yes:
+                QDesktopServices.openUrl(QUrl(UPDATE_URL))
+            return
+        if not asset:
+            os_name, arch = app_updater.platform_tag()
+            if QMessageBox.question(
+                    self, "No Matching Download",
+                    f"Release {tag} has no matching build for your system ({os_name}-{arch}).\n\n"
+                    "Open the releases page to check manually?"
+            ) == QMessageBox.StandardButton.Yes:
+                QDesktopServices.openUrl(QUrl(UPDATE_URL))
+            return
+
+        progress = QProgressDialog(f"Downloading {tag}…", "Cancel", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+
+        def on_progress(done, total):
+            if total:
+                progress.setMaximum(total)
+                progress.setValue(done)
+            else:
+                progress.setMaximum(0)  # indeterminate when size unknown
+            QApplication.processEvents()
+
+        try:
+            result = app_updater.prepare_update(
+                asset, progress=on_progress, cancel=progress.wasCanceled)
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Update Error",
+                                 f"Could not download or extract the build:\n{e}")
+            return
+        progress.close()
+        if not result:
+            return  # cancelled
+        new_app, stage_root = result
+
+        if QMessageBox.question(
+                self, "Ready to Install", (confirm or "") + "\n\nContinue?"
+        ) != QMessageBox.StandardButton.Yes:
+            shutil.rmtree(stage_root, ignore_errors=True)
+            return
+        if before_apply:
+            before_apply()
+        try:
+            app_updater.apply_and_restart(new_app, stage_root, clean=clean)
+        except Exception as e:
+            shutil.rmtree(stage_root, ignore_errors=True)
+            QMessageBox.critical(self, "Update Error",
+                                 f"Could not apply the build:\n{e}")
+            return
+        # Hand off to the detached helper and quit so the files unlock.
+        QApplication.quit()
+
+    @staticmethod
+    def _human_size(nbytes):
+        size = float(nbytes)
+        for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+            if size < 1024 or unit == 'TB':
+                return f"{size:.0f} {unit}" if unit in ('B', 'KB') else f"{size:.1f} {unit}"
+            size /= 1024
 
     def closeEvent(self, event):
         """Stop Wine processes and clean up the persistent Wine directory on exit."""

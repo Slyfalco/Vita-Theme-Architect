@@ -7,10 +7,14 @@ builds only), and builds the project with Nuitka. Non-release builds have no
 online features.
 
 Usage:
-    python setup_build.py [--no-icon-ai]
+    python setup_build.py [--no-icon-ai] [--no-package]
 
     --no-icon-ai   exclude the AI icon generator and all AI features from the
                    build (or set VTA_ICON_AI=0). It is included by default.
+    --no-package   skip zipping the finished build into a release asset. By
+                   default a successful build is packaged as
+                   dist/vitaThemeArchitect-<os>-<arch>-<edition>.<ext>, the name
+                   the in-app updater matches.
 """
 import os
 import sys
@@ -34,6 +38,12 @@ _RELEASE_SCRIPT = os.environ.get('VTA_RELEASE_SCRIPT', '').strip()
 # downloaded at runtime if the user opts in.
 ICON_AI_ENABLED = not ('--no-icon-ai' in sys.argv[1:]
                        or os.environ.get('VTA_ICON_AI', '').strip().lower() in ('0', 'false', 'no'))
+# Package the finished build into a release asset by default (skip with
+# --no-package or VTA_PACKAGE=0). The asset is named for OS, arch and edition so
+# the in-app updater (app_updater.pick_asset) can match it.
+PACKAGE_BUILD = not ('--no-package' in sys.argv[1:]
+                     or os.environ.get('VTA_PACKAGE', '').strip().lower() in ('0', 'false', 'no'))
+BUILD_EDITION = 'ai' if ICON_AI_ENABLED else 'standard'
 # Standalone output folder (Windows/Linux): dist/vitaThemeArchitect/
 def _build_tag():
     """<os>-<arch> for this build machine (e.g. windows-x64, linux-arm64,
@@ -1389,6 +1399,53 @@ def main():
         print(f"  Portable distribution — ship the whole {app_dir} folder (zip/tarball).")
     if not is_release:
         print("\n  NOTE: Non-release build — online features are only available in official releases.")
+
+    if PACKAGE_BUILD:
+        package_build(dist_dir)
+
+
+def package_build(dist_dir):
+    """Zip the finished build into a single release asset named for its OS,
+    architecture and edition, e.g. dist/vitaThemeArchitect-windows-x64-ai.zip.
+    These exact os-arch-edition tokens are what the in-app updater
+    (app_updater.pick_asset) matches to download the right build. Per OS:
+    Windows → .zip, Linux → .tar.gz (keeps exec bits + symlinks), macOS → .zip
+    via `ditto` (keeps the .app signature and symlinks)."""
+    system = platform.system()
+    if not os.path.isdir(os.path.join(dist_dir, APP_FOLDER_NAME)):
+        print("  Skipping packaging — build folder not found.")
+        return None
+    out_base = os.path.join(dist_dir, f"{APP_FOLDER_NAME}-{BUILD_EDITION}")
+    print_header("Packaging release asset")
+    try:
+        if system == 'Darwin':
+            tagged = os.path.join(dist_dir, APP_FOLDER_NAME)
+            archive = out_base + '.zip'
+            if os.path.exists(archive):
+                os.remove(archive)
+            if shutil.which('ditto'):
+                subprocess.run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent',
+                                tagged, archive], check=True)
+            else:
+                print("  WARNING: 'ditto' not found; using a plain zip "
+                      "(may not preserve the .app signature).")
+                archive = shutil.make_archive(out_base, 'zip',
+                                              root_dir=dist_dir, base_dir=APP_FOLDER_NAME)
+        elif system == 'Linux':
+            archive = shutil.make_archive(out_base, 'gztar',
+                                          root_dir=dist_dir, base_dir=APP_FOLDER_NAME)
+        else:  # Windows (and any other)
+            archive = shutil.make_archive(out_base, 'zip',
+                                          root_dir=dist_dir, base_dir=APP_FOLDER_NAME)
+        size_mb = os.path.getsize(archive) / 1024 ** 2
+        print(f"  Created: {archive} ({size_mb:.1f} MB)")
+        print(f"  Upload this as the GitHub release asset for the {BUILD_EDITION} build.")
+        return archive
+    except Exception as e:
+        print(f"  WARNING: packaging failed ({e}).")
+        print(f"  Zip the {APP_FOLDER_NAME} folder manually, named "
+              f"{os.path.basename(out_base)}.<zip|tar.gz>.")
+        return None
 
 
 if __name__ == '__main__':
