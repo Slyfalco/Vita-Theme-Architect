@@ -786,6 +786,30 @@ def _include_dir_files(src_dir, dest_prefix):
     return args
 
 
+def _include_tree(src_dir, dest_prefix):
+    """Compact data-include for a normal (non-symlink) asset tree: one
+    --include-data-dir per directory that holds files directly.
+
+    Unlike _include_dir_files (one arg per file — needed for the Wine/VLC
+    symlink farms), this keeps the Nuitka command line short.  With the AI
+    build's many example icons, per-file includes overflow the Windows
+    command-line limit (WinError 206).  Emitting a dir entry only for folders
+    that actually contain files sidesteps Nuitka skipping a top level that holds
+    only sub-directories (e.g. IconExamples/<set>/), with no double-includes for
+    our shallow asset trees.
+    """
+    args = []
+    if not os.path.isdir(src_dir):
+        return args
+    for root, _dirs, files in os.walk(src_dir):
+        if not files:
+            continue
+        rel = os.path.relpath(root, src_dir)
+        dest = dest_prefix if rel == '.' else f'{dest_prefix}/{rel}'.replace(os.sep, '/')
+        args.append(f'--include-data-dir={root}={dest}')
+    return args
+
+
 def release_prebuild(shipped_py):
     """Release builds: the release script's pre-build step. Returns (extra
     Nuitka options, generated files to delete after the build)."""
@@ -974,14 +998,14 @@ def run_nuitka():
     # Optional AI icon generator. The worker script runs in the downloaded
     # runtime's Python, so it ships as a data file, not a compiled module.
     # Built-in template icons (compressed, ~33 KB) ship in every build.
-    cmd += _include_dir_files(os.path.join(PROJECT_ROOT, 'Assets', 'IconTemplates'), 'Assets/IconTemplates')
+    cmd += _include_tree(os.path.join(PROJECT_ROOT, 'Assets', 'IconTemplates'), 'Assets/IconTemplates')
     # The "done" chime played when generation or saving a theme finishes (~40 KB).
-    cmd += _include_dir_files(os.path.join(PROJECT_ROOT, 'Assets', 'Sounds'), 'Assets/Sounds')
+    cmd += _include_tree(os.path.join(PROJECT_ROOT, 'Assets', 'Sounds'), 'Assets/Sounds')
     if ICON_AI_ENABLED:
         cmd += ['--include-module=icon_generator',
                 f"--include-data-files={os.path.join(PROJECT_ROOT, 'icon_ai_worker.py')}=icon_ai_worker.py"]
         # Built-in example icon sets the generator learns layouts from (~70 KB each).
-        cmd += _include_dir_files(os.path.join(PROJECT_ROOT, 'Assets', 'IconExamples'), 'Assets/IconExamples')
+        cmd += _include_tree(os.path.join(PROJECT_ROOT, 'Assets', 'IconExamples'), 'Assets/IconExamples')
         # Shipped performance reference data (binary data file; encrypted +
         # authenticated inside), if present: lets the estimates predict hardware
         # the user hasn't measured.
