@@ -28,8 +28,8 @@ python main.py
 The project builds a standalone, portable application with [Nuitka](https://nuitka.net/):
 
 ```bash
-python setup_build.py                 # standalone build for the current OS/architecture
-python setup_build.py --with-icon-ai  # also include the optional AI icon generator
+python setup_build.py                # standalone build for the current OS/architecture (includes the AI icon generator)
+python setup_build.py --no-icon-ai  # build without the AI icon generator and its features
 ```
 
 The build downloads the extra tools it needs (such as the audio converter and a portable media player) automatically, and outputs to `dist/`.

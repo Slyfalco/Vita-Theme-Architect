@@ -7,9 +7,10 @@ builds only), and builds the project with Nuitka. Non-release builds have no
 online features.
 
 Usage:
-    python setup_build.py [--with-icon-ai]
+    python setup_build.py [--no-icon-ai]
 
-    --with-icon-ai   include the optional AI icon generator (or set VTA_ICON_AI=1)
+    --no-icon-ai   exclude the AI icon generator and all AI features from the
+                   build (or set VTA_ICON_AI=0). It is included by default.
 """
 import os
 import sys
@@ -27,11 +28,12 @@ TOOLS_DIR = os.path.join(PROJECT_ROOT, 'Tools')
 # Release builds: set VTA_RELEASE_SCRIPT on the build machine (path relative
 # to the project root, or absolute). Unset means a non-release build.
 _RELEASE_SCRIPT = os.environ.get('VTA_RELEASE_SCRIPT', '').strip()
-# Optional AI icon generator (off by default). Enable with --with-icon-ai or
-# VTA_ICON_AI=1. Only the small app-side code and template icons are bundled;
-# PyTorch/diffusers are downloaded at runtime if the user opts in.
-ICON_AI_ENABLED = ('--with-icon-ai' in sys.argv[1:]
-                   or os.environ.get('VTA_ICON_AI', '').strip().lower() in ('1', 'true', 'yes'))
+# AI icon generator (on by default). Disable with --no-icon-ai or VTA_ICON_AI=0
+# to strip the generator and all AI features from the build. Only the small
+# app-side code and example/template icons are bundled; PyTorch/diffusers are
+# downloaded at runtime if the user opts in.
+ICON_AI_ENABLED = not ('--no-icon-ai' in sys.argv[1:]
+                       or os.environ.get('VTA_ICON_AI', '').strip().lower() in ('0', 'false', 'no'))
 # Standalone output folder (Windows/Linux): dist/vitaThemeArchitect/
 def _build_tag():
     """<os>-<arch> for this build machine (e.g. windows-x64, linux-arm64,
@@ -1286,7 +1288,7 @@ def main():
     build_type = ("Release (online features enabled)" if is_release
                   else "Source / non-release (online features disabled)")
     print(f"  Build:    {build_type}")
-    print(f"  Icon AI:  {'included' if ICON_AI_ENABLED else 'not included (enable with --with-icon-ai)'}")
+    print(f"  Icon AI:  {'included' if ICON_AI_ENABLED else 'not included (removed with --no-icon-ai)'}")
 
     # Prompt once for credentials on non-Windows platforms
     cred_username, cred_password = get_credentials()
