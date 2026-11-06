@@ -37,7 +37,7 @@ The build downloads the extra tools it needs (such as the audio converter and a 
 ## Platform notes
 
 - **Windows / macOS / Linux** are all supported.
-- On macOS and Linux, the Windows-only audio tools run through a bundled Wine, set up automatically on first use.
+- On macOS and Linux, the Windows-only audio tools run through a bundled, stripped-down minimal build of Wine, set up automatically on first use.
 
 ## Using it with your Vita
 
