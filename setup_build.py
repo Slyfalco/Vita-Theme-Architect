@@ -938,8 +938,15 @@ def run_nuitka():
     if os.path.isdir(_sndfile_dir):
         for _f in sorted(os.listdir(_sndfile_dir)):
             _fp = os.path.join(_sndfile_dir, _f)
-            if os.path.isfile(_fp):
+            if not os.path.isfile(_fp):
+                continue
+            _low = _f.lower()
+            _is_lib = _low.endswith(('.dll', '.dylib', '.so')) or '.so.' in _low
+            _is_license = (_low.startswith(('license', 'copying', 'notice'))
+                           or _low.endswith('.license'))
+            if _is_lib or _is_license:  # ship only the native libs + licenses,
                 cmd += [f'--include-data-files={_fp}=libsndfile/{_f}']
+            # (skip placeholders/scripts/docs like PLACE_DLL_HERE.txt)
 
     # VGAudioCli.exe + any DLLs alongside it
     vgaudio_exe = os.path.join(TOOLS_DIR, 'VGAudioCli.exe')
