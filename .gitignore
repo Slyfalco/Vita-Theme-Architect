@@ -43,3 +43,12 @@ Themes/Template/*
 Compile.py
 CompileAlt.py
 .venv-x64/
+
+# Local dev only: private-repo updater test token + launchers (NEVER commit)
+.env
+run-dev-token.ps1
+run-dev-token.sh
+
+# Native libsndfile for platforms with no soundfile wheel lib (e.g. Windows-ARM).
+# Per-machine binaries — build & drop in locally; bundled by setup_build.
+libsndfile/

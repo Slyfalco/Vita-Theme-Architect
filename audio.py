@@ -109,7 +109,53 @@ if 'PYTHON_VLC_LIB_PATH' not in os.environ:
                 break
 # ---------------------------------------------------------------
 
-import soundfile
+def _prepare_bundled_sndfile():
+    """Make a bundled libsndfile loadable before `import soundfile`.
+
+    soundfile's pip wheel bundles libsndfile for every platform EXCEPT
+    Windows-on-ARM (no win-arm64 build exists upstream), where its import fails
+    with "libsndfile.dll error 0x7e". If we ship a native libsndfile for such a
+    platform — in `<exe dir>/libsndfile/` (builds) or `<repo>/libsndfile/`
+    (source) — put that folder on the loader search path and, on Windows,
+    preload the DLL so soundfile's own bare `dlopen('libsndfile.dll')` resolves
+    to it (Windows matches an already-loaded module by base name). No-op when
+    nothing is bundled, so platforms where the wheel already works are untouched.
+    """
+    libname = ('libsndfile.dll' if sys.platform == 'win32'
+               else 'libsndfile.dylib' if sys.platform == 'darwin'
+               else 'libsndfile.so')
+    exedir = os.path.dirname(os.path.abspath(sys.executable))
+    here = os.path.dirname(os.path.abspath(__file__))
+    for d in (os.path.join(exedir, 'libsndfile'), os.path.join(here, 'libsndfile')):
+        full = os.path.join(d, libname)
+        if os.path.isfile(full):
+            try:
+                if sys.platform == 'win32':
+                    os.add_dll_directory(d)   # so libsndfile's own deps resolve
+                    import ctypes
+                    ctypes.WinDLL(full)       # base-name match for soundfile
+                else:
+                    var = 'DYLD_LIBRARY_PATH' if sys.platform == 'darwin' else 'LD_LIBRARY_PATH'
+                    os.environ[var] = d + os.pathsep + os.environ.get(var, '')
+            except OSError:
+                pass
+            return
+
+
+_prepare_bundled_sndfile()
+try:
+    import soundfile
+    SOUNDFILE_AVAILABLE = True
+except (ImportError, OSError) as _sf_err:
+    # soundfile bundles libsndfile, which can't load on Windows-on-ARM (the wheel
+    # ships an x86-64 libsndfile.dll → "error 0x7e") unless a native libsndfile
+    # is bundled (see _prepare_bundled_sndfile). It's only used to normalise a
+    # source file to 16-bit WAV in convert_to_at9, which also falls back to
+    # ffmpeg / a stdlib WAV path, so never let this block startup.
+    soundfile = None
+    SOUNDFILE_AVAILABLE = False
+    print(f"soundfile unavailable ({_sf_err}); audio encoding falls back to "
+          f"ffmpeg or a stdlib WAV path.")
 
 from PyQt6.QtWidgets import (
     QDialog, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -398,6 +444,78 @@ def _try_ffmpeg_decode(at9_path, wav_path, status_callback=None):
         return False
 
 
+def _ffmpeg_to_pcm16_wav(input_path, wav_path):
+    """Normalise any source audio to a 16-bit PCM WAV with system ffmpeg.
+
+    Fallback for convert_to_at9 when soundfile/libsndfile is unavailable (e.g.
+    ARM64 Windows). Returns the output sample rate on success, else None.
+    """
+    ffmpeg = shutil.which('ffmpeg')
+    if not ffmpeg:
+        return None
+    try:
+        cmd = [ffmpeg, '-y', '-i', input_path, '-c:a', 'pcm_s16le', wav_path]
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=120, **_SUBPROCESS_FLAGS)
+        if r.returncode == 0 and os.path.exists(wav_path):
+            import wave
+            with wave.open(wav_path, 'rb') as w:
+                return w.getframerate()
+        stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
+        _log_error('ffmpeg_normalise',
+                   f"ffmpeg failed (exit {r.returncode}): {stderr_text[-500:]}")
+        return None
+    except Exception as e:
+        _log_error('ffmpeg_normalise', f"ffmpeg error: {e}", exc=e)
+        return None
+
+
+def _normalise_to_pcm16_wav(input_path, tmp_wav):
+    """Produce a 16-bit PCM WAV at tmp_wav from any supported source, trying,
+    in order: soundfile (works on almost every platform), ffmpeg (any format,
+    if installed), then a plain copy when the source is already a 16-bit PCM WAV
+    (stdlib only — no deps). Returns the sample rate, or None if none worked."""
+    # 1) soundfile — preferred; handles mp3/flac/ogg/wav/etc. everywhere its
+    #    bundled libsndfile loads (all platforms except Windows-on-ARM).
+    if SOUNDFILE_AVAILABLE:
+        data, sr = soundfile.read(input_path)
+        soundfile.write(tmp_wav, data, sr, subtype='PCM_16')
+        return sr
+    # 2) ffmpeg — any format, when soundfile can't load (e.g. Windows-ARM).
+    sr = _ffmpeg_to_pcm16_wav(input_path, tmp_wav)
+    if sr is not None:
+        return sr
+    # 3) No deps (stdlib only): convert any uncompressed PCM WAV to 16-bit.
+    #    Covers 8/16/24/32-bit PCM WAV in-program, so a WAV source always works
+    #    even with no soundfile and no ffmpeg (e.g. Windows-ARM).
+    if input_path.lower().endswith('.wav'):
+        try:
+            import wave
+            with wave.open(input_path, 'rb') as w:
+                if w.getcomptype() != 'NONE':
+                    raise ValueError('compressed WAV needs soundfile or ffmpeg')
+                sr = w.getframerate()
+                ch = w.getnchannels()
+                sw = w.getsampwidth()
+                frames = w.readframes(w.getnframes())
+            if sw != 2:
+                # Convert sample WIDTH only (e.g. 24/32-bit → 16-bit). This does
+                # NOT resample or change rate/frame-count/pitch/tempo, so loop
+                # sample indices stay exact. audioop is imported only here (it's
+                # removed in Python 3.13; 16-bit WAV never needs it).
+                import audioop
+                frames = audioop.lin2lin(frames, sw, 2)
+            with wave.open(tmp_wav, 'wb') as o:
+                o.setnchannels(ch)
+                o.setsampwidth(2)
+                o.setframerate(sr)
+                o.writeframes(frames)
+            return sr
+        except Exception as e:
+            _log_error('normalise_wav', f"stdlib WAV convert failed: {e}", exc=e)
+    return None
+
+
 def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
     """Convert AT9 to WAV using at9tool (preferred), VGAudioCli, or ffmpeg (last resort).
 
@@ -533,9 +651,16 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None):
         return False
 
     # Normalise any source format to a 16-bit WAV for at9tool
-    data, samplerate = soundfile.read(input_path)
+    # (soundfile → ffmpeg → plain-WAV passthrough).
     tmp_wav = os.path.join(at9_tools, 'BGM.wav')
-    soundfile.write(tmp_wav, data, samplerate, subtype='PCM_16')
+    samplerate = _normalise_to_pcm16_wav(input_path, tmp_wav)
+    if samplerate is None:
+        _log_error('convert_to_at9',
+                   "Cannot encode audio: soundfile/libsndfile couldn't load on this "
+                   "platform (e.g. ARM64 Windows), ffmpeg was not found, and the source "
+                   "isn't a 16-bit PCM WAV. Install ffmpeg (on PATH), or supply a 16-bit "
+                   "PCM WAV, to convert audio to AT9 here.")
+        return False
 
     if samplerate > 24000:
         samplerate = 48000
@@ -548,7 +673,9 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None):
         cmd_prefix = _at9tool_cmd(at9tool_path)
         env = _wine_env() if platform.system() != 'Windows' else None
         if (loop_start_sample is not None) and (loop_start_sample > 0) and (loop_start_sample != ''):
-            samples = int(soundfile.SoundFile(tmp_wav).frames) - 1
+            import wave
+            with wave.open(tmp_wav, 'rb') as _w:
+                samples = _w.getnframes() - 1
             cmd = cmd_prefix + ['-e', '-br', '144', '-fs', str(samplerate),
                                 '-loop', str(loop_start_sample), str(samples), 'BGM.wav', at9_path]
         else:

@@ -887,6 +887,9 @@ def run_nuitka():
     # Disable console window on all platforms
     if system == 'Windows':
         cmd += ['--windows-console-mode=disable']
+        _app_ico = os.path.join(PROJECT_ROOT, 'Assets', 'app_icon.ico')
+        if os.path.exists(_app_ico):
+            cmd += [f'--windows-icon-from-ico={_app_ico}']
     elif system == 'Darwin':
         cmd += ['--macos-create-app-bundle',
                 '--macos-app-name=VitaThemeArchitect',
@@ -895,8 +898,9 @@ def run_nuitka():
                 # fine with PyQt6 so we suppress that overly strict check.
                 '--disable-plugin=options-nanny',
                 ]
-        # Uncomment and set path to add a custom icon:
-        # cmd += ['--macos-app-icon=/path/to/icon.icns']
+        _app_icns = os.path.join(PROJECT_ROOT, 'Assets', 'app_icon.icns')
+        if os.path.exists(_app_icns):
+            cmd += [f'--macos-app-icon={_app_icns}']
     # Linux: no special console flag needed for a GUI app without a terminal
 
     # PyQt6 plugin — essential for Qt to be picked up correctly
@@ -916,6 +920,25 @@ def run_nuitka():
         cmd += [f'--include-module={mod}']
 
     # ── Data / binary includes ──────────────────────────────────────────
+
+    # App icon (window/taskbar icon, loaded at runtime via QIcon). Shipped in
+    # every build, AI or standard.
+    for _icon_name in ('app_icon.ico', 'app_icon.png'):
+        _icon_src = os.path.join(PROJECT_ROOT, 'Assets', _icon_name)
+        if os.path.exists(_icon_src):
+            cmd += [f'--include-data-files={_icon_src}=Assets/{_icon_name}']
+
+    # Native libsndfile for platforms where soundfile's wheel has none (e.g.
+    # Windows-ARM). Drop the built DLL/.dylib/.so (+ its dependency libs) into a
+    # repo-level `libsndfile/` folder; it's bundled next to the exe and loaded by
+    # audio._prepare_bundled_sndfile() before `import soundfile`. Empty/absent on
+    # platforms where the wheel already works — nothing is bundled there.
+    _sndfile_dir = os.path.join(PROJECT_ROOT, 'libsndfile')
+    if os.path.isdir(_sndfile_dir):
+        for _f in sorted(os.listdir(_sndfile_dir)):
+            _fp = os.path.join(_sndfile_dir, _f)
+            if os.path.isfile(_fp):
+                cmd += [f'--include-data-files={_fp}=libsndfile/{_f}']
 
     # VGAudioCli.exe + any DLLs alongside it
     vgaudio_exe = os.path.join(TOOLS_DIR, 'VGAudioCli.exe')
