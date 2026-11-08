@@ -32,8 +32,15 @@ self-contained DLL (preferred) or a DLL + sidecar dep DLLs both work.
 
 ## How to build it (once — it's independent of the app version)
 
+**Easiest:** run the helper, which does the single-DLL vcpkg build below and drops
+the result in `windows-arm64/` for you (needs vcpkg installed):
+
+```
+powershell -ExecutionPolicy Bypass -File .\libsndfile\build-libsndfile.ps1
+```
+
 No official prebuilt `win-arm64` libsndfile exists, so build it once with vcpkg
-(can cross-compile from x64 — no ARM machine needed).
+(can cross-compile from x64 — no ARM machine needed). The manual steps:
 
 ### Preferred: one self-contained `libsndfile.dll` (deps linked in statically)
 
