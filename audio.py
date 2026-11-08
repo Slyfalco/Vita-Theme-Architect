@@ -6,7 +6,6 @@ import subprocess
 import tempfile
 import datetime
 import traceback
-import hashlib
 
 from wine_setup import (
     startup_wine_warmup,
@@ -121,71 +120,45 @@ def _sndfile_platform_tag():
     return f"{os_name}-{arch}"
 
 
-# SHA-256 of the VETTED native libsndfile for each platform tag. Only a file
-# whose hash matches one of these is ever put on the loader path or preloaded,
-# so an arbitrary or malicious DLL dropped into `libsndfile/<tag>/` is ignored
-# (loading a DLL runs its code, so we never load an unknown one). Add the hex
-# digest here when you commit a built lib for a platform — and prefer a SINGLE
-# self-contained libsndfile.dll (format deps linked in statically), so the one
-# pinned file is the only native library the folder exposes. Empty = nothing is
-# trusted yet, so nothing is loaded.
-_SNDFILE_SHA256 = {
-    # 'windows-arm64': '<sha256 hex of libsndfile/windows-arm64/libsndfile.dll>',
-}
-
-
 def _prepare_bundled_sndfile():
-    """Make a bundled, VETTED libsndfile loadable before `import soundfile`.
+    """Make a bundled libsndfile loadable before `import soundfile`.
 
     soundfile's pip wheel bundles libsndfile for every platform EXCEPT
     Windows-on-ARM (no win-arm64 build exists upstream), where its import fails
     with "libsndfile.dll error 0x7e". If we ship a native libsndfile for such a
     platform — flattened into `<exe dir>/libsndfile/` (builds; setup_build only
     bundles the matching arch) or under `<repo>/libsndfile/<os>-<arch>/` (source;
-    arch-tagged so an arm64 DLL is never loaded on an x64 run) — and ITS HASH IS
-    PINNED in `_SNDFILE_SHA256`, put that folder on the loader search path and,
-    on Windows, preload the DLL so soundfile's own bare `dlopen('libsndfile.dll')`
-    resolves to it (Windows matches an already-loaded module by base name).
+    arch-tagged so an arm64 DLL is never loaded on an x64 run) — put that folder
+    on the loader search path and, on Windows, preload the DLL so soundfile's own
+    bare `dlopen('libsndfile.dll')` resolves to it (Windows matches an
+    already-loaded module by base name). No-op when nothing is bundled, so
+    platforms where the wheel already works are untouched.
 
-    A file with no matching pinned hash is ignored, so dropping an unknown DLL in
-    the folder does nothing. No-op when nothing is bundled/pinned, so platforms
-    where the wheel already works are untouched.
+    This is the same trust model as the other bundled native libs (Qt, VLC, the
+    Python runtime): whatever ships in the app folder is trusted. The real
+    boundary is write access to that folder, not this one file.
     """
-    tag = _sndfile_platform_tag()
-    expected = _SNDFILE_SHA256.get(tag)
-    if not expected:
-        return  # no vetted lib pinned for this platform → load nothing
     libname = ('libsndfile.dll' if sys.platform == 'win32'
                else 'libsndfile.dylib' if sys.platform == 'darwin'
                else 'libsndfile.so')
     exedir = os.path.dirname(os.path.abspath(sys.executable))
     here = os.path.dirname(os.path.abspath(__file__))
+    tag = _sndfile_platform_tag()
     for d in (os.path.join(exedir, 'libsndfile'),              # builds (flat)
               os.path.join(here, 'libsndfile', tag)):          # source (per-arch)
         full = os.path.join(d, libname)
-        if not os.path.isfile(full):
-            continue
-        # Only load a file that matches the vetted hash pinned above.
-        try:
-            with open(full, 'rb') as fh:
-                digest = hashlib.sha256(fh.read()).hexdigest()
-        except OSError:
-            continue
-        if digest.lower() != expected.lower():
-            print(f"Ignoring untrusted libsndfile at {full} "
-                  f"(sha256 {digest[:12]}… != pinned {expected[:12]}…).")
-            continue
-        try:
-            if sys.platform == 'win32':
-                os.add_dll_directory(d)   # so libsndfile's own deps resolve
-                import ctypes
-                ctypes.WinDLL(full)       # base-name match for soundfile
-            else:
-                var = 'DYLD_LIBRARY_PATH' if sys.platform == 'darwin' else 'LD_LIBRARY_PATH'
-                os.environ[var] = d + os.pathsep + os.environ.get(var, '')
-        except OSError:
-            pass
-        return
+        if os.path.isfile(full):
+            try:
+                if sys.platform == 'win32':
+                    os.add_dll_directory(d)   # so libsndfile's own deps resolve
+                    import ctypes
+                    ctypes.WinDLL(full)       # base-name match for soundfile
+                else:
+                    var = 'DYLD_LIBRARY_PATH' if sys.platform == 'darwin' else 'LD_LIBRARY_PATH'
+                    os.environ[var] = d + os.pathsep + os.environ.get(var, '')
+            except OSError:
+                pass
+            return
 
 
 _prepare_bundled_sndfile()

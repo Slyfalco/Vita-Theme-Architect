@@ -9,11 +9,5 @@ ALTERNATIVE - plain dynamic build:
   <dependency DLLs>   (FLAC.dll, ogg.dll, vorbis.dll, opus.dll, mpg123.dll, ...)
   LICENSE-*.txt
 
-IMPORTANT (security): the loader only loads a libsndfile whose SHA-256 is pinned
-in audio.py (_SNDFILE_SHA256). After placing libsndfile.dll, compute its hash:
-  (Get-FileHash .\libsndfile.dll -Algorithm SHA256).Hash.ToLower()
-and add it to _SNDFILE_SHA256 (e.g. 'windows-arm64': '<hex>'). An unpinned or
-swapped DLL here is ignored.
-
-Once the file is here AND its hash is pinned, it auto-loads on ARM64 Windows
-(source runs) and is bundled into ARM64 builds. Delete this file once done.
+Once the file is here it auto-loads on ARM64 Windows (source runs) and is bundled
+into ARM64 builds. Delete this file once the real DLL is in place.

@@ -68,23 +68,13 @@ plus every dependency DLL it pulled in (FLAC, ogg, vorbis, opus, mpg123, …).
 
 Either way, rebuild/run — that's it. You only redo this for a newer libsndfile.
 
-## Trust (hash pinning — required)
+## Trust
 
-The loader only loads a native lib whose **SHA-256 matches a value pinned in
-`audio.py`** (`_SNDFILE_SHA256`), so dropping an arbitrary/malicious DLL into
-this folder does nothing (loading a DLL runs its code, so an unpinned one is
-ignored). After building and placing `libsndfile.dll`, record its hash:
-
-```
-# PowerShell
-(Get-FileHash .\libsndfile\windows-arm64\libsndfile.dll -Algorithm SHA256).Hash.ToLower()
-```
-
-Paste it into `_SNDFILE_SHA256` in `audio.py`, e.g.
-`'windows-arm64': '<hex>'`, and commit both. Update the hash whenever you rebuild
-the DLL. Prefer the **single self-contained DLL** build so the one pinned file is
-the only native library this folder exposes (sidecar dep DLLs are not individually
-pinned).
+This is bundled like the app's other native libs (Qt, VLC, the Python runtime):
+whatever ships in the app/repo folder is trusted, and the real boundary is write
+access to that folder — not this one file. So just commit a `libsndfile.dll` you
+built yourself from the official sources. (Prefer the single self-contained DLL so
+this folder exposes only the one library, with no extra sidecar DLLs.)
 
 ## Licensing (safe to commit / ship)
 
