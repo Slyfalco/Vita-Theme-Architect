@@ -39,6 +39,10 @@ the result in `windows-arm64/` for you (needs vcpkg installed):
 powershell -ExecutionPolicy Bypass -File .\libsndfile\build-libsndfile.ps1
 ```
 
+A **Windows-ARM `setup_build.py` run also offers to do this automatically** when
+the DLL is missing (prompts; or set `VTA_BUILD_LIBSNDFILE=1` to build without
+prompting, `=0` to skip). It just invokes the helper above.
+
 No official prebuilt `win-arm64` libsndfile exists, so build it once with vcpkg
 (can cross-compile from x64 — no ARM machine needed). The manual steps:
 

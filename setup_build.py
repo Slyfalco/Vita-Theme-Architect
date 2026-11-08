@@ -1336,6 +1336,53 @@ def _restore_dev_stub(stashed):
         print("  Restored the local secure_function.py.")
 
 
+def ensure_arm_libsndfile():
+    """On a Windows-ARM build only: soundfile's wheel ships no working libsndfile,
+    so mp3/flac/ogg audio needs a native libsndfile bundled. If one isn't already
+    in libsndfile/windows-arm64/, OFFER to build it now (build-libsndfile.ps1 via
+    vcpkg) so the build can bundle it. No-op on every other platform. Set
+    VTA_BUILD_LIBSNDFILE=1 to build without prompting, =0 to skip silently."""
+    if _build_tag() != 'windows-arm64':
+        return
+    dest = os.path.join(PROJECT_ROOT, 'libsndfile', 'windows-arm64')
+    dll = os.path.join(dest, 'libsndfile.dll')
+    if os.path.isfile(dll):
+        return  # already have it — the include step will bundle it
+    script = os.path.join(PROJECT_ROOT, 'libsndfile', 'build-libsndfile.ps1')
+    if not os.path.isfile(script):
+        return
+
+    print("\n[libsndfile] No ARM64 libsndfile.dll found for this Windows-ARM build.")
+    print("  Without it, mp3/flac/ogg audio won't work here (WAV still will).")
+    choice = os.environ.get('VTA_BUILD_LIBSNDFILE', '').strip().lower()
+    if choice in ('0', 'false', 'no'):
+        return
+    build_it = choice in ('1', 'true', 'yes')
+    if not build_it:
+        try:
+            build_it = (sys.stdin and sys.stdin.isatty()
+                        and input("  Build it now with vcpkg? [y/N] ").strip().lower()
+                        in ('y', 'yes'))
+        except (EOFError, OSError):
+            build_it = False
+    if not build_it:
+        print("  Skipping. Build later with:")
+        print("    powershell -ExecutionPolicy Bypass -File libsndfile\\build-libsndfile.ps1")
+        return
+
+    print("  Building libsndfile with vcpkg (first time takes a while)...")
+    try:
+        subprocess.run(['powershell', '-ExecutionPolicy', 'Bypass', '-File', script],
+                       check=False)
+    except FileNotFoundError:
+        print("  Couldn't launch PowerShell to build libsndfile; continuing without it.")
+        return
+    if os.path.isfile(dll):
+        print("  libsndfile ready — it will be bundled into this build.")
+    else:
+        print("  libsndfile not produced (vcpkg missing?); continuing WAV-only on ARM.")
+
+
 def main():
     print_header("VitaTheme Architect - Build Setup")
     print(f"  Platform: {platform.system()} {platform.machine()}")
@@ -1395,6 +1442,11 @@ def main():
     # fresh machine is told exactly what to install instead of failing deep in.
     if not check_toolchain(is_release):
         sys.exit(1)
+
+    # On Windows-ARM, offer to build the native libsndfile the soundfile wheel
+    # lacks, so this build can bundle it (enables mp3/flac/ogg there). No-op
+    # elsewhere and when the DLL is already present.
+    ensure_arm_libsndfile()
 
     # A local, uncommitted secure_function.py is set aside for the whole build
     # and put back at the end (even on failure), so a developer's local copy is
