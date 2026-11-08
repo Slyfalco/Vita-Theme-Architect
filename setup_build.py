@@ -929,11 +929,12 @@ def run_nuitka():
             cmd += [f'--include-data-files={_icon_src}=Assets/{_icon_name}']
 
     # Native libsndfile for platforms where soundfile's wheel has none (e.g.
-    # Windows-ARM). Drop the built DLL/.dylib/.so (+ its dependency libs) into a
-    # repo-level `libsndfile/` folder; it's bundled next to the exe and loaded by
-    # audio._prepare_bundled_sndfile() before `import soundfile`. Empty/absent on
-    # platforms where the wheel already works — nothing is bundled there.
-    _sndfile_dir = os.path.join(PROJECT_ROOT, 'libsndfile')
+    # Windows-ARM). The built DLL/.dylib/.so (+ dependency libs + license) live
+    # per-arch in `libsndfile/<os>-<arch>/`; only THIS build's arch is bundled,
+    # flattened to `libsndfile/` next to the exe, and loaded by
+    # audio._prepare_bundled_sndfile() before `import soundfile`. Absent for
+    # arches where the wheel already works — nothing is bundled there.
+    _sndfile_dir = os.path.join(PROJECT_ROOT, 'libsndfile', _build_tag())
     if os.path.isdir(_sndfile_dir):
         for _f in sorted(os.listdir(_sndfile_dir)):
             _fp = os.path.join(_sndfile_dir, _f)

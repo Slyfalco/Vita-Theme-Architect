@@ -49,6 +49,6 @@ CompileAlt.py
 run-dev-token.ps1
 run-dev-token.sh
 
-# Native libsndfile for platforms with no soundfile wheel lib (e.g. Windows-ARM).
-# Per-machine binaries — build & drop in locally; bundled by setup_build.
-libsndfile/
+# Native libsndfile for platforms with no soundfile wheel lib (e.g. Windows-ARM)
+# is TRACKED per-arch under libsndfile/<os>-<arch>/ (built once, redistributable
+# under its LGPL/BSD licenses) so every build can bundle it. Not ignored.

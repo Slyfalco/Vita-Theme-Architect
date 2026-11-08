@@ -1,0 +1,11 @@
+Put the ARM64 Windows libsndfile here (see ../README.md):
+
+  libsndfile.dll      (rename from vcpkg's sndfile.dll)
+  <dependency DLLs>   (FLAC.dll, ogg.dll, vorbis.dll, opus.dll, mpg123.dll, ...)
+  LICENSE-*.txt       (libsndfile LGPL + each dependency's license)
+
+Build once with:  vcpkg install libsndfile:arm64-windows
+(then copy from vcpkg/installed/arm64-windows/bin/)
+
+Once the DLLs are here they are auto-loaded on ARM64 Windows (source runs) and
+bundled into ARM64 builds. Delete this file once the real DLLs are in place.
