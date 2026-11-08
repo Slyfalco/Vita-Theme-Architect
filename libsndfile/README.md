@@ -19,36 +19,64 @@ drop a native `libsndfile` here and it is used automatically:
 ```
 libsndfile/
   windows-arm64/
-    libsndfile.dll        <- the main library (rename from sndfile.dll)
-    FLAC.dll, ogg.dll, vorbis.dll, opus.dll, mpg123.dll, ...   <- its deps
-    LICENSE-libsndfile.txt, LICENSE-FLAC.txt, ...              <- see Licensing
+    libsndfile.dll        <- the library (rename from sndfile.dll)
+    LICENSE-*.txt         <- libsndfile + each dependency's license (see Licensing)
   <other-os-arch>/ ...    (only if that platform also lacks a wheel lib)
 ```
 
 The folder name must match `setup_build._build_tag()` / `audio._sndfile_platform_tag()`
 (e.g. `windows-arm64`, `windows-x64`, `linux-arm64`, `macos-arm64`). On Windows the
 main file **must be named `libsndfile.dll`** (soundfile `dlopen`s that exact name).
+The loader/bundler just take whatever files are in the folder, so a single
+self-contained DLL (preferred) or a DLL + sidecar dep DLLs both work.
 
 ## How to build it (once — it's independent of the app version)
 
 No official prebuilt `win-arm64` libsndfile exists, so build it once with vcpkg
-(can cross-compile from x64 — no ARM machine needed):
+(can cross-compile from x64 — no ARM machine needed).
+
+### Preferred: one self-contained `libsndfile.dll` (deps linked in statically)
+
+Build the format deps (FLAC/ogg/vorbis/opus/mpg123) as static libs linked **into**
+libsndfile, while libsndfile itself stays a DLL — so you get a single file with no
+sidecar DLLs. Make an overlay triplet `arm64-windows-mixed.cmake`:
+
+```cmake
+set(VCPKG_TARGET_ARCHITECTURE arm64)
+set(VCPKG_CRT_LINKAGE dynamic)      # use the OS's UCRT (normal on Windows)
+set(VCPKG_LIBRARY_LINKAGE static)   # deps static...
+if(PORT STREQUAL "libsndfile")
+    set(VCPKG_LIBRARY_LINKAGE dynamic)   # ...but libsndfile itself is a DLL
+endif()
+```
+
+```
+vcpkg install libsndfile:arm64-windows-mixed --overlay-triplets=<folder-with-that-triplet>
+```
+
+Copy `installed/arm64-windows-mixed/bin/sndfile.dll` →
+`libsndfile/windows-arm64/libsndfile.dll`. That one file is everything.
+
+### Alternative: plain dynamic build (a handful of small DLLs)
 
 ```
 vcpkg install libsndfile:arm64-windows
 ```
 
-Then copy from `vcpkg/installed/arm64-windows/bin/`:
-- `sndfile.dll` → `libsndfile/windows-arm64/libsndfile.dll`
-- every dependency DLL it pulled in (FLAC, ogg, vorbis, opus, mpg123, etc.)
+Copy from `vcpkg/installed/arm64-windows/bin/`: `sndfile.dll` → `libsndfile.dll`,
+plus every dependency DLL it pulled in (FLAC, ogg, vorbis, opus, mpg123, …).
 
-Rebuild/run — that's it. You only redo this if you want a newer libsndfile.
+Either way, rebuild/run — that's it. You only redo this for a newer libsndfile.
 
 ## Licensing (safe to commit / ship)
 
 `libsndfile` is **LGPL-2.1-or-later**; its format deps are permissive/LGPL
-(FLAC, Ogg, Vorbis, Opus = BSD-style; mpg123 = LGPL). Because we ship them as
-**separate DLLs loaded at runtime** (dynamic linking — the user can replace the
-DLL), redistribution is allowed, including in a public/closed app. Just include
-each library's license text in the arch folder next to the DLLs (that's what the
-`LICENSE-*.txt` files above are for), and this notice documents the use.
+(FLAC, Ogg, Vorbis, Opus = BSD-style; mpg123 = LGPL). Our app loads
+`libsndfile.dll` as a **replaceable runtime DLL** (soundfile `dlopen`s it; a user
+can swap it), which satisfies LGPL — so redistribution is allowed in a public or
+closed app. This holds for **both** builds above: shipping the deps as separate
+DLLs, or linking them statically **into** `libsndfile.dll` (the combined DLL is
+still LGPL/BSD and still replaceable). Just include each library's license text
+alongside the DLL (`LICENSE-*.txt`), and keep this notice. These are unmodified
+upstream libraries, so their public sources + the vcpkg recipe are the source
+reference.
