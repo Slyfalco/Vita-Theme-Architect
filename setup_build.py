@@ -1343,22 +1343,27 @@ def _restore_dev_stub(stashed):
         print("  Restored the local secure_function.py.")
 
 
-def generate_integrity_manifest(app_dir):
-    """Write app_dir/integrity.json — SHA-256 of every shipped file — for the
-    public install-integrity check (main._verify_install_integrity). Excludes the
-    manifest itself, the main executable (it may be signed afterwards), and
-    __pycache__. Windows/Linux only — macOS uses its code signature, and adding a
-    file to a signed .app would invalidate it. Called AFTER Nuitka but BEFORE the
-    secure modules, so the release fingerprint includes integrity.json (no
-    skip-list needed); the secure modules, generated afterwards, aren't listed
-    here but are covered by that fingerprint instead."""
+INTEGRITY_MAGIC = b'VTAINTEG'
+
+
+def embed_integrity_in_exe(app_dir, exe_path):
+    """Embed an install-integrity manifest (SHA-256 of every shipped file) as an
+    overlay at the END of the exe — so it's PART of the exe (not a loose, editable
+    file) and therefore covered by the release fingerprint (tamper-resistant: the
+    overlay can't be changed without changing the exe, which breaks the secure
+    modules). Layout appended: <json bytes><8-byte LE length><8-byte MAGIC>.
+    `main._verify_install_integrity` reads it back from the running exe.
+
+    Excludes the exe itself and __pycache__. Called AFTER Nuitka but BEFORE the
+    secure modules (so the fingerprint includes the overlay). Windows/Linux only —
+    macOS's .app is code-signed and an overlay would invalidate the signature."""
     import hashlib
-    exe_names = {'vitaThemeArchitect.exe', 'vitaThemeArchitect'}
+    exe_name = os.path.basename(exe_path)
     files = {}
     for root, dirs, names in os.walk(app_dir):
         dirs[:] = [d for d in dirs if d != '__pycache__']
         for name in names:
-            if name == 'integrity.json' or name in exe_names:
+            if name == exe_name:
                 continue
             full = os.path.join(root, name)
             rel = os.path.relpath(full, app_dir).replace(os.sep, '/')
@@ -1370,9 +1375,11 @@ def generate_integrity_manifest(app_dir):
             except OSError:
                 continue
             files[rel] = h.hexdigest()
-    with open(os.path.join(app_dir, 'integrity.json'), 'w', encoding='utf-8') as fh:
-        json.dump({'files': files}, fh)
-    print(f"  Wrote integrity.json ({len(files)} files) for the install-integrity check.")
+    blob = json.dumps({'files': files}).encode('utf-8')
+    trailer = blob + len(blob).to_bytes(8, 'little') + INTEGRITY_MAGIC
+    with open(exe_path, 'ab') as fh:
+        fh.write(trailer)
+    print(f"  Embedded integrity manifest in the exe ({len(files)} files, {len(blob)} bytes).")
 
 
 def ensure_arm_libsndfile():
@@ -1506,10 +1513,10 @@ def main():
         # would invalidate the .app signature).
         if platform.system() != 'Darwin':
             try:
-                _mf_app_dir, _ = app_layout()
-                generate_integrity_manifest(_mf_app_dir)
+                _mf_app_dir, _mf_exe = app_layout()
+                embed_integrity_in_exe(_mf_app_dir, _mf_exe)
             except Exception as e:
-                print(f"  Integrity manifest step skipped: {e}")
+                print(f"  Integrity embed step skipped: {e}")
 
         # After the build: the release modules for this build.
         if is_release:

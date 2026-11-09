@@ -140,22 +140,42 @@ def app_icon():
     return QIcon()
 
 
-def _verify_install_integrity(base_dir=None, max_problems=20):
-    """Public corruption check. A build ships an integrity.json next to the app
-    files (SHA-256 per file); confirm the shipped files still match. Returns
-    (ok, problems). No manifest (running from source, or macOS) -> (True, []).
-    Advisory only — catches a bad/incomplete install; the real official-only
-    enforcement lives in the release modules, not here. Kept in main (compiled
-    into the exe) rather than its own file."""
-    base = base_dir or os.path.dirname(os.path.abspath(__file__))
-    manifest = os.path.join(base, 'integrity.json')
-    if not os.path.isfile(manifest):
-        return True, []
+_INTEGRITY_MAGIC = b'VTAINTEG'
+
+
+def _real_exe_path():
+    """Path of the actually-running executable. Nuitka's sys.executable can be a
+    bogus bundled 'python', so ask the OS."""
     try:
-        with open(manifest, 'r', encoding='utf-8') as fh:
-            files = (json.load(fh) or {}).get('files', {})
-    except (OSError, ValueError):
-        return False, ['integrity.json is unreadable']
+        if sys.platform == 'win32':
+            import ctypes
+            buf = ctypes.create_unicode_buffer(32768)
+            if ctypes.windll.kernel32.GetModuleFileNameW(None, buf, len(buf)):
+                return buf.value
+        elif sys.platform.startswith('linux'):
+            return os.readlink('/proc/self/exe')
+    except Exception:
+        pass
+    return sys.executable
+
+
+def _check_overlay_integrity(exe_path):
+    """Verify the files listed in the exe's integrity overlay. FAILS CLOSED: a
+    missing/unreadable/corrupt overlay, or any changed/missing file, returns
+    (False, problems) — so the check can't be bypassed by inducing an error."""
+    try:
+        with open(exe_path, 'rb') as fh:
+            fh.seek(-16, os.SEEK_END)
+            trailer = fh.read(16)
+            if len(trailer) < 16 or trailer[8:] != _INTEGRITY_MAGIC:
+                return False, ['integrity manifest missing']
+            length = int.from_bytes(trailer[:8], 'little')
+            fh.seek(-(16 + length), os.SEEK_END)
+            blob = fh.read(length)
+        files = (json.loads(blob.decode('utf-8')) or {}).get('files', {})
+    except Exception:
+        return False, ['integrity manifest unreadable']
+    base = os.path.dirname(os.path.abspath(exe_path))
     problems = []
     for rel, expected in files.items():
         path = os.path.join(base, rel.replace('/', os.sep))
@@ -171,9 +191,20 @@ def _verify_install_integrity(base_dir=None, max_problems=20):
                     problems.append('changed: ' + rel)
             except OSError:
                 problems.append('unreadable: ' + rel)
-        if len(problems) >= max_problems:
+        if len(problems) >= 20:
             break
     return (not problems), problems
+
+
+def _verify_install_integrity():
+    """Install-integrity check, enforced on compiled Windows/Linux builds (where
+    setup_build embeds the overlay). Source runs and macOS builds (which use the
+    .app code signature) skip. Fails CLOSED on an enforced build."""
+    if not globals().get('__compiled__', False):
+        return True, []            # running from source — no overlay expected
+    if sys.platform == 'darwin':
+        return True, []            # macOS integrity = its code signature
+    return _check_overlay_integrity(_real_exe_path())
 
 
 class SplashScreen(QDialog):
@@ -301,20 +332,21 @@ if __name__ == "__main__":
         from style import apply_modern_style
         apply_modern_style(app)
 
-        # Public install-integrity check: on a build that ships integrity.json,
-        # confirm the files aren't corrupted/incomplete and advise reinstall if
-        # so. No-op from source / on macOS (no manifest). Advisory only.
+        # Install-integrity check (compiled Windows/Linux builds): refuse to run a
+        # corrupted/tampered install. Fails closed on an enforced build; no-op
+        # from source / on macOS. A hard error here shouldn't brick launch, but a
+        # *verified* failure must block — so only an exception bypasses.
         try:
-            _ok, _problems = _verify_install_integrity()
+            _integrity_ok, _integrity_problems = _verify_install_integrity()
         except Exception:
-            _ok, _problems = True, []
-        if not _ok:
+            _integrity_ok, _integrity_problems = True, []
+        if not _integrity_ok:
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(
                 None, "Installation Problem",
-                "VitaTheme Architect's files look corrupted or incomplete:\n\n"
-                + "\n".join(_problems[:8])
-                + ("\n…" if len(_problems) > 8 else "")
+                "VitaTheme Architect's files look corrupted or modified:\n\n"
+                + "\n".join(_integrity_problems[:8])
+                + ("\n…" if len(_integrity_problems) > 8 else "")
                 + "\n\nPlease reinstall or re-download the app.")
             sys.exit(1)
 
