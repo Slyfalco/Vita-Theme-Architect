@@ -199,16 +199,25 @@ def _check_overlay_integrity(exe_path):
             fh.seek(0, os.SEEK_END)
             filesize = fh.tell()
             end = _overlay_end_offset(fh, filesize)
-            if end < 16:
+            # Signing pads up to ~8 NUL bytes between our overlay and the cert
+            # table; strip them so the trailer is found at the true overlay end.
+            # (Our overlay ends in the non-NUL MAGIC, so this never eats into it.)
+            pad_window = min(end, 32)
+            if pad_window < 16:
                 return False, ['integrity manifest missing']
-            fh.seek(end - 16)
+            fh.seek(end - pad_window)
+            tail = fh.read(pad_window)
+            ovl_end = end - (len(tail) - len(tail.rstrip(b'\x00')))
+            if ovl_end < 16:
+                return False, ['integrity manifest missing']
+            fh.seek(ovl_end - 16)
             trailer = fh.read(16)
             if len(trailer) < 16 or trailer[8:] != _INTEGRITY_MAGIC:
                 return False, ['integrity manifest missing']
             length = int.from_bytes(trailer[:8], 'little')
-            if length <= 0 or length > 64 * 1024 * 1024 or (end - 16 - length) < 0:
+            if length <= 0 or length > 64 * 1024 * 1024 or (ovl_end - 16 - length) < 0:
                 return False, ['integrity manifest invalid']
-            fh.seek(end - 16 - length)
+            fh.seek(ovl_end - 16 - length)
             blob = fh.read(length)
         files = (json.loads(blob.decode('utf-8')) or {}).get('files', {})
     except Exception:
