@@ -170,6 +170,8 @@ def _check_overlay_integrity(exe_path):
             if len(trailer) < 16 or trailer[8:] != _INTEGRITY_MAGIC:
                 return False, ['integrity manifest missing']
             length = int.from_bytes(trailer[:8], 'little')
+            if length <= 0 or length > 64 * 1024 * 1024:
+                return False, ['integrity manifest invalid']
             fh.seek(-(16 + length), os.SEEK_END)
             blob = fh.read(length)
         files = (json.loads(blob.decode('utf-8')) or {}).get('files', {})
