@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 
-from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL, ONLINE_FEATURES_AVAILABLE
+from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL, ONLINE_FEATURES_AVAILABLE, crypted
 from widgets import DragDropLineEdit
 
 
@@ -135,7 +135,12 @@ class SettingsDialog(QDialog):
         repo_link = QLabel(f'<a href="{repo_url}">{repo_url.replace("https://", "")}</a>')
         repo_link.setOpenExternalLinks(True)
         repo_link.setStyleSheet("color: grey;")
-        version_label = QLabel(f"Version {CURRENT_VERSION}")
+        # Quiet build-status note next to the version (grey, low-key — an official
+        # build has the secure modules; anything else is unofficial).
+        import app_updater
+        _official = app_updater.running_frozen() and (crypted is not None)
+        version_label = QLabel(f"Version {CURRENT_VERSION}  ·  "
+                               + ("Official build" if _official else "Unofficial build"))
         version_label.setStyleSheet("color: grey;")
         separator = QFrame(); separator.setFrameShape(QFrame.Shape.HLine)
         separator.setStyleSheet("background-color: #2e3a5c; max-height: 1px; border: none;")
