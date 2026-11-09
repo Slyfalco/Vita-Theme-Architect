@@ -1382,6 +1382,41 @@ def embed_integrity_in_exe(app_dir, exe_path):
     print(f"  Embedded integrity manifest in the exe ({len(files)} files, {len(blob)} bytes).")
 
 
+def patch_codeenigma_windows_ext_glob():
+    """Fix a codeenigma Windows bug before it runs: its bundler finds the compiled
+    extension with `list(location.glob("*.so"))[-1]`, but on Windows the extension
+    is `.pyd` -> empty glob -> IndexError ("list index out of range") printed
+    during obfuscation. Patch the installed codeenigma to also match `*.pyd`.
+
+    Windows-only, idempotent, best-effort (no-op if codeenigma is absent or
+    already patched). Safe wrt the rest of the build: Encrypt.py locates
+    codeenigma_runtime by a recursive search under cedist/, so it's found whether
+    the .pyd stays put (old behaviour) or gets moved when the step now completes."""
+    if platform.system() != 'Windows':
+        return
+    try:
+        import codeenigma
+    except Exception:
+        return
+    base = os.path.dirname(os.path.abspath(codeenigma.__file__))
+    old = 'list(location.glob("*.so"))'
+    new = '(list(location.glob("*.so")) + list(location.glob("*.pyd")))'
+    for rel in (os.path.join('bundler', 'poetry.py'),
+                os.path.join('bundler', 'standard.py')):
+        path = os.path.join(base, rel)
+        try:
+            if not os.path.isfile(path):
+                continue
+            with open(path, 'r', encoding='utf-8') as fh:
+                src = fh.read()
+            if old in src and new not in src:
+                with open(path, 'w', encoding='utf-8') as fh:
+                    fh.write(src.replace(old, new))
+                print(f"  Patched codeenigma for Windows .pyd extensions: {rel}")
+        except OSError as e:
+            print(f"  Could not patch codeenigma ({rel}): {e}")
+
+
 def ensure_arm_libsndfile():
     """On a Windows-ARM build only: soundfile's wheel ships no working libsndfile,
     so mp3/flac/ogg audio needs a native libsndfile bundled. If one isn't already
@@ -1517,6 +1552,10 @@ def main():
                 embed_integrity_in_exe(_mf_app_dir, _mf_exe)
             except Exception as e:
                 print(f"  Integrity embed step skipped: {e}")
+
+        # Fix codeenigma's Windows .so/.pyd glob bug before it runs (release only).
+        if is_release:
+            patch_codeenigma_windows_ext_glob()
 
         # After the build: the release modules for this build.
         if is_release:
