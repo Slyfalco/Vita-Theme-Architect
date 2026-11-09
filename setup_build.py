@@ -1343,6 +1343,36 @@ def _restore_dev_stub(stashed):
         print("  Restored the local secure_function.py.")
 
 
+def generate_integrity_manifest(app_dir):
+    """Write app_dir/integrity.json — SHA-256 of every shipped file — for the
+    public install-integrity check (integrity.verify_integrity). Excludes the
+    manifest itself, the main executable (it may be signed afterwards), and
+    __pycache__. Windows/Linux only — macOS uses its code signature, and adding a
+    file to a signed .app would invalidate it. The off-git fingerprint must skip
+    integrity.json (it's added after the secure modules are generated)."""
+    import hashlib
+    exe_names = {'vitaThemeArchitect.exe', 'vitaThemeArchitect'}
+    files = {}
+    for root, dirs, names in os.walk(app_dir):
+        dirs[:] = [d for d in dirs if d != '__pycache__']
+        for name in names:
+            if name == 'integrity.json' or name in exe_names:
+                continue
+            full = os.path.join(root, name)
+            rel = os.path.relpath(full, app_dir).replace(os.sep, '/')
+            h = hashlib.sha256()
+            try:
+                with open(full, 'rb') as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b''):
+                        h.update(chunk)
+            except OSError:
+                continue
+            files[rel] = h.hexdigest()
+    with open(os.path.join(app_dir, 'integrity.json'), 'w', encoding='utf-8') as fh:
+        json.dump({'files': files}, fh)
+    print(f"  Wrote integrity.json ({len(files)} files) for the install-integrity check.")
+
+
 def ensure_arm_libsndfile():
     """On a Windows-ARM build only: soundfile's wheel ships no working libsndfile,
     so mp3/flac/ogg audio needs a native libsndfile bundled. If one isn't already
@@ -1506,6 +1536,15 @@ def main():
         print(f"  Portable distribution — ship the whole {app_dir} folder (zip/tarball).")
     if not is_release:
         print("\n  NOTE: Non-release build — online features are only available in official releases.")
+
+    # Public install-integrity manifest (Windows/Linux). macOS relies on its
+    # code signature instead — adding a manifest file would break the .app sig.
+    if platform.system() != 'Darwin':
+        try:
+            _mf_app_dir, _ = app_layout()
+            generate_integrity_manifest(_mf_app_dir)
+        except Exception as e:
+            print(f"  Integrity manifest step skipped: {e}")
 
     if PACKAGE_BUILD:
         package_build(dist_dir)

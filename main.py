@@ -263,6 +263,24 @@ if __name__ == "__main__":
         from style import apply_modern_style
         apply_modern_style(app)
 
+        # Public install-integrity check: on a build that ships integrity.json,
+        # confirm the files aren't corrupted/incomplete and advise reinstall if
+        # so. No-op from source / on macOS (no manifest). Advisory only.
+        try:
+            from integrity import verify_integrity
+            _ok, _problems = verify_integrity()
+        except Exception:
+            _ok, _problems = True, []
+        if not _ok:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                None, "Installation Problem",
+                "VitaTheme Architect's files look corrupted or incomplete:\n\n"
+                + "\n".join(_problems[:8])
+                + ("\n…" if len(_problems) > 8 else "")
+                + "\n\nPlease reinstall or re-download the app.")
+            sys.exit(1)
+
         # Warn if running from ~/Downloads — macOS will prompt for folder
         # access every launch because the app's own bundled files live there.
         if sys.platform == 'darwin' and globals().get('__compiled__', False):
