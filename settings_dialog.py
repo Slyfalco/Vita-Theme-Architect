@@ -142,6 +142,25 @@ class SettingsDialog(QDialog):
         version_label = QLabel(f"Version {CURRENT_VERSION}  ·  "
                                + ("Official build" if _official else "Unofficial build"))
         version_label.setStyleSheet("color: grey;")
+        # The in-app updater only runs in official builds (an unofficial/source
+        # build can have a hand-edited version, so auto-updating it is unsafe).
+        _official_tip = ("This is an official release build (it ships the signed "
+                         "secure components), so in-app updates are available.")
+        _unofficial_tip = ("This is an unofficial or source build (it doesn't ship "
+                           "the secure components). In-app updates are turned off "
+                           "because such a build can have a hand-edited version "
+                           "number, so updating could replace it with a mismatched "
+                           "release or run the wrong data migrations. Get official "
+                           "builds from the releases page.")
+        version_label.setToolTip(_official_tip if _official else _unofficial_tip)
+        if not _official:
+            self.auto_update_checkbox.setEnabled(False)
+            self.check_update_btn.setEnabled(False)
+            self.update_status.setText("Updates available in official builds only")
+            self.update_status.setStyleSheet("color: grey;")
+            self.update_status.setToolTip(_unofficial_tip)
+            self.auto_update_checkbox.setToolTip(_unofficial_tip)
+            self.check_update_btn.setToolTip(_unofficial_tip)
         separator = QFrame(); separator.setFrameShape(QFrame.Shape.HLine)
         separator.setStyleSheet("background-color: #2e3a5c; max-height: 1px; border: none;")
         footer_row = QHBoxLayout()

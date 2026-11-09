@@ -1457,11 +1457,29 @@ class VitaThemeArchitect(QMainWindow):
     # -------------------------------------------------------------------------
     # Update Check Logic
     # -------------------------------------------------------------------------
+    def _is_official_build(self):
+        """Official = a frozen build that ships the secure modules (crypted set).
+        Unofficial / source builds have crypted is None and their version number
+        can be hand-edited, so the in-app updater is disabled for them — it must
+        never replace an untested or modified build with a release, or run
+        migrations keyed off a faked version."""
+        return app_updater.running_frozen() and (crypted is not None)
+
     def check_for_updates(self, manual=False):
         """Check GitHub for a newer release and offer to install it.
 
         `manual=True` (from Settings) reports "up to date"/errors to the user;
         the silent startup check stays quiet unless an update is found."""
+        if not self._is_official_build():
+            print("In-app updater disabled: not an official build.")
+            if manual:
+                QMessageBox.information(
+                    self, "Updates Unavailable",
+                    "In-app updates are only available in official builds.\n\n"
+                    "This looks like an unofficial or source build, so automatic "
+                    "updating is turned off — it won't replace this build with a "
+                    "release.")
+            return
         if not manual and not self.settings.get('auto_update_check', True):
             print("Auto-update check disabled in settings."); return
         print("Checking for updates...")

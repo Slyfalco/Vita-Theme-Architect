@@ -18,6 +18,7 @@ Usage:
 """
 import os
 import sys
+import re
 import platform
 import shutil
 import subprocess
@@ -44,6 +45,29 @@ ICON_AI_ENABLED = not ('--no-icon-ai' in sys.argv[1:]
 PACKAGE_BUILD = not ('--no-package' in sys.argv[1:]
                      or os.environ.get('VTA_PACKAGE', '').strip().lower() in ('0', 'false', 'no'))
 BUILD_EDITION = 'ai' if ICON_AI_ENABLED else 'standard'
+
+
+def _current_version():
+    """Read CURRENT_VERSION from constants.py by text (no import, so no side
+    effects). Stamped into the exe's version resource so the installer can read a
+    build's version straight from its file. Falls back to '0.0'."""
+    try:
+        with open(os.path.join(PROJECT_ROOT, 'constants.py'), 'r', encoding='utf-8') as fh:
+            m = re.search(r'CURRENT_VERSION\s*=\s*"([^"]+)"', fh.read())
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return '0.0'
+
+
+def _version_quad(v):
+    """Normalize a dotted version to a Windows 4-part a.b.c.d string."""
+    parts = [p for p in re.split(r'[^0-9]+', v) if p != '']
+    parts = (parts + ['0', '0', '0', '0'])[:4]
+    return '.'.join(parts)
+
+
 # Standalone output folder (Windows/Linux): dist/vitaThemeArchitect/
 def _build_tag():
     """<os>-<arch> for this build machine (e.g. windows-x64, linux-arm64,
@@ -887,6 +911,18 @@ def run_nuitka():
     # Disable console window on all platforms
     if system == 'Windows':
         cmd += ['--windows-console-mode=disable']
+        # Stamp the version into the exe's PE version resource so the installer
+        # can read a build's version straight from the file (no launch needed,
+        # correct per-folder even with multiple copies). ProductName/CompanyName
+        # identify the app; FileDescription notes the edition.
+        _ver = _current_version()
+        cmd += [
+            f'--file-version={_version_quad(_ver)}',
+            f'--product-version={_version_quad(_ver)}',
+            '--company-name=Slyfalco',
+            '--product-name=VitaTheme Architect',
+            f'--file-description=VitaTheme Architect ({BUILD_EDITION} edition)',
+        ]
         _app_ico = os.path.join(PROJECT_ROOT, 'Assets', 'app_icon.ico')
         if os.path.exists(_app_ico):
             cmd += [f'--windows-icon-from-ico={_app_ico}']
