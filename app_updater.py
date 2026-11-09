@@ -95,19 +95,22 @@ def _release_dict(data):
         'name': data.get('name') or '',
         'body': data.get('body') or '',
         'prerelease': bool(data.get('prerelease')),
+        # Web page for this release's full notes ("Full changelog" button).
+        'html_url': data.get('html_url') or '',
+        # `url` is the public browser link (works once public); `api_url` is the
+        # asset API endpoint needed to download from a PRIVATE repo with a token.
         'assets': [{'name': a.get('name', ''),
                     'url': a.get('browser_download_url', ''),
+                    'api_url': a.get('url', ''),
                     'size': a.get('size', 0)}
                    for a in (data.get('assets') or [])],
     }
 
 
 def _get_json(url, timeout):
-    resp = requests.get(
-        url,
-        headers={'User-Agent': 'VitaThemeArchitect-Updater',
-                 'Accept': 'application/vnd.github+json'},
-        timeout=timeout)
+    headers = {'User-Agent': 'VitaThemeArchitect-Updater',
+               'Accept': 'application/vnd.github+json'}
+    resp = requests.get(url, headers=headers, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
 
@@ -150,6 +153,11 @@ def summarize_notes(body, max_lines=14, max_chars=800):
         if low.startswith(('**full changelog', 'full changelog')) or 'github.com' in low and 'compare' in low:
             continue
         line = re.sub(r'^#+\s*', '', line)          # headings
+        # Drop a redundant section heading (the UI already shows "What's new:").
+        if re.sub(r"[\s*:._'’\-]", '', line).lower() in (
+                'whatsnew', 'whatisnew', 'whatschanged', 'changes', 'changelog',
+                'releasenotes', 'highlights', 'notes'):
+            continue
         line = re.sub(r'^[-*+]\s+', '• ', line)     # bullets
         line = re.sub(r'`([^`]*)`', r'\1', line)    # inline code
         line = re.sub(r'\*\*([^*]*)\*\*', r'\1', line)  # bold
@@ -160,7 +168,15 @@ def summarize_notes(body, max_lines=14, max_chars=800):
             break
     summary = '\n'.join(lines).strip()
     if len(summary) > max_chars:
-        summary = summary[:max_chars].rstrip() + '…'
+        # Trim back to the last whitespace before the cap so we never cut a word
+        # in half; the '…' just signals there's more (full notes elsewhere).
+        cut = summary[:max_chars]
+        sp = cut.rfind(' ')
+        nl = cut.rfind('\n')
+        boundary = max(sp, nl)
+        if boundary > max_chars * 0.5:
+            cut = cut[:boundary]
+        summary = cut.rstrip() + ' …'
     return summary
 
 
@@ -235,8 +251,9 @@ def download_asset(asset, dest_dir, progress=None, cancel=None, chunk=1 << 16):
     downloads; `cancel()` returning True aborts and returns None."""
     os.makedirs(dest_dir, exist_ok=True)
     path = os.path.join(dest_dir, asset['name'] or 'update.bin')
-    with requests.get(asset['url'], stream=True, timeout=60,
-                      headers={'User-Agent': 'VitaThemeArchitect-Updater'}) as resp:
+    headers = {'User-Agent': 'VitaThemeArchitect-Updater'}
+    url = asset['url']               # public browser download URL
+    with requests.get(url, stream=True, timeout=60, headers=headers) as resp:
         resp.raise_for_status()
         total = int(resp.headers.get('content-length') or asset.get('size') or 0)
         done = 0
@@ -361,8 +378,40 @@ def apply_and_restart(new_app, stage_root, clean=False):
     return _apply_unix(new_app, install_abs, stage_root, pid, system, clean)
 
 
+_PYTHON_NAMES = ('python.exe', 'pythonw.exe', 'python', 'python3')
+
+
+def _launcher_name(build_folder):
+    """Basename of the app's own launcher inside a build folder.
+
+    Prefer the running executable's name, but a Nuitka standalone build can
+    report `sys.executable` as a bundled `python` (which isn't the real launcher
+    and may not even exist on disk), so never use that — fall back to the single
+    top-level app executable found in the build folder."""
+    cand = os.path.basename(sys.executable)
+    if (cand.lower() not in _PYTHON_NAMES
+            and os.path.exists(os.path.join(build_folder, cand))):
+        return cand
+    try:
+        entries = sorted(os.listdir(build_folder))
+    except OSError:
+        return cand
+    if platform.system() == 'Windows':
+        for f in entries:
+            if f.lower().endswith('.exe') and f.lower() not in _PYTHON_NAMES:
+                return f
+    else:
+        for f in entries:
+            full = os.path.join(build_folder, f)
+            if (os.path.isfile(full) and os.access(full, os.X_OK)
+                    and not f.endswith(('.so', '.dylib', '.bin'))
+                    and f.lower() not in _PYTHON_NAMES):
+                return f
+    return cand
+
+
 def _apply_windows(new_app, install, stage_root, pid, clean):
-    exe = os.path.join(install, os.path.basename(sys.executable))
+    exe = os.path.join(install, _launcher_name(new_app))
     script = os.path.join(tempfile.gettempdir(), f'vta_update_{pid}.bat')
     # /MIR mirrors (removes old-edition files); /E only overwrites/adds. Either
     # way this is the install folder only, which holds no user data.
@@ -373,7 +422,9 @@ def _apply_windows(new_app, install, stage_root, pid, clean):
         ':waitloop',
         f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul 2>&1',
         'if %errorlevel%==0 (',
-        '  timeout /t 1 /nobreak >nul',
+        # `ping` is a console-independent ~1s sleep. `timeout` needs a real
+        # console stdin and fails in a window-less helper process.
+        '  ping -n 2 127.0.0.1 >nul 2>&1',
         '  goto waitloop',
         ')',
         f'robocopy "{new_app}" "{install}" {mode} /R:3 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP >nul',
@@ -383,10 +434,13 @@ def _apply_windows(new_app, install, stage_root, pid, clean):
     ]
     with open(script, 'w', encoding='ascii') as fh:
         fh.write('\r\n'.join(lines))
-    DETACHED_PROCESS = 0x00000008
+    # CREATE_NO_WINDOW keeps a (hidden) console so the batch's console commands
+    # (ping, robocopy, start) work — DETACHED_PROCESS removes the console
+    # entirely and those commands misbehave, leaving the update half-applied.
+    CREATE_NO_WINDOW = 0x08000000
     CREATE_NEW_PROCESS_GROUP = 0x00000200
     subprocess.Popen(['cmd', '/c', script], close_fds=True,
-                     creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+                     creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
 
 
 def _apply_unix(new_app, install, stage_root, pid, system, clean):
@@ -394,7 +448,7 @@ def _apply_unix(new_app, install, stage_root, pid, system, clean):
     if system == 'Darwin':
         relaunch = f'open "{install}"'
     else:
-        exe = os.path.join(install, os.path.basename(sys.executable))
+        exe = os.path.join(install, _launcher_name(new_app))
         relaunch = f'"{exe}" &'
     if clean:
         # Mirror: replace the install folder outright (old-edition files go).

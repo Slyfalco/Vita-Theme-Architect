@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QDialog, QDialogButtonBox,
     QFormLayout, QMessageBox, QFileDialog, QColorDialog, QScrollArea,
     QProgressDialog, QComboBox, QListWidget, QAbstractItemView,
-    QSlider, QStyle, QCheckBox, QSizePolicy, QInputDialog, QMenu
+    QSlider, QStyle, QCheckBox, QSizePolicy, QInputDialog, QMenu, QTextBrowser
 )
 from PyQt6.QtGui import QFont, QIcon, QColor, QPixmap, QIntValidator, QAction, QKeySequence, QDesktopServices
 from PyQt6.QtCore import Qt, QSize, QUrl, QTimer, QDir, QPoint, QStandardPaths
@@ -81,10 +81,14 @@ class VitaThemeArchitect(QMainWindow):
         except Exception as e:
             print(f"Data migration step skipped: {e}")
         self.load_paths_from_settings()
-        self.check_for_updates() # Run update check on startup
         self.show_manager_ui()
         self.showMaximized()
+        self.raise_()
+        self.activateWindow()
         QTimer.singleShot(0, self.recommend_library_location)
+        # Run the startup update check only after the main window is shown, so
+        # the dialog has a visible parent (and a taskbar entry) behind it.
+        QTimer.singleShot(0, self.check_for_updates)
 
     def save_settings_file(self):
         try:
@@ -1483,18 +1487,74 @@ class VitaThemeArchitect(QMainWindow):
         """Show the new version with a short summary of changes and offer to
         download + install it."""
         tag = rel.get('tag') or ''
-        summary = app_updater.summarize_notes(rel.get('body', ''))
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setWindowTitle("Update Available")
-        box.setText(f"Version {tag} is available — you have v{CURRENT_VERSION}.")
-        box.setInformativeText("Download and install it now?")
-        if summary:
-            box.setDetailedText("What's new:\n\n" + summary)
-        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        box.setDefaultButton(QMessageBox.StandardButton.Yes)
-        if box.exec() == QMessageBox.StandardButton.Yes:
+        body = rel.get('body', '') or ''
+        # Short, clean summary shown inline (a few points). If there's more, a
+        # "Full changelog" button opens the complete notes IN-APP (no browser /
+        # repo page), so the dialog stays tidy at any changelog length.
+        short = app_updater.summarize_notes(body, max_lines=6, max_chars=1500)
+        full = app_updater.summarize_notes(body, max_lines=1000, max_chars=20000)
+        has_more = bool(full) and full != short
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Update Available")
+        lay = QVBoxLayout(dlg)
+
+        header = QLabel(f"Version {tag} is available — you have v{CURRENT_VERSION}.")
+        header.setStyleSheet("font-weight: bold;")
+        header.setWordWrap(True)
+        lay.addWidget(header)
+
+        if short:
+            lay.addWidget(QLabel("What's new:"))
+            # `short` already ends with its own "…" when it was truncated — don't
+            # add a second one.
+            summary = QLabel(short)
+            summary.setWordWrap(True)
+            summary.setStyleSheet("color: #cfd8e8;")
+            lay.addWidget(summary)
+
+        if has_more:
+            full_btn = QPushButton("Full changelog")
+            full_btn.setFlat(True)
+            full_btn.clicked.connect(lambda: self._show_full_changelog(tag, full))
+            full_row = QHBoxLayout()
+            full_row.addWidget(full_btn)
+            full_row.addStretch(1)
+            lay.addLayout(full_row)
+
+        lay.addSpacing(4)
+        prompt = QLabel("Download and install it now?")
+        prompt.setWordWrap(True)
+        lay.addWidget(prompt)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No)
+        buttons.button(QDialogButtonBox.StandardButton.Yes).setDefault(True)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+
+        dlg.setMinimumWidth(440)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
             self.download_and_apply_update(rel)
+
+    def _show_full_changelog(self, tag, notes):
+        """Show the complete release notes in a scrollable in-app dialog (no
+        browser, so it works for a private repo and never leaks the location)."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"What's new in {tag}")
+        lay = QVBoxLayout(dlg)
+        view = QTextBrowser()
+        view.setPlainText(notes)
+        view.setReadOnly(True)
+        view.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
+        lay.addWidget(view)
+        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.rejected.connect(dlg.reject)
+        close.accepted.connect(dlg.accept)
+        lay.addWidget(close)
+        dlg.resize(520, 460)
+        dlg.exec()
 
     def _build_edition(self):
         """'ai' when this build has the icon generator, else 'standard'."""
@@ -1503,78 +1563,11 @@ class VitaThemeArchitect(QMainWindow):
     def download_and_apply_update(self, rel):
         """Normal update: the newer build of the SAME edition this one is."""
         asset = app_updater.pick_asset(rel.get('assets', []), edition=self._build_edition())
-        self._install_release(
-            rel, asset, clean=False,
-            confirm=f"Update {rel.get('tag')} is ready.\n\nThe app will now close, update "
-                    "itself and reopen automatically. Your settings and data are kept.")
+        self._install_release(rel, asset, clean=False)
 
-    def switch_edition(self):
-        """Switch between the AI and Standard official builds, staying on the
-        same version. Keeps the user's data; optionally frees the space used by
-        the app-downloaded AI runtime/models when leaving the AI edition."""
-        if not app_updater.running_frozen():
-            QMessageBox.information(
-                self, "Switch Build",
-                "Switching between the AI and Standard builds is only available in an "
-                "installed official build.")
-            return
-        target = 'standard' if ICON_AI_AVAILABLE else 'ai'
-        target_name = "AI" if target == 'ai' else "Standard"
-        try:
-            rel = app_updater.fetch_release_by_tag(CURRENT_VERSION) or app_updater.fetch_latest()
-        except Exception as e:
-            QMessageBox.warning(self, "Switch Build", f"Couldn't reach the releases:\n{e}")
-            return
-        asset = app_updater.pick_asset(rel.get('assets', []), edition=target, require_edition=True)
-        if not asset:
-            os_name, arch = app_updater.platform_tag()
-            QMessageBox.warning(
-                self, "Build Not Available",
-                f"The {target_name} build for your system ({os_name}-{arch}) isn't "
-                f"available in release {rel.get('tag')}.")
-            return
-
-        before_apply = None
-        if target == 'standard' and ICON_AI_AVAILABLE:
-            try:
-                import icon_generator as ig
-                nbytes = ig.app_downloaded_ai_bytes()
-            except Exception:
-                nbytes = 0
-            if nbytes > 0:
-                box = QMessageBox(self)
-                box.setWindowTitle("Switch to Standard Build")
-                box.setIcon(QMessageBox.Icon.Question)
-                box.setText("Switching to the Standard build removes the AI icon generator.")
-                box.setInformativeText(
-                    f"The AI runtime and app-downloaded models use {self._human_size(nbytes)}. "
-                    "Remove them to free space?\n\nEither way your custom models, custom "
-                    "model paths, extra artwork and hardware/calibration data are kept.")
-                keep_btn = box.addButton("Keep them", QMessageBox.ButtonRole.NoRole)
-                free_btn = box.addButton("Free space", QMessageBox.ButtonRole.YesRole)
-                cancel_btn = box.addButton(QMessageBox.StandardButton.Cancel)
-                box.setDefaultButton(keep_btn)
-                box.exec()
-                clicked = box.clickedButton()
-                if clicked is cancel_btn:
-                    return
-                if clicked is free_btn:
-                    def before_apply():
-                        try:
-                            import icon_generator as ig
-                            removed = ig.remove_app_downloaded_ai_data()
-                            print(f"Freed AI data: {removed}")
-                        except Exception as e:
-                            print(f"AI data cleanup skipped: {e}")
-
-        self._install_release(
-            rel, asset, clean=True, before_apply=before_apply,
-            confirm=f"The app will switch to the {target_name} build ({rel.get('tag')}), "
-                    "then close and reopen automatically. Your settings and data are kept.")
-
-    def _install_release(self, rel, asset, clean=False, confirm=None, before_apply=None):
+    def _install_release(self, rel, asset, clean=False, before_apply=None):
         """Shared installer for updates and edition switches: download, extract,
-        confirm, then hand off to the detached helper and quit.
+        then hand off to the detached helper and quit.
 
         `clean=True` mirrors the install folder (removes files from the previous
         edition); `before_apply` runs just before the handoff (used to free AI
@@ -1598,8 +1591,11 @@ class VitaThemeArchitect(QMainWindow):
             return
 
         progress = QProgressDialog(f"Downloading {tag}…", "Cancel", 0, 100, self)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        # Lock the whole app while updating — only the Cancel button is usable.
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
         progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
         progress.setValue(0)
 
         def on_progress(done, total):
@@ -1623,13 +1619,14 @@ class VitaThemeArchitect(QMainWindow):
             return  # cancelled
         new_app, stage_root = result
 
-        if QMessageBox.question(
-                self, "Ready to Install", (confirm or "") + "\n\nContinue?"
-        ) != QMessageBox.StandardButton.Yes:
-            shutil.rmtree(stage_root, ignore_errors=True)
-            return
+        # No extra "Continue?" prompt — the user already chose to update, and the
+        # whole thing runs in the foreground (the app closes and reopens itself).
         if before_apply:
             before_apply()
+        # Run the same teardown a normal close does (stop Wine, clear temp
+        # folders) BEFORE handing off, so nothing holds files in the install
+        # folder while the detached helper swaps it out.
+        self._run_exit_cleanup()
         try:
             app_updater.apply_and_restart(new_app, stage_root, clean=clean)
         except Exception as e:
@@ -1648,10 +1645,27 @@ class VitaThemeArchitect(QMainWindow):
                 return f"{size:.0f} {unit}" if unit in ('B', 'KB') else f"{size:.1f} {unit}"
             size /= 1024
 
-    def closeEvent(self, event):
-        """Stop Wine processes and clean up the persistent Wine directory on exit."""
-        self.clear_generated_icons()
+    def _run_exit_cleanup(self):
+        """Shared teardown for a normal close AND an update/edition-switch
+        restart: drop generated-icon temp folders, remove the upload temp zip,
+        and stop Wine (non-Windows) so nothing holds files in the install folder
+        while it is swapped out. Best-effort — never raises."""
+        try:
+            self.clear_generated_icons()
+        except Exception as e:
+            print(f"Icon cleanup skipped: {e}")
+        try:
+            self.cleanup_temp_zip()
+        except Exception as e:
+            print(f"Temp zip cleanup skipped: {e}")
         import platform
         if platform.system() != 'Windows':
-            shutdown_wine()
+            try:
+                shutdown_wine()
+            except Exception as e:
+                print(f"Wine shutdown skipped: {e}")
+
+    def closeEvent(self, event):
+        """Stop Wine processes and clean up the persistent Wine directory on exit."""
+        self._run_exit_cleanup()
         super().closeEvent(event)

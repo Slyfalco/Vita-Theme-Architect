@@ -123,7 +123,19 @@ if sys.platform == 'win32' and globals().get('__compiled__', False):
 
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIcon
+
+
+def app_icon():
+    """The application icon, loaded from the bundled Assets folder (next to this
+    file in source, next to the exe in a build). Returns an empty QIcon if the
+    file is missing so startup never fails over a cosmetic asset."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    for name in ('app_icon.ico', 'app_icon.png'):
+        path = os.path.join(base, 'Assets', name)
+        if os.path.exists(path):
+            return QIcon(path)
+    return QIcon()
 
 
 class SplashScreen(QDialog):
@@ -188,6 +200,9 @@ class SplashScreen(QDialog):
             screen.x() + (screen.width() - self.width()) // 2,
             screen.y() + (screen.height() - self.height()) // 2,
         )
+        # Bring the splash to the front so it isn't hidden behind other windows.
+        self.raise_()
+        self.activateWindow()
         # Start tasks after the event loop processes the show
         self._start_time = time.monotonic()
         QTimer.singleShot(0, self._run_startup_tasks)
@@ -244,6 +259,7 @@ if __name__ == "__main__":
                 pass
 
         app = QApplication(sys.argv)
+        app.setWindowIcon(app_icon())  # taskbar + every window/dialog
         from style import apply_modern_style
         apply_modern_style(app)
 
@@ -272,6 +288,8 @@ if __name__ == "__main__":
         from main_window import VitaThemeArchitect
         window = VitaThemeArchitect()
         window.show()
+        window.raise_()
+        window.activateWindow()
         sys.exit(app.exec())
     except Exception:
         traceback.print_exc()

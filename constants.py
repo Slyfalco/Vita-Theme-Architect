@@ -43,7 +43,7 @@ def theme_pages(search='', field='title', sort='newest', max_pages=None):
         page += 1
 
 # --- Program Configuration ---
-CURRENT_VERSION = "1.0"  # Update this when releasing new versions
+CURRENT_VERSION = "1.0"
 GITHUB_REPO = "Slyfalco/Vita-Theme-Architect"
 UPDATE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"

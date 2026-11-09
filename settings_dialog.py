@@ -148,26 +148,6 @@ class SettingsDialog(QDialog):
         general_outer = QVBoxLayout(self.general_tab)
         general_outer.addLayout(general_layout)
 
-        # Switch between the AI and Standard official builds (same version). Only
-        # offered in an installed official build (needs the releases online).
-        import app_updater
-        if app_updater.running_frozen() and ONLINE_FEATURES_AVAILABLE:
-            other = "Standard" if self.ai_icons else "AI"
-            this_edition = "AI" if self.ai_icons else "Standard"
-            build_label = QLabel(f"Build edition: {this_edition}")
-            build_label.setStyleSheet("color: grey;")
-            self.switch_build_btn = QPushButton(f"Switch to {other} build")
-            self.switch_build_btn.setToolTip(
-                f"Download and switch to the {other} build at this same version. "
-                "Your settings and data are kept.")
-            self.switch_build_btn.clicked.connect(self._switch_build)
-            build_row = QHBoxLayout()
-            build_row.addWidget(build_label)
-            build_row.addStretch()
-            build_row.addWidget(self.switch_build_btn)
-            general_outer.addSpacing(10)
-            general_outer.addLayout(build_row)
-
         general_outer.addStretch()          # push the footer to the bottom
         general_outer.addWidget(separator)
         general_outer.addLayout(footer_row)
@@ -385,12 +365,6 @@ class SettingsDialog(QDialog):
         ok, message = result if isinstance(result, tuple) and len(result) == 2 else (False, "Test failed")
         self.conn_status.setText(("✓ " if ok else "✗ ") + message)
         self.conn_status.setStyleSheet("color: #4cb86a;" if ok else "color: #e5645f;")
-
-    def _switch_build(self):
-        parent = self.parent()
-        if parent is not None and hasattr(parent, 'switch_edition'):
-            self.accept()                 # close Settings so the dialogs are in front
-            parent.switch_edition()
 
     def _check_updates_now(self):
         self.check_update_btn.setEnabled(False)
