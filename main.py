@@ -159,20 +159,56 @@ def _real_exe_path():
     return sys.executable
 
 
+def _overlay_end_offset(fh, filesize):
+    """Byte offset where our overlay ends. Our overlay is appended at build time;
+    if the exe is later Authenticode-signed the certificate table is appended
+    AFTER it, so the overlay ends where the cert table begins. Returns the PE
+    security-directory cert offset when signed, else the end of file. Non-PE or
+    any parse issue -> filesize (plain end). Mirrors Encrypt.py's _vta_pe so the
+    reader and the fingerprint agree on the boundary."""
+    try:
+        import struct
+        fh.seek(0)
+        head = fh.read(4096)
+        if len(head) < 0x40 or head[:2] != b'MZ':
+            return filesize
+        e_lfanew = struct.unpack_from('<I', head, 0x3c)[0]
+        if e_lfanew + 256 > len(head):
+            fh.seek(0)
+            head = fh.read(e_lfanew + 256)
+        if len(head) < e_lfanew + 176 or head[e_lfanew:e_lfanew + 4] != b'PE\x00\x00':
+            return filesize
+        opt = e_lfanew + 24
+        magic = struct.unpack_from('<H', head, opt)[0]
+        sec_dir = opt + (112 if magic == 0x20b else 96) + 4 * 8
+        cert_off, cert_size = struct.unpack_from('<II', head, sec_dir)
+        if cert_off and cert_size and 16 <= cert_off <= filesize:
+            return cert_off
+    except Exception:
+        pass
+    return filesize
+
+
 def _check_overlay_integrity(exe_path):
     """Verify the files listed in the exe's integrity overlay. FAILS CLOSED: a
     missing/unreadable/corrupt overlay, or any changed/missing file, returns
-    (False, problems) — so the check can't be bypassed by inducing an error."""
+    (False, problems) — so the check can't be bypassed by inducing an error.
+    Finds the overlay before any appended code-signature (see _overlay_end_offset)."""
     try:
         with open(exe_path, 'rb') as fh:
-            fh.seek(-16, os.SEEK_END)
+            fh.seek(0, os.SEEK_END)
+            filesize = fh.tell()
+            end = _overlay_end_offset(fh, filesize)
+            if end < 16:
+                return False, ['integrity manifest missing']
+            fh.seek(end - 16)
             trailer = fh.read(16)
             if len(trailer) < 16 or trailer[8:] != _INTEGRITY_MAGIC:
                 return False, ['integrity manifest missing']
             length = int.from_bytes(trailer[:8], 'little')
-            if length <= 0 or length > 64 * 1024 * 1024:
+            if length <= 0 or length > 64 * 1024 * 1024 or (end - 16 - length) < 0:
                 return False, ['integrity manifest invalid']
-            fh.seek(-(16 + length), os.SEEK_END)
+            fh.seek(end - 16 - length)
             blob = fh.read(length)
         files = (json.loads(blob.decode('utf-8')) or {}).get('files', {})
     except Exception:
