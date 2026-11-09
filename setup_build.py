@@ -1345,11 +1345,13 @@ def _restore_dev_stub(stashed):
 
 def generate_integrity_manifest(app_dir):
     """Write app_dir/integrity.json — SHA-256 of every shipped file — for the
-    public install-integrity check (integrity.verify_integrity). Excludes the
+    public install-integrity check (main._verify_install_integrity). Excludes the
     manifest itself, the main executable (it may be signed afterwards), and
     __pycache__. Windows/Linux only — macOS uses its code signature, and adding a
-    file to a signed .app would invalidate it. The off-git fingerprint must skip
-    integrity.json (it's added after the secure modules are generated)."""
+    file to a signed .app would invalidate it. Called AFTER Nuitka but BEFORE the
+    secure modules, so the release fingerprint includes integrity.json (no
+    skip-list needed); the secure modules, generated afterwards, aren't listed
+    here but are covered by that fingerprint instead."""
     import hashlib
     exe_names = {'vitaThemeArchitect.exe', 'vitaThemeArchitect'}
     files = {}
@@ -1497,6 +1499,18 @@ def main():
             print("\n  Nuitka build FAILED. Check output above.")
             sys.exit(1)
 
+        # Public install-integrity manifest — written NOW (after Nuitka, BEFORE
+        # the secure modules) so the release fingerprint INCLUDES integrity.json
+        # and never sees it as an "added" file (no Encrypt.py skip-list needed).
+        # Windows/Linux only; macOS uses its code signature (a manifest file
+        # would invalidate the .app signature).
+        if platform.system() != 'Darwin':
+            try:
+                _mf_app_dir, _ = app_layout()
+                generate_integrity_manifest(_mf_app_dir)
+            except Exception as e:
+                print(f"  Integrity manifest step skipped: {e}")
+
         # After the build: the release modules for this build.
         if is_release:
             print_step(8, "Generating secure modules for this build (release build)...")
@@ -1536,15 +1550,6 @@ def main():
         print(f"  Portable distribution — ship the whole {app_dir} folder (zip/tarball).")
     if not is_release:
         print("\n  NOTE: Non-release build — online features are only available in official releases.")
-
-    # Public install-integrity manifest (Windows/Linux). macOS relies on its
-    # code signature instead — adding a manifest file would break the .app sig.
-    if platform.system() != 'Darwin':
-        try:
-            _mf_app_dir, _ = app_layout()
-            generate_integrity_manifest(_mf_app_dir)
-        except Exception as e:
-            print(f"  Integrity manifest step skipped: {e}")
 
     if PACKAGE_BUILD:
         package_build(dist_dir)

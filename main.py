@@ -3,6 +3,8 @@ import os
 import time
 import platform
 import traceback
+import hashlib
+import json
 
 # Release builds compile in a start-up module of their own; it has to come
 # first, before anything else is imported. Other builds don't have it.
@@ -138,6 +140,42 @@ def app_icon():
     return QIcon()
 
 
+def _verify_install_integrity(base_dir=None, max_problems=20):
+    """Public corruption check. A build ships an integrity.json next to the app
+    files (SHA-256 per file); confirm the shipped files still match. Returns
+    (ok, problems). No manifest (running from source, or macOS) -> (True, []).
+    Advisory only — catches a bad/incomplete install; the real official-only
+    enforcement lives in the release modules, not here. Kept in main (compiled
+    into the exe) rather than its own file."""
+    base = base_dir or os.path.dirname(os.path.abspath(__file__))
+    manifest = os.path.join(base, 'integrity.json')
+    if not os.path.isfile(manifest):
+        return True, []
+    try:
+        with open(manifest, 'r', encoding='utf-8') as fh:
+            files = (json.load(fh) or {}).get('files', {})
+    except (OSError, ValueError):
+        return False, ['integrity.json is unreadable']
+    problems = []
+    for rel, expected in files.items():
+        path = os.path.join(base, rel.replace('/', os.sep))
+        if not os.path.isfile(path):
+            problems.append('missing: ' + rel)
+        else:
+            try:
+                h = hashlib.sha256()
+                with open(path, 'rb') as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b''):
+                        h.update(chunk)
+                if h.hexdigest().lower() != str(expected).lower():
+                    problems.append('changed: ' + rel)
+            except OSError:
+                problems.append('unreadable: ' + rel)
+        if len(problems) >= max_problems:
+            break
+    return (not problems), problems
+
+
 class SplashScreen(QDialog):
     """Frameless splash screen shown during app startup."""
 
@@ -267,8 +305,7 @@ if __name__ == "__main__":
         # confirm the files aren't corrupted/incomplete and advise reinstall if
         # so. No-op from source / on macOS (no manifest). Advisory only.
         try:
-            from integrity import verify_integrity
-            _ok, _problems = verify_integrity()
+            _ok, _problems = _verify_install_integrity()
         except Exception:
             _ok, _problems = True, []
         if not _ok:
