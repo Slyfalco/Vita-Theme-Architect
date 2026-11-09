@@ -356,6 +356,19 @@ if __name__ == "__main__":
             from wine_setup import shutdown_wine
             atexit.register(shutdown_wine)
 
+        # Named mutex so the Windows installer/updater can detect a running
+        # instance (Inno Setup AppMutex) and offer to close it before replacing
+        # files. Held for the whole process lifetime; harmless if it can't be
+        # created. The name must match AppMutex in the .iss installers.
+        if sys.platform == 'win32':
+            try:
+                import ctypes
+                _vta_install_mutex = ctypes.windll.kernel32.CreateMutexW(
+                    None, False, "VitaThemeArchitect_Running")
+                globals()['_VTA_INSTALL_MUTEX'] = _vta_install_mutex  # keep alive
+            except Exception:
+                pass
+
         # Windows compiled: PyQt6.QtCore is already imported at module level.
         # Use its __file__ to locate the plugins directory and register it
         # with Qt before QApplication() triggers QPA initialisation.
