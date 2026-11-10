@@ -1041,26 +1041,12 @@ def run_nuitka():
     # The release modules are NOT included here: they are generated after the
     # build (bind_release_modules).
 
-    # vlc.py (python-vlc) — include as a data file rather than via
-    # --include-module=vlc.  The module include fails silently when VLC is not
-    # installed system-wide because vlc.py's module-level find_lib() raises
-    # OSError (libvlccore not found) during Nuitka's analysis phase, causing
-    # vlc.py to be silently dropped from the bundle.  Including it as a data
-    # file bypasses the build-time import entirely.  At runtime, audio.py
-    # pre-loads libvlccore and sets PYTHON_VLC_LIB_PATH before _ensure_vlc()
-    # ever calls "import vlc", so the import succeeds with the bundled dylib.
-    vlc_source = None
-    try:
-        import importlib.util as _ilu
-        _vlc_spec = _ilu.find_spec('vlc')
-        if _vlc_spec and _vlc_spec.origin and _vlc_spec.origin.endswith('.py'):
-            vlc_source = _vlc_spec.origin
-            cmd += [f'--include-data-files={_vlc_spec.origin}=vlc.py']
-            print(f"  Including vlc.py from: {_vlc_spec.origin}")
-        else:
-            print("  WARNING: vlc.py not found in site-packages — BGM audio playback will be unavailable in the bundle")
-    except Exception as _e:
-        print(f"  WARNING: Could not locate vlc.py ({_e}) — BGM audio playback may be unavailable")
+    # Audio playback uses the first-party vlc_player module (a small ctypes
+    # binding to libVLC), which Nuitka compiles into the build like any other
+    # module — so there is no python-vlc data file to ship or hash-check, and
+    # the binding is covered by the exe fingerprint. Include it explicitly in
+    # case the only `import vlc_player` is inside a function.
+    cmd += ['--include-module=vlc_player']
 
     # Optional AI icon generator. The worker script runs in the downloaded
     # runtime's Python, so it ships as a data file, not a compiled module.
@@ -1084,8 +1070,10 @@ def run_nuitka():
     else:
         cmd += ['--nofollow-import-to=icon_generator']
 
-    # Release builds: the release script's pre-build step.
-    shipped_py = {'vlc': vlc_source}
+    # Release builds: the release script's pre-build step. Only icon_ai_worker.py
+    # is still shipped as a loose .py (it runs in the separate AI runtime); vlc is
+    # now compiled in (vlc_player), so it needs no shipped-source hash entry.
+    shipped_py = {}
     if ICON_AI_ENABLED:
         shipped_py['icon_ai_worker'] = os.path.join(PROJECT_ROOT, 'icon_ai_worker.py')
     prebuild_args, prebuild_files = release_prebuild(shipped_py)

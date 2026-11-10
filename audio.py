@@ -182,23 +182,22 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer, QDir
 
-# VLC is imported lazily — only needed for AudioPlayerDialog playback,
-# not for audio conversion.  This prevents the entire module from failing
-# when VLC is not installed.
-vlc = None
+# Playback uses a small first-party libVLC binding (vlc_player), loaded lazily —
+# only needed for AudioPlayerDialog playback, not for audio conversion — so this
+# module never fails to import when libVLC is unavailable.
+vlc_player = None
 
 def _ensure_vlc():
-    """Import vlc on first use. Returns True if available."""
-    global vlc
-    if vlc is not None:
-        return True
-    try:
-        import vlc as _vlc
-        vlc = _vlc
-        return True
-    except (ImportError, OSError) as e:
-        print(f"  VLC not available: {e}")
-        return False
+    """Load the libVLC binding on first use. Returns True if playback is available."""
+    global vlc_player
+    if vlc_player is None:
+        try:
+            import vlc_player as _vp
+            vlc_player = _vp
+        except Exception as e:
+            print(f"  VLC binding not available: {e}")
+            return False
+    return vlc_player.available()
 
 
 # =============================================================================
@@ -766,16 +765,17 @@ class AudioPlayerDialog(QDialog):
             _vlc_args.append(f'--plugin-path={_plugin_dir}')
         if sys.platform == 'darwin':
             _vlc_args.append('--aout=auhal')
-        self.vlc_instance = vlc.Instance(*_vlc_args)
-        if self.vlc_instance is None:
+        try:
+            self.player = vlc_player.VlcPlayer(_vlc_args)
+        except Exception as _e:
             QMessageBox.critical(self, "VLC Error",
                 "Could not initialize VLC.\n\n"
-                "Please ensure VLC media player is installed and its architecture "
-                "(32/64-bit) matches your Python installation.")
+                f"Audio playback is unavailable: {_e}")
+            self.player = None
             self.close()
             return
-        self.player = self.vlc_instance.media_player_new()
-        self.is_ready_to_play = False # Flag to manage initial play state
+        self.is_ready_to_play = False  # Flag to manage initial play state
+        self._ended = False            # set when playback reaches the end
         # -------------------------------------
 
         layout = QVBoxLayout(self)
@@ -819,11 +819,9 @@ class AudioPlayerDialog(QDialog):
         self.timer.setInterval(200)
         self.timer.timeout.connect(self.update_ui)
 
-        # Connect VLC events
-        self.events = self.player.event_manager()
-        self.events.event_attach(vlc.EventType.MediaPlayerEndReached, self.handle_end_of_media)
-        self.events.event_attach(vlc.EventType.MediaPlayerEncounteredError, self.handle_error)
-        self.events.event_attach(vlc.EventType.MediaStateChanged, self._initial_play_check)
+        # End-of-media and errors are detected by polling the player state in
+        # update_ui (the 200 ms timer), not via libVLC event callbacks (which
+        # would fire on VLC's own thread).
 
         # --- Initial Media Setup (NEW) ---
         self._load_media()
@@ -834,29 +832,12 @@ class AudioPlayerDialog(QDialog):
     def _load_media(self):
         """Loads media and checks file existence."""
         media_source = self.wav_path
-
         if not os.path.exists(media_source):
-             QMessageBox.critical(self, "Error", f"Media file not found: {media_source}")
-             media = self.vlc_instance.media_new("")
-             self.is_ready_to_play = False
-        else:
-             # Use vlc.Media object and set it to the player
-             # QDir.toNativeSeparators handles potential issues with file paths
-             # for vlc on Windows (using backslashes)
-             media = self.vlc_instance.media_new(QDir.toNativeSeparators(media_source))
-             self.player.set_media(media)
-             self.is_ready_to_play = True
-
-    def _initial_play_check(self, event):
-        """
-        Called on MediaStateChanged event.
-        Used to automatically play once the media has parsed metadata and is ready.
-        """
-        if self.is_ready_to_play and self.player.get_state() == vlc.State.Playing:
-            # Media is playing, set initial icon
-            self.update_ui()
-            # Detach this specific event handler after first play to prevent overhead
-            self.events.event_detach(vlc.EventType.MediaStateChanged, self._initial_play_check)
+            QMessageBox.critical(self, "Error", f"Media file not found: {media_source}")
+            self.is_ready_to_play = False
+            return
+        # QDir.toNativeSeparators handles file paths for libvlc on Windows.
+        self.is_ready_to_play = self.player.load(QDir.toNativeSeparators(media_source))
 
     def showEvent(self, event):
         """Overrides showEvent to start playback once the dialog is fully displayed."""
@@ -867,6 +848,7 @@ class AudioPlayerDialog(QDialog):
         if getattr(self, 'is_ready_to_play', False):
             # Start playback only after the window is fully initialized/visible
             self.slider.setEnabled(True)
+            self._ended = False
             self.player.play()
 
     def toggle_play_pause(self):
@@ -875,6 +857,7 @@ class AudioPlayerDialog(QDialog):
         if self.player.is_playing():
             self.player.pause()
         elif self.is_ready_to_play:
+            self._ended = False
             self.player.play()
         self.update_ui()
 
@@ -901,6 +884,18 @@ class AudioPlayerDialog(QDialog):
         self.player.set_position(position_frac)
 
     def update_ui(self):
+        if getattr(self, 'player', None) is None:
+            return
+        # Poll for end-of-media / error (replaces libVLC event callbacks).
+        state = self.player.state()
+        if state == vlc_player.STATE_ENDED and not self._ended:
+            self._ended = True
+            self.endOfMedia()
+            return
+        if state == vlc_player.STATE_ERROR:
+            self.timer.stop()
+            self.handle_error()
+            return
         if self.player.is_playing():
             self.play_pause_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
         else:
@@ -920,30 +915,25 @@ class AudioPlayerDialog(QDialog):
         else:
             self.status_label.setText("00:00 / 00:00")
 
-    def handle_end_of_media(self, event):
-        """Called by the VLC event manager when media ends."""
-        QTimer.singleShot(0, self.endOfMedia)
     def endOfMedia(self):
         self.player.stop()
         self.slider.setEnabled(False)
         self.player.set_position(0.0)
         self.slider.setValue(0)
         self.update_ui()
-    def handle_error(self, event):
-        """Called by the VLC event manager on a critical error."""
-        error_message = f"VLC Error: Playback failed or media is invalid."
-        QMessageBox.warning(self, "Playback Error", error_message)
+    def handle_error(self, event=None):
+        """Called when playback reaches an error state (polled in update_ui)."""
+        QMessageBox.warning(self, "Playback Error",
+                            "VLC Error: Playback failed or media is invalid.")
         self.close()
 
     def closeEvent(self, event):
-        if not hasattr(self, 'player'):
+        if getattr(self, 'player', None) is None:
             super().closeEvent(event)
             return
-        self.player.stop()
         self.timer.stop()
-
-        # Explicitly release media and player resources
-        self.player.set_media(None)
+        # Stop and release the player (frees libVLC resources).
+        self.player.release()
         try:
             if os.path.exists(self.wav_path):
                 removeTemp(self.wav_path)
