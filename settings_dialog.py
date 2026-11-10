@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 
-from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL, ONLINE_FEATURES_AVAILABLE, crypted
+from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL, ONLINE_FEATURES_AVAILABLE, crypted, store_path, load_path
 from widgets import DragDropLineEdit
 
 
@@ -653,8 +653,8 @@ class SettingsDialog(QDialog):
         default_theme_path = DEFAULT_THEMES_PATH
         default_extras_path = DEFAULT_EXTRAS_PATH
         self.default_author_input.setText(settings.get('default_author', ''))
-        self.theme_path_input.setText(settings.get('theme_library_path', default_theme_path))
-        self.extras_path_input.setText(settings.get('extras_library_path', default_extras_path))
+        self.theme_path_input.setText(load_path(settings.get('theme_library_path', ''), default_theme_path))
+        self.extras_path_input.setText(load_path(settings.get('extras_library_path', ''), default_extras_path))
         self.at9tool_path_input.setText(settings.get('at9tool_path', ''))
         self.vita_ip_input.setText(settings.get('vita_ip', ''))
         self.vita_port_input.setText(settings.get('vita_port', '1337'))
@@ -678,8 +678,8 @@ class SettingsDialog(QDialog):
         except (FileNotFoundError, json.JSONDecodeError): settings = {}
         settings.update({
             'default_author': self.default_author_input.text(),
-            'theme_library_path': self.theme_path_input.text(),
-            'extras_library_path': self.extras_path_input.text(),
+            'theme_library_path': store_path(self.theme_path_input.text()),
+            'extras_library_path': store_path(self.extras_path_input.text()),
             'at9tool_path': self.at9tool_path_input.text(),
             'vita_ip': self.vita_ip_input.text(),
             'vita_port': self.vita_port_input.text(),

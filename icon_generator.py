@@ -34,16 +34,25 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer, QStringListModel
 
-from constants import (APP_SUPPORT_DIR, SETTINGS_FILE, crypted, ONLINE_FEATURES_AVAILABLE, secure_url, theme_pages,
+from constants import (APP_SUPPORT_DIR, BASE_SUPPORT_DIR, other_per_install_dirs_exist,
+                       SETTINGS_FILE, crypted, ONLINE_FEATURES_AVAILABLE, secure_url, theme_pages,
                        CURRENT_VERSION)
 from widgets import play_done_sound, download_progress_text
 
 # --- Locations ---
+# Per-install (version-specific) AI data: the Python+torch runtime, the runtime
+# marker and the local calibration/key. Under APP_SUPPORT_DIR so two installs of
+# different versions never share a runtime.
 ICON_AI_DIR = os.path.join(APP_SUPPORT_DIR, 'icon_ai')
 RUNTIME_DIR = os.path.join(ICON_AI_DIR, 'python')
-MODELS_DIR = os.path.join(ICON_AI_DIR, 'models')
+# Large, version-independent, reusable downloads live at the SHARED per-user base
+# so a user's multiple installs don't each keep a multi-GB copy (same on-disk
+# location as before, so existing downloads are reused). A custom/shared model
+# cache (settings 'shared_model_cache') still overrides MODELS_DIR.
+_SHARED_AI_DIR = os.path.join(BASE_SUPPORT_DIR, 'icon_ai')
+MODELS_DIR = os.path.join(_SHARED_AI_DIR, 'models')
 # Community icon sets downloaded as layout examples (release builds only).
-EXAMPLES_DIR = os.path.join(ICON_AI_DIR, 'examples')
+EXAMPLES_DIR = os.path.join(_SHARED_AI_DIR, 'examples')
 # Community icon sets (how other authors designed each app's icon, and their
 # layouts) are fetched automatically in the background, a few per dialog
 # opening, until this many are kept (~70 KB each).
@@ -1358,20 +1367,40 @@ def estimate_models(segmenter=True, poses=False, model='sd15', skip_base=False):
             'disk_use': total * UNPACK_FACTOR['models']}
 
 
+def _app_download_targets():
+    """Paths holding AI data the app downloaded itself. The per-install runtime is
+    always included. The SHARED downloads (models, example sets) are included only
+    when no other install exists, so freeing space or switching this install's
+    edition never deletes models/examples another install still uses. A custom/
+    shared model cache is never touched (it's the user's own, possibly reused by
+    other apps)."""
+    targets = [RUNTIME_DIR, RUNTIME_MARKER]      # per-install, version-specific
+    if not other_per_install_dirs_exist():
+        targets.append(EXAMPLES_DIR)             # shared; safe only when last install
+        if not _using_shared_cache():
+            targets.append(MODELS_DIR)           # the app's own (shared) cache
+    return targets
+
+
 def remove_runtime():
+    # The whole per-install AI dir (runtime, calibration, markers, extra artwork),
+    # plus the shared downloads (models, examples) when this is the only install —
+    # otherwise the shared downloads are left for the other install(s).
     shutil.rmtree(ICON_AI_DIR, ignore_errors=True)
+    for path in _app_download_targets():
+        if not path.startswith(ICON_AI_DIR) and os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
 
 
 def app_downloaded_ai_bytes():
     """Total size of AI data the app downloaded itself (the private Python
     runtime, the app's own model cache and the fetched example sets). Excludes
     anything the user provided — a custom model, a custom/shared model cache,
-    curated extra artwork — and the small calibration/hardware data."""
+    curated extra artwork — and the small calibration/hardware data. Shared
+    downloads are counted only when this is the only install (see
+    _app_download_targets)."""
     total = 0
-    targets = [RUNTIME_DIR, EXAMPLES_DIR, RUNTIME_MARKER]
-    if not using_shared_models():
-        targets.append(MODELS_DIR)      # the app's own cache, not a custom path
-    for path in targets:
+    for path in _app_download_targets():
         if os.path.isfile(path):
             try:
                 total += os.path.getsize(path)
@@ -1388,17 +1417,15 @@ def app_downloaded_ai_bytes():
 
 
 def remove_app_downloaded_ai_data():
-    """Delete only the AI data the app downloaded (runtime, the app's own model
-    cache, fetched examples). Deliberately KEEPS user-provided data: a custom
-    base model, a custom/shared model cache (lives outside icon_ai), curated
-    extra artwork, and the calibration/hardware data + per-install key — so
-    switching AI->standard frees space without discarding the user's own work.
+    """Delete only the AI data the app downloaded (runtime, and — when this is the
+    only install — the app's own shared model cache and fetched examples).
+    Deliberately KEEPS user-provided data: a custom base model, a custom/shared
+    model cache, curated extra artwork, and the calibration/hardware data +
+    per-install key — so switching AI->standard frees space without discarding the
+    user's own work, and without removing shared downloads another install uses.
     Returns the list of paths removed."""
     removed = []
-    targets = [RUNTIME_DIR, EXAMPLES_DIR, RUNTIME_MARKER]
-    if not using_shared_models():
-        targets.append(MODELS_DIR)
-    for path in targets:
+    for path in _app_download_targets():
         try:
             if os.path.isfile(path):
                 os.remove(path); removed.append(path)

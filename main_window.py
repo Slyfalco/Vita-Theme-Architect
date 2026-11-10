@@ -28,7 +28,7 @@ from PyQt6.QtGui import QFont, QIcon, QColor, QPixmap, QIntValidator, QAction, Q
 from PyQt6.QtCore import Qt, QSize, QUrl, QTimer, QDir, QPoint, QStandardPaths
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
-from constants import CURRENT_VERSION, UPDATE_URL, SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, crypted, ONLINE_FEATURES_AVAILABLE, ONLINE_FEATURES_UNAVAILABLE_MSG, theme_pages
+from constants import CURRENT_VERSION, UPDATE_URL, SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, crypted, ONLINE_FEATURES_AVAILABLE, ONLINE_FEATURES_UNAVAILABLE_MSG, theme_pages, store_path, load_path
 import app_updater
 from audio import (convert_at9_to_wav, convert_to_at9, removeTemp, AudioPlayerDialog, find_at9tool, AT9TOOL_REQUIRED_MSG, ENCODABLE_AUDIO_EXTS)
 from wine_setup import shutdown_wine
@@ -141,7 +141,7 @@ class VitaThemeArchitect(QMainWindow):
                     try: shutil.move(os.path.join(old_path, name), target)
                     except Exception as e: failed.append(f"{name}: {e}")
                 if failed: QMessageBox.warning(self, "Move Themes", "Some themes could not be moved:\n " + '\n '.join(failed))
-        self.settings['theme_library_path'] = new_path; self.save_settings_file()
+        self.settings['theme_library_path'] = store_path(new_path); self.save_settings_file()
         self.show_manager_ui()
         return True
 
@@ -151,12 +151,12 @@ class VitaThemeArchitect(QMainWindow):
             with open(SETTINGS_FILE, 'r') as f: self.settings = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError): self.settings = {}
         default_theme_path = DEFAULT_THEMES_PATH; default_extras_path = DEFAULT_EXTRAS_PATH
-        def _abs(path, default):
-            return path if (path and os.path.isabs(path)) else default
-        self.theme_library_path = _abs(self.settings.get('theme_library_path', ''), default_theme_path)
-        self.extras_library_path = _abs(self.settings.get('extras_library_path', ''), default_extras_path)
+        # load_path resolves a relative (portable) value against the current data
+        # base, so it keeps working after a USB drive letter / volume change.
+        self.theme_library_path = load_path(self.settings.get('theme_library_path', ''), default_theme_path)
+        self.extras_library_path = load_path(self.settings.get('extras_library_path', ''), default_extras_path)
         if 'theme_library_path' not in self.settings or 'extras_library_path' not in self.settings:
-            self.settings['theme_library_path'] = self.theme_library_path; self.settings['extras_library_path'] = self.extras_library_path
+            self.settings['theme_library_path'] = store_path(self.theme_library_path); self.settings['extras_library_path'] = store_path(self.extras_library_path)
             with open(SETTINGS_FILE, 'w') as f: json.dump(self.settings, f, indent=4)
         os.makedirs(self.theme_library_path, exist_ok=True); os.makedirs(self.extras_library_path, exist_ok=True)
 
