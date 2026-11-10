@@ -29,7 +29,7 @@ import zipfile
 
 import requests
 
-from constants import UPDATE_API_URL, UPDATE_API_TAG
+from constants import UPDATE_API_URL, UPDATE_API_TAG, IS_PORTABLE, APP_SUPPORT_DIR
 
 EDITIONS = ('ai', 'standard')
 _ARCHIVE_EXTS = ('.tar.gz', '.tgz', '.zip', '.dmg', '.tar')
@@ -373,9 +373,19 @@ def apply_and_restart(new_app, stage_root, clean=False):
         raise RuntimeError(f'refusing to update an unexpected install path: {install_abs}')
     pid = os.getpid()
     system = platform.system()
+    # Portable build: the data dir lives INSIDE the install folder (portable_data
+    # beside the exe on Windows/Linux). A clean mirror would delete it, so pass it
+    # down to be preserved. (On macOS the portable data sits beside the .app, not
+    # inside app_root(), so it is never under install_abs and needs no handling.)
+    preserve = None
+    if IS_PORTABLE:
+        _data = os.path.abspath(APP_SUPPORT_DIR)
+        if (os.path.normcase(_data) == os.path.normcase(install_abs)
+                or os.path.normcase(_data).startswith(os.path.normcase(install_abs) + os.sep)):
+            preserve = _data
     if system == 'Windows':
-        return _apply_windows(new_app, install_abs, stage_root, pid, clean)
-    return _apply_unix(new_app, install_abs, stage_root, pid, system, clean)
+        return _apply_windows(new_app, install_abs, stage_root, pid, clean, preserve)
+    return _apply_unix(new_app, install_abs, stage_root, pid, system, clean, preserve)
 
 
 _PYTHON_NAMES = ('python.exe', 'pythonw.exe', 'python', 'python3')
@@ -410,12 +420,15 @@ def _launcher_name(build_folder):
     return cand
 
 
-def _apply_windows(new_app, install, stage_root, pid, clean):
+def _apply_windows(new_app, install, stage_root, pid, clean, preserve=None):
     exe = os.path.join(install, _launcher_name(new_app))
     script = os.path.join(tempfile.gettempdir(), f'vta_update_{pid}.bat')
-    # /MIR mirrors (removes old-edition files); /E only overwrites/adds. Either
-    # way this is the install folder only, which holds no user data.
+    # /MIR mirrors (removes old-edition files); /E only overwrites/adds. For an
+    # installed build the install folder holds no user data; for a portable build
+    # `preserve` is the in-folder data dir, excluded from the mirror with /XD so
+    # the switch can't delete it.
     mode = '/MIR' if clean else '/E'
+    exclude = f' /XD "{preserve}"' if (clean and preserve) else ''
     lines = [
         '@echo off',
         'setlocal',
@@ -427,7 +440,7 @@ def _apply_windows(new_app, install, stage_root, pid, clean):
         '  ping -n 2 127.0.0.1 >nul 2>&1',
         '  goto waitloop',
         ')',
-        f'robocopy "{new_app}" "{install}" {mode} /R:3 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP >nul',
+        f'robocopy "{new_app}" "{install}" {mode}{exclude} /R:3 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP >nul',
         f'start "" "{exe}"',
         f'rmdir /s /q "{stage_root}" >nul 2>&1',
         'del "%~f0"',
@@ -443,14 +456,24 @@ def _apply_windows(new_app, install, stage_root, pid, clean):
                      creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
 
 
-def _apply_unix(new_app, install, stage_root, pid, system, clean):
+def _apply_unix(new_app, install, stage_root, pid, system, clean, preserve=None):
     script = os.path.join(tempfile.gettempdir(), f'vta_update_{pid}.sh')
     if system == 'Darwin':
         relaunch = f'open "{install}"'
     else:
         exe = os.path.join(install, _launcher_name(new_app))
         relaunch = f'"{exe}" &'
-    if clean:
+    if clean and preserve:
+        # Portable mirror: the data dir lives inside the install folder, so move it
+        # aside before replacing the folder and restore it afterwards.
+        keep = install.rstrip('/') + '.vtakeep'
+        install_cmds = [f'rm -rf "{keep}"',
+                        f'if [ -e "{preserve}" ]; then mv "{preserve}" "{keep}"; fi',
+                        f'rm -rf "{install}"',
+                        f'mkdir -p "{install}"',
+                        f'cp -R "{new_app}/." "{install}"',
+                        f'if [ -e "{keep}" ]; then rm -rf "{preserve}"; mv "{keep}" "{preserve}"; fi']
+    elif clean:
         # Mirror: replace the install folder outright (old-edition files go).
         install_cmds = [f'rm -rf "{install}"',
                         f'mkdir -p "{install}"',
