@@ -45,4 +45,31 @@ You'll need a Vita running custom firmware with **VitaShell**. In the app's **Se
 
 ## License
 
-See the repository for license details.
+VitaTheme Architect's own source code is released under the **VitaTheme Architect
+License** (see [`LICENSE`](LICENSE)): you may use, study, modify, and build the
+source, and redistribute the source and your modifications. The copyright
+holder's **official binary releases**, the **name/branding**, and the **online
+theme service** are reserved — official builds include integrity protection and
+should not be modified or passed off as official, and unofficial builds are not
+authorized to use the online service. Builds you compile yourself from source for
+your own use are not restricted by those reservations.
+
+> This is a summary, not legal advice.
+
+## Third-party licenses
+
+This app is built on open-source components that keep their own licenses, which
+govern those components:
+
+- **Qt** (used via **PySide6**) — **GNU LGPL v3**. Official builds ship the Qt
+  libraries as separate, replaceable files; under the LGPL you may replace them
+  with your own compatible build of Qt. The full LGPL-3.0 text and Qt's notices
+  are available from the Qt Project (https://www.qt.io/licensing) and the Free
+  Software Foundation (https://www.gnu.org/licenses/lgpl-3.0.html).
+- **VLC / libVLC** (media playback) — LGPL.
+- **FFmpeg / libsndfile** (audio) — LGPL / BSD, where used.
+- Other libraries (NumPy, Pillow, requests, cryptography, and so on) are under
+  their respective permissive open-source licenses.
+
+Each component's license applies to that component; see the respective projects
+for full terms.
