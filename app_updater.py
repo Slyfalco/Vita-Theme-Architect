@@ -352,10 +352,28 @@ def prepare_update(asset, progress=None, cancel=None):
 # ---------------------------------------------------------------------------
 # Apply + restart (detached helper)
 # ---------------------------------------------------------------------------
+def _install_writable(path):
+    """True if a file can be created and removed directly in the install folder,
+    i.e. the update can be applied WITHOUT elevation. Silent — this only probes
+    the filesystem, it never prompts. (Typical per-user %LOCALAPPDATA%\\Programs
+    and portable installs are writable; an all-users / Program Files install is
+    not, and the rare locked-down per-user/portable location may not be either.)"""
+    try:
+        probe = os.path.join(path, '.vta_write_test')
+        with open(probe, 'w') as fh:
+            fh.write('')
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
+
+
 def apply_and_restart(new_app, stage_root, clean=False):
     """Launch a detached helper that waits for this process to exit, installs the
-    new build, relaunches the app and cleans up. The caller should quit the app
-    right after this returns.
+    new build, relaunches the app and cleans up. Returns True once the helper is
+    running (the caller should then quit the app so files unlock); returns False
+    if applying needs elevation and the user declined the prompt (the caller
+    should stay open and report it).
 
     `clean=False` (normal update) copies the new files over the install folder
     without deleting anything already there. `clean=True` (edition switch)
@@ -383,9 +401,14 @@ def apply_and_restart(new_app, stage_root, clean=False):
         if (os.path.normcase(_data) == os.path.normcase(install_abs)
                 or os.path.normcase(_data).startswith(os.path.normcase(install_abs) + os.sep)):
             preserve = _data
+    # Elevate only when the install folder isn't writable by this user (all-users /
+    # Program Files, or a rare locked-down per-user/portable location). The prompt
+    # happens here, at apply time — the startup/"check for updates" paths never run
+    # this, so a user is only ever asked when they actually apply an update.
+    elevate = not _install_writable(install_abs)
     if system == 'Windows':
-        return _apply_windows(new_app, install_abs, stage_root, pid, clean, preserve)
-    return _apply_unix(new_app, install_abs, stage_root, pid, system, clean, preserve)
+        return _apply_windows(new_app, install_abs, stage_root, pid, clean, preserve, elevate)
+    return _apply_unix(new_app, install_abs, stage_root, pid, system, clean, preserve, elevate)
 
 
 _PYTHON_NAMES = ('python.exe', 'pythonw.exe', 'python', 'python3')
@@ -420,7 +443,7 @@ def _launcher_name(build_folder):
     return cand
 
 
-def _apply_windows(new_app, install, stage_root, pid, clean, preserve=None):
+def _apply_windows(new_app, install, stage_root, pid, clean, preserve=None, elevate=False):
     exe = os.path.join(install, _launcher_name(new_app))
     script = os.path.join(tempfile.gettempdir(), f'vta_update_{pid}.bat')
     # /MIR mirrors (removes old-edition files); /E only overwrites/adds. For an
@@ -429,6 +452,9 @@ def _apply_windows(new_app, install, stage_root, pid, clean, preserve=None):
     # the switch can't delete it.
     mode = '/MIR' if clean else '/E'
     exclude = f' /XD "{preserve}"' if (clean and preserve) else ''
+    # When elevated, relaunch through explorer.exe so the app comes back as the
+    # normal (non-elevated) user instead of inheriting the helper's admin rights.
+    relaunch = f'explorer.exe "{exe}"' if elevate else f'start "" "{exe}"'
     lines = [
         '@echo off',
         'setlocal',
@@ -441,12 +467,22 @@ def _apply_windows(new_app, install, stage_root, pid, clean, preserve=None):
         '  goto waitloop',
         ')',
         f'robocopy "{new_app}" "{install}" {mode}{exclude} /R:3 /W:1 /NFL /NDL /NJH /NJS /NC /NS /NP >nul',
-        f'start "" "{exe}"',
+        relaunch,
         f'rmdir /s /q "{stage_root}" >nul 2>&1',
         'del "%~f0"',
     ]
     with open(script, 'w', encoding='ascii') as fh:
         fh.write('\r\n'.join(lines))
+    if elevate:
+        # Launch the helper elevated — this raises the UAC prompt NOW (while the
+        # app is still open). ShellExecuteW returns a value <= 32 on failure;
+        # 1223 (ERROR_CANCELLED) means the user declined. Return False so the
+        # caller stays open and reports it instead of quitting into a no-op.
+        import ctypes
+        SW_HIDE = 0
+        rc = ctypes.windll.shell32.ShellExecuteW(None, 'runas', 'cmd.exe',
+                                                 f'/c "{script}"', None, SW_HIDE)
+        return int(rc) > 32
     # CREATE_NO_WINDOW keeps a (hidden) console so the batch's console commands
     # (ping, robocopy, start) work — DETACHED_PROCESS removes the console
     # entirely and those commands misbehave, leaving the update half-applied.
@@ -454,9 +490,10 @@ def _apply_windows(new_app, install, stage_root, pid, clean, preserve=None):
     CREATE_NEW_PROCESS_GROUP = 0x00000200
     subprocess.Popen(['cmd', '/c', script], close_fds=True,
                      creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+    return True
 
 
-def _apply_unix(new_app, install, stage_root, pid, system, clean, preserve=None):
+def _apply_unix(new_app, install, stage_root, pid, system, clean, preserve=None, elevate=False):
     script = os.path.join(tempfile.gettempdir(), f'vta_update_{pid}.sh')
     if system == 'Darwin':
         relaunch = f'open "{install}"'
@@ -482,13 +519,30 @@ def _apply_unix(new_app, install, stage_root, pid, system, clean, preserve=None)
         # Overwrite/add without removing anything already present.
         install_cmds = [f'mkdir -p "{install}"',
                         f'cp -R "{new_app}/." "{install}"']
+    cleanup = [f'rm -rf "{stage_root}"', 'rm -f "$0"']
+    if elevate:
+        # Elevate ONLY the file-install step: write those commands to a second
+        # script and run it as root (macOS: osascript auth prompt; Linux: pkexec
+        # polkit prompt). The wait/relaunch/cleanup stay as the normal user, so the
+        # app is relaunched in the user's own session (never as root). The prompt
+        # appears as the install step begins, i.e. only while actually updating; if
+        # it is declined the copy simply fails and the existing build relaunches.
+        copyscript = os.path.join(tempfile.gettempdir(), f'vta_update_{pid}_copy.sh')
+        with open(copyscript, 'w', encoding='utf-8') as fh:
+            fh.write('#!/bin/sh\n' + '\n'.join(install_cmds) + '\n')
+        os.chmod(copyscript, 0o755)
+        if system == 'Darwin':
+            do_install = ('osascript -e \'do shell script "/bin/sh \\"' + copyscript +
+                          '\\"" with administrator privileges\'')
+        else:
+            do_install = f'pkexec /bin/sh "{copyscript}"'
+        body = [do_install, relaunch] + cleanup + [f'rm -f "{copyscript}"']
+    else:
+        body = install_cmds + [relaunch] + cleanup
     lines = ['#!/bin/sh',
-             f'while kill -0 {pid} 2>/dev/null; do sleep 1; done'] + install_cmds + [
-        relaunch,
-        f'rm -rf "{stage_root}"',
-        'rm -f "$0"',
-    ]
+             f'while kill -0 {pid} 2>/dev/null; do sleep 1; done'] + body
     with open(script, 'w', encoding='utf-8') as fh:
         fh.write('\n'.join(lines))
     os.chmod(script, 0o755)
     subprocess.Popen(['sh', script], start_new_session=True, close_fds=True)
+    return True

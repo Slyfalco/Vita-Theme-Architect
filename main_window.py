@@ -1639,20 +1639,31 @@ class VitaThemeArchitect(QMainWindow):
 
         # No extra "Continue?" prompt — the user already chose to update, and the
         # whole thing runs in the foreground (the app closes and reopens itself).
-        if before_apply:
-            before_apply()
-        # Run the same teardown a normal close does (stop Wine, clear temp
-        # folders) BEFORE handing off, so nothing holds files in the install
-        # folder while the detached helper swaps it out.
-        self._run_exit_cleanup()
+        # Apply first: this is the only step that may ask for elevation (when the
+        # install folder isn't user-writable, e.g. an all-users / Program Files
+        # install). The detached helper waits for this process to exit before it
+        # copies, so the teardown/`before_apply` below still run first. On Windows a
+        # declined prompt returns False here, so we abort cleanly — nothing torn
+        # down, no data freed.
         try:
-            app_updater.apply_and_restart(new_app, stage_root, clean=clean)
+            started = app_updater.apply_and_restart(new_app, stage_root, clean=clean)
         except Exception as e:
             shutil.rmtree(stage_root, ignore_errors=True)
             QMessageBox.critical(self, "Update Error",
                                  f"Could not apply the build:\n{e}")
             return
-        # Hand off to the detached helper and quit so the files unlock.
+        if not started:
+            shutil.rmtree(stage_root, ignore_errors=True)
+            QMessageBox.information(
+                self, "Update",
+                "This update needs administrator permission, which was declined.\n\n"
+                "No changes were made.")
+            return
+        # Proceeding: free AI data on a switch, run the same teardown a normal close
+        # does (stop Wine, clear temp), then quit so the helper can swap the folder.
+        if before_apply:
+            before_apply()
+        self._run_exit_cleanup()
         QApplication.quit()
 
     @staticmethod
