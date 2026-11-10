@@ -930,8 +930,8 @@ def run_nuitka():
         cmd += ['--macos-create-app-bundle',
                 '--macos-app-name=VitaThemeArchitect',
                 '--macos-app-version=1.0',
-                # options-nanny fatally rejects PyQt6 on macOS; the app works
-                # fine with PyQt6 so we suppress that overly strict check.
+                # options-nanny can fatally reject the Qt binding on macOS; the
+                # app works fine, so suppress that overly strict check.
                 '--disable-plugin=options-nanny',
                 ]
         _app_icns = os.path.join(PROJECT_ROOT, 'Assets', 'app_icon.icns')
@@ -939,8 +939,8 @@ def run_nuitka():
             cmd += [f'--macos-app-icon={_app_icns}']
     # Linux: no special console flag needed for a GUI app without a terminal
 
-    # PyQt6 plugin — essential for Qt to be picked up correctly
-    cmd += ['--enable-plugin=pyqt6']
+    # PySide6 plugin — essential for Qt to be picked up correctly
+    cmd += ['--enable-plugin=pyside6']
 
     # cffi imports setuptools only at build/install time (cffi.setuptools_ext).
     # At runtime that module is never used, so tell Nuitka's anti-bloat plugin
@@ -1131,10 +1131,20 @@ def run_nuitka():
     if system == 'Windows':
         app_dir, win_exe = app_layout()
         if os.path.exists(win_exe):
+            # Find where the Qt plugins actually landed (the folder containing
+            # platforms/qwindows.dll), relative to the exe — robust to whatever
+            # layout Nuitka's pyside6 plugin uses (PySide6/plugins, etc.).
+            plugins_rel = None
+            for _root, _dirs, _files in os.walk(app_dir):
+                if os.path.basename(_root) == 'platforms' and 'qwindows.dll' in _files:
+                    plugins_rel = os.path.relpath(os.path.dirname(_root), app_dir).replace(os.sep, '/')
+                    break
+            if not plugins_rel:
+                plugins_rel = 'PySide6/plugins'
             win_qt_conf = os.path.join(app_dir, 'qt.conf')
             with open(win_qt_conf, 'w') as _f:
-                _f.write('[Paths]\nPrefix = .\nPlugins = PyQt6/Qt6/plugins\n')
-            print(f"  Wrote qt.conf: {win_qt_conf}")
+                _f.write(f'[Paths]\nPrefix = .\nPlugins = {plugins_rel}\n')
+            print(f"  Wrote qt.conf: {win_qt_conf} (Plugins = {plugins_rel})")
 
     # Nuitka names the .app bundle after the input script (main.py → main.app)
     # regardless of --macos-app-name.  Rename to VitaThemeArchitect.app.
@@ -1283,17 +1293,20 @@ def _create_platforms_symlink(app_bundle):
     if os.path.islink(link_path) or os.path.exists(link_path):
         return  # already present from a previous run or Nuitka itself
 
-    # Find the actual platforms directory — try canonical paths first.
-    for rel in ('PyQt6/Qt6/plugins/platforms', 'lib/PyQt6/Qt6/plugins/platforms'):
-        candidate = os.path.join(macos_dir, rel)
-        if os.path.isdir(candidate):
-            # Use a relative symlink so the bundle stays relocatable.
-            target = os.path.relpath(candidate, macos_dir)
-            os.symlink(target, link_path)
-            print(f"  Created platforms symlink: MacOS/platforms → {target}")
-            return
+    # Find the actual platforms directory by locating the cocoa plugin, so this
+    # works regardless of the Qt binding's layout (PySide6/plugins, etc.).
+    import glob as glob_module
+    for cocoa in glob_module.glob(
+            os.path.join(macos_dir, '**', 'platforms', 'libqcocoa.dylib'),
+            recursive=True):
+        candidate = os.path.dirname(cocoa)   # the platforms/ directory
+        # Use a relative symlink so the bundle stays relocatable.
+        target = os.path.relpath(candidate, macos_dir)
+        os.symlink(target, link_path)
+        print(f"  Created platforms symlink: MacOS/platforms → {target}")
+        return
 
-    print("  WARNING: Could not find PyQt6 platforms directory — skipping symlink")
+    print("  WARNING: Could not find Qt platforms directory — skipping symlink")
 
 
 def _resign_app(app_bundle):

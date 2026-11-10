@@ -2,14 +2,14 @@ import json
 import os
 import sys
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout,
     QLineEdit, QPushButton, QHBoxLayout, QCheckBox,
     QDialogButtonBox, QFileDialog, QMessageBox, QLabel, QComboBox, QGroupBox, QGridLayout,
     QSizePolicy, QFrame, QScrollArea
 )
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 
 from constants import SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, CURRENT_VERSION, UPDATE_URL, ONLINE_FEATURES_AVAILABLE, crypted, store_path, load_path
 from widgets import DragDropLineEdit
@@ -17,7 +17,7 @@ from widgets import DragDropLineEdit
 
 class _StorageThread(QThread):
     """Measures AI storage off the UI thread, so Settings opens at once."""
-    result = pyqtSignal(object)
+    result = Signal(object)
 
     def run(self):
         import icon_generator as ig
@@ -30,7 +30,7 @@ class _StorageThread(QThread):
 class _CallThread(QThread):
     """Runs a function off the UI thread and emits its result (for the Vita
     connection test and the update check, which both hit the network)."""
-    done = pyqtSignal(object)
+    done = Signal(object)
 
     def __init__(self, fn, parent=None):
         super().__init__(parent)

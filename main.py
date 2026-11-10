@@ -83,7 +83,7 @@ if sys.platform == 'darwin' and globals().get('__compiled__', False):
     # Also tell Qt where its plugins are so it never needs CFBundle for
     # plugin-path discovery at runtime.
     _exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    for _rel in ('PyQt6/Qt6/plugins', 'lib/PyQt6/Qt6/plugins', 'plugins'):
+    for _rel in ('PySide6/plugins', 'PySide6/qt-plugins', 'lib/PySide6/plugins', 'plugins'):
         _candidate = os.path.join(_exe_dir, _rel)
         if os.path.isdir(_candidate):
             os.environ.setdefault('QT_PLUGIN_PATH', _candidate)
@@ -103,29 +103,29 @@ if sys.platform == 'darwin' and globals().get('__compiled__', False):
 # For standalone builds sys.executable sits next to the PyQt6/ folder, so
 # the fallback covers that case.
 if sys.platform == 'win32' and globals().get('__compiled__', False):
+    # PySide6's Qt plugins live under PySide6/plugins (Nuitka may also use
+    # PySide6/qt-plugins). Search sys.path roots and the exe dir for whichever
+    # layout exists, so Qt finds qwindows.dll before QApplication() initialises.
     _qt_plugins = None
-    for _p in sys.path:
-        if not _p:
-            continue
-        _candidate = os.path.join(_p, 'PyQt6', 'Qt6', 'plugins')
-        if os.path.isdir(_candidate):
-            _qt_plugins = _candidate
+    _rels = ('PySide6/plugins', 'PySide6/qt-plugins', 'PySide6/Qt/plugins')
+    _roots = [_p for _p in sys.path if _p]
+    _roots.append(os.path.dirname(os.path.abspath(sys.executable)))
+    for _root in _roots:
+        for _rel in _rels:
+            _candidate = os.path.join(_root, *_rel.split('/'))
+            if os.path.isdir(_candidate):
+                _qt_plugins = _candidate
+                break
+        if _qt_plugins:
             break
-    if not _qt_plugins:
-        # Fallback: standalone layout — PyQt6/ sits next to the executable.
-        _exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-        _candidate = os.path.join(_exe_dir, 'PyQt6', 'Qt6', 'plugins')
-        if os.path.isdir(_candidate):
-            _qt_plugins = _candidate
     if _qt_plugins:
         os.environ.setdefault('QT_PLUGIN_PATH', _qt_plugins)
         os.environ.setdefault('QT_QPA_PLATFORM_PLUGIN_PATH',
                               os.path.join(_qt_plugins, 'platforms'))
-    del _qt_plugins, _candidate
 
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QIcon
+from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont, QIcon
 
 
 def app_icon():
@@ -376,12 +376,12 @@ if __name__ == "__main__":
         # setup_build.py and the env-var block above the PyQt6 imports.
         if sys.platform == 'win32' and globals().get('__compiled__', False):
             try:
-                _qtcore = sys.modules.get('PyQt6.QtCore')
+                _qtcore = sys.modules.get('PySide6.QtCore')
                 if _qtcore and getattr(_qtcore, '__file__', None):
-                    from PyQt6.QtCore import QCoreApplication as _QCA
+                    from PySide6.QtCore import QCoreApplication as _QCA
                     _QCA.addLibraryPath(os.path.join(
                         os.path.dirname(os.path.abspath(_qtcore.__file__)),
-                        'Qt6', 'plugins'))
+                        'plugins'))
                     del _QCA
                 del _qtcore
             except Exception:
@@ -401,7 +401,7 @@ if __name__ == "__main__":
         except Exception:
             _integrity_ok, _integrity_problems = True, []
         if not _integrity_ok:
-            from PyQt6.QtWidgets import QMessageBox
+            from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(
                 None, "Installation Problem",
                 "VitaTheme Architect's files look corrupted or modified:\n\n"
@@ -416,7 +416,7 @@ if __name__ == "__main__":
             _exe = os.path.abspath(sys.executable)
             _downloads = os.path.expanduser('~/Downloads')
             if _exe.startswith(_downloads + os.sep):
-                from PyQt6.QtWidgets import QMessageBox
+                from PySide6.QtWidgets import QMessageBox
                 _msg = QMessageBox()
                 _msg.setWindowTitle("Move to Applications")
                 _msg.setText(

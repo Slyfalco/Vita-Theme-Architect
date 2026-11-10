@@ -1,11 +1,11 @@
 import os
 import ftplib
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QListWidget, QPushButton,
     QAbstractItemView, QProgressDialog, QMessageBox, QApplication
 )
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 
 class VitaImporterDialog(QDialog):

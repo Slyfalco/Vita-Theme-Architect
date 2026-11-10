@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QPushButton, QColorDialog, QLineEdit
-from PyQt6.QtGui import QIcon, QColor, QPixmap
-from PyQt6.QtCore import QSize, Qt
+from PySide6.QtWidgets import QPushButton, QColorDialog, QLineEdit
+from PySide6.QtGui import QIcon, QColor, QPixmap
+from PySide6.QtCore import QSize, Qt
 
 
 def download_progress_text(label, done, total, speed):
@@ -25,7 +25,7 @@ def center_on_parent(dialog):
     Uses frameGeometry (which includes the title bar) so the dialog doesn't
     drift downward the way centring on the client-area geometry() does.
     """
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     frame = dialog.frameGeometry()
     parent = dialog.parent() if hasattr(dialog, 'parent') else None
     if parent is not None and parent.isVisible():
@@ -69,7 +69,7 @@ def play_done_sound(window=None):
     import os
     import platform
     import subprocess
-    from PyQt6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     if window is not None:
         QApplication.alert(window, 0)
     chime = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Assets', 'Sounds', 'done.wav')

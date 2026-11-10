@@ -9,7 +9,7 @@ Buttons can opt into an accent colour via the ``role`` dynamic property:
 Side panels use ``role="panel"`` and image placeholders ``role="preview"``.
 """
 
-from PyQt6.QtGui import QPalette, QColor
+from PySide6.QtGui import QPalette, QColor
 
 # Palette shared with the splash screen in main.py
 BG = "#1a1a2e"

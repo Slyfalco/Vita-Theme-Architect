@@ -16,7 +16,7 @@ import time
 import webview
 import base64
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QHBoxLayout, QFrame, QTabWidget,
     QListWidgetItem, QDialog, QDialogButtonBox,
@@ -24,9 +24,9 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QComboBox, QListWidget, QAbstractItemView,
     QSlider, QStyle, QCheckBox, QSizePolicy, QInputDialog, QMenu, QTextBrowser
 )
-from PyQt6.QtGui import QFont, QIcon, QColor, QPixmap, QIntValidator, QAction, QKeySequence, QDesktopServices
-from PyQt6.QtCore import Qt, QSize, QUrl, QTimer, QDir, QPoint, QStandardPaths
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from PySide6.QtGui import QFont, QIcon, QColor, QPixmap, QIntValidator, QAction, QKeySequence, QDesktopServices
+from PySide6.QtCore import Qt, QSize, QUrl, QTimer, QDir, QPoint, QStandardPaths
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 from constants import CURRENT_VERSION, UPDATE_URL, SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, crypted, ONLINE_FEATURES_AVAILABLE, ONLINE_FEATURES_UNAVAILABLE_MSG, theme_pages, store_path, load_path
 import app_updater

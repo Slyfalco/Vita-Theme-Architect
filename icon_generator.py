@@ -25,14 +25,14 @@ import re
 import time
 
 import requests
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QCheckBox, QSlider, QSpinBox, QProgressBar, QPlainTextEdit, QMessageBox,
     QWidget, QScrollArea, QFormLayout, QComboBox, QFileDialog, QLineEdit, QListWidget, QListWidgetItem,
     QCompleter, QAbstractItemView, QStackedWidget, QProgressDialog
 )
-from PyQt6.QtGui import QPixmap, QIcon
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer, QStringListModel
+from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer, QStringListModel
 
 from constants import (APP_SUPPORT_DIR, BASE_SUPPORT_DIR, other_per_install_dirs_exist,
                        SETTINGS_FILE, crypted, ONLINE_FEATURES_AVAILABLE, secure_url, theme_pages,
@@ -1606,8 +1606,8 @@ def runtime_disk_usage():
 # =============================================================================
 class _SubprocessThread(QThread):
     """Base thread that runs subprocesses and streams their output."""
-    log = pyqtSignal(str)
-    finished_ok = pyqtSignal(bool, str)
+    log = Signal(str)
+    finished_ok = Signal(bool, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1634,7 +1634,7 @@ class _SubprocessThread(QThread):
 
 
 class RuntimeInstallThread(_SubprocessThread):
-    progress = pyqtSignal(int, str)  # percent (-1 = busy), status text
+    progress = Signal(int, str)  # percent (-1 = busy), status text
 
     def run(self):
         self._fresh = False
@@ -1739,7 +1739,7 @@ class RuntimeInstallThread(_SubprocessThread):
 
 
 class IconGenerationThread(_SubprocessThread):
-    event = pyqtSignal(dict)
+    event = Signal(dict)
 
     def __init__(self, job, parent=None):
         super().__init__(parent)
@@ -2022,9 +2022,9 @@ class GeminiIconThread(QThread):
     events as the local worker so the dialog treats both alike. Like Pilot
     Framework's social stories, every reference image is labelled and the
     theme is analysed first, so nothing has to be described by the user."""
-    event = pyqtSignal(dict)
-    log = pyqtSignal(str)
-    finished_ok = pyqtSignal(bool, str)
+    event = Signal(dict)
+    log = Signal(str)
+    finished_ok = Signal(bool, str)
 
     def __init__(self, job, key, model, parent=None):
         super().__init__(parent)
@@ -2114,7 +2114,7 @@ class GeminiIconThread(QThread):
 
 class EstimateThread(QThread):
     """Runs a slow function (estimate_*, disk measuring) off the UI thread."""
-    result = pyqtSignal(object)
+    result = Signal(object)
 
     def __init__(self, fn, parent=None):
         super().__init__(parent)
@@ -2131,8 +2131,8 @@ class ExampleDownloadThread(QThread):
     """Downloads community themes and keeps only their custom icon sets as
     icon design and layout examples (~70 KB each). Release builds only (uses
     crypted). Runs quietly in the background when the generator opens."""
-    progress = pyqtSignal(int, str)
-    finished_ok = pyqtSignal(bool, str)
+    progress = Signal(int, str)
+    finished_ok = Signal(bool, str)
 
     def __init__(self, wanted, parent=None):
         super().__init__(parent)
@@ -2319,8 +2319,8 @@ def community_theme_art(title, dest, cancelled=lambda: False, log=print):
 
 class CommunityArtThread(QThread):
     """Fetches the matching community themes' art off the UI thread."""
-    done = pyqtSignal(list)
-    log = pyqtSignal(str)
+    done = Signal(list)
+    log = Signal(str)
 
     def __init__(self, title, dest, parent=None):
         super().__init__(parent)
@@ -2424,7 +2424,7 @@ def suggest_tags(text):
 
 class _Worker(QThread):
     """Runs one network function off the UI thread."""
-    done = pyqtSignal(object)
+    done = Signal(object)
 
     def __init__(self, fn, parent=None):
         super().__init__(parent)
@@ -2439,7 +2439,7 @@ class _Worker(QThread):
 
 class ThumbnailLoader(QThread):
     """Loads result thumbnails one by one."""
-    loaded = pyqtSignal(int, bytes)
+    loaded = Signal(int, bytes)
 
     def __init__(self, urls, parent=None):
         super().__init__(parent)
@@ -2912,7 +2912,7 @@ class IconGeneratorDialog(QDialog):
     # --- State ---
     def update_generator_options(self):
         """Google shows as unavailable (greyed, with a hint) until a key is set."""
-        from PyQt6.QtGui import QColor
+        from PySide6.QtGui import QColor
         index = self.generator_combo.findData('google')
         label = next(l for l, k in GENERATOR_CHOICES if k == 'google')
         item = self.generator_combo.model().item(index)

@@ -176,11 +176,11 @@ except (ImportError, OSError) as _sf_err:
     print(f"soundfile unavailable ({_sf_err}); audio encoding falls back to "
           f"ffmpeg or a stdlib WAV path.")
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QPushButton, QVBoxLayout, QHBoxLayout,
     QSlider, QLabel, QStyle, QMessageBox
 )
-from PyQt6.QtCore import Qt, QTimer, QDir
+from PySide6.QtCore import Qt, QTimer, QDir
 
 # VLC is imported lazily — only needed for AudioPlayerDialog playback,
 # not for audio conversion.  This prevents the entire module from failing

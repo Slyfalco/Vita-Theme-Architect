@@ -7,16 +7,16 @@ import zipfile
 import requests
 from urllib.parse import urlparse
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QFrame, QLineEdit,
     QComboBox, QPushButton, QListWidget, QListWidgetItem,
     QLabel, QFormLayout, QScrollArea, QWidget,
     QProgressDialog, QMessageBox, QApplication, QSpinBox,
     QRadioButton, QButtonGroup, QLayout
 )
-from PyQt6.QtGui import QPixmap, QPainter, QPainterPath
-from PyQt6.QtCore import Qt, QSize, QUrl, QTimer, QRectF
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply, QSslSocket
+from PySide6.QtGui import QPixmap, QPainter, QPainterPath
+from PySide6.QtCore import Qt, QSize, QUrl, QTimer, QRectF
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply, QSslSocket
 
 from constants import crypted, secure_url, THEME_PAGE
 
