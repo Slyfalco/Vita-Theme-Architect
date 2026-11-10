@@ -1394,6 +1394,14 @@ def _restore_dev_stub(stashed):
 
 INTEGRITY_MAGIC = b'VTAINTEG'
 
+# LGPL libraries must stay replaceable by the recipient, so their native library
+# directories are excluded from the integrity manifest (and from the module
+# fingerprint) — replacing them must not block launch. This is ONLY the native
+# libraries: the Qt binding (PySide6/shiboken6), libVLC (VLC/) and libsndfile.
+# The app's own code and the shipped Python modules (vlc.py, icon_ai_worker.py)
+# are NOT here and stay protected.
+_LGPL_LIB_DIRS = {'PySide6', 'shiboken6', 'VLC', 'libsndfile', '_soundfile_data'}
+
 
 def embed_integrity_in_exe(app_dir, exe_path):
     """Embed an install-integrity manifest (SHA-256 of every shipped file) as an
@@ -1410,7 +1418,8 @@ def embed_integrity_in_exe(app_dir, exe_path):
     exe_name = os.path.basename(exe_path)
     files = {}
     for root, dirs, names in os.walk(app_dir):
-        dirs[:] = [d for d in dirs if d != '__pycache__']
+        # Skip __pycache__ and the replaceable LGPL native-library dirs.
+        dirs[:] = [d for d in dirs if d != '__pycache__' and d not in _LGPL_LIB_DIRS]
         for name in names:
             if name == exe_name:
                 continue
