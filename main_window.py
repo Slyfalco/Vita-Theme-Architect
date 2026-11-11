@@ -1061,11 +1061,15 @@ class VitaThemeArchitect(QMainWindow):
         progress.close()
         if ok:
             player_dialog = AudioPlayerDialog(temp_wav_path, theme_title, self)
-            player_dialog.exec()
+            if getattr(player_dialog, 'init_ok', False):
+                player_dialog.exec()  # temp wav cleaned in AudioPlayerDialog.closeEvent
+            else:
+                # VLC unavailable: the dialog showed the error and never opened;
+                # clean up the converted temp wav here.
+                removeTemp(temp_wav_path)
         else:
             removeTemp(temp_wav_path)
             QMessageBox.critical(self, "Playback Error", "Failed to convert bgm.at9 to WAV for playback.");
-        # Cleanup is handled in AudioPlayerDialog.closeEvent
     def extract_bgm(self):
         selected_item = self.theme_list.currentItem();
         if not selected_item: return

@@ -38,12 +38,50 @@ def _lib_names():
     return 'libvlc.so', 'libvlc.so.5', 'libvlccore.so'
 
 
-def _locate():
-    """Full path (or bare name) of libvlc. audio.py sets PYTHON_VLC_LIB_PATH to
-    the bundled library before this module is used."""
+def _candidates():
+    """Yield possible libvlc locations, best first: the env override that audio.py
+    sets for a bundled VLC, then the system install (registry / known folders), so
+    an installed VLC is found even when nothing is bundled (e.g. source runs)."""
     p = (os.environ.get('PYTHON_VLC_LIB_PATH') or '').strip()
-    if p and os.path.isfile(p):
-        return p
+    if p:
+        yield p
+    if sys.platform == 'win32':
+        try:
+            import winreg
+            for root, extra in ((winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_64KEY),
+                                (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_32KEY),
+                                (winreg.HKEY_CURRENT_USER, 0)):
+                try:
+                    with winreg.OpenKey(root, r'SOFTWARE\VideoLAN\VLC', 0,
+                                        winreg.KEY_READ | extra) as k:
+                        d = winreg.QueryValueEx(k, 'InstallDir')[0]
+                        if d:
+                            yield os.path.join(d, 'libvlc.dll')
+                except OSError:
+                    pass
+        except Exception:
+            pass
+        for env in ('ProgramFiles', 'ProgramW6432', 'ProgramFiles(x86)'):
+            base = os.environ.get(env)
+            if base:
+                yield os.path.join(base, 'VideoLAN', 'VLC', 'libvlc.dll')
+    elif sys.platform == 'darwin':
+        for base in ('/Applications/VLC.app/Contents/MacOS/lib',
+                     os.path.expanduser('~/Applications/VLC.app/Contents/MacOS/lib')):
+            yield os.path.join(base, 'libvlc.dylib')
+    else:
+        for base in ('/usr/lib', '/usr/local/lib', '/usr/lib/x86_64-linux-gnu',
+                     '/usr/lib64'):
+            yield os.path.join(base, 'libvlc.so.5')
+            yield os.path.join(base, 'libvlc.so')
+
+
+def _locate():
+    """First existing libvlc path from the candidates, else the bare library name
+    (which the OS loader may still resolve via PATH / ldconfig)."""
+    for c in _candidates():
+        if c and os.path.isfile(c):
+            return c
     return _lib_names()[0]
 
 

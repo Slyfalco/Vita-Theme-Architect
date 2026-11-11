@@ -743,13 +743,16 @@ class AudioPlayerDialog(QDialog):
         self.wav_path = wav_path
         self.setWindowTitle(f"🔊 Playing BGM - {theme_name}")
         self.setMinimumWidth(400)
+        # The caller checks init_ok and only exec()s the dialog when it is True;
+        # on a failure path it stays False so the player window never shows.
+        self.init_ok = True
 
         # --- VLC Initialization with Options ---
         if not _ensure_vlc():
             QMessageBox.critical(self, "VLC Error",
                 "VLC is not installed or could not be loaded.\n\n"
                 "Please install VLC media player to enable audio playback.")
-            self.close()
+            self.init_ok = False
             return
 
         # Build VLC instance arguments.
@@ -772,7 +775,7 @@ class AudioPlayerDialog(QDialog):
                 "Could not initialize VLC.\n\n"
                 f"Audio playback is unavailable: {_e}")
             self.player = None
-            self.close()
+            self.init_ok = False
             return
         self.is_ready_to_play = False  # Flag to manage initial play state
         self._ended = False            # set when playback reaches the end
