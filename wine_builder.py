@@ -191,6 +191,49 @@ def _detect_pkg_manager():
     return None
 
 
+# Packages this build auto-installed (absent beforehand). They are removed again
+# once the build has copied what it needs, so the build leaves the machine as it
+# found it — the libs it needs are already baked into the bundle.
+_BUILD_INSTALLED_PKGS = []
+
+
+def _pkg_installed(pkg, pkg_mgr=None):
+    """True if a system package is currently installed (best-effort per distro)."""
+    pkg_mgr = pkg_mgr or _detect_pkg_manager()
+    try:
+        if pkg_mgr == 'apt-get':
+            return subprocess.run(['dpkg', '-s', pkg], capture_output=True).returncode == 0
+        if pkg_mgr in ('dnf', 'zypper'):
+            return subprocess.run(['rpm', '-q', pkg], capture_output=True).returncode == 0
+        if pkg_mgr == 'pacman':
+            return subprocess.run(['pacman', '-Q', pkg], capture_output=True).returncode == 0
+    except Exception:
+        pass
+    return True  # unsure -> assume present, so we never remove something we didn't add
+
+
+def _remove_linux_pkgs(pkgs, password):
+    """Remove packages the build installed, then autoremove their orphaned deps."""
+    pkgs = list(pkgs or [])
+    if not pkgs:
+        return
+    pkg_mgr = _detect_pkg_manager()
+    if not pkg_mgr:
+        return
+    remove = {
+        'apt-get': ['apt-get', 'remove', '-y'],
+        'dnf': ['dnf', 'remove', '-y'],
+        'pacman': ['pacman', '-Rns', '--noconfirm'],
+        'zypper': ['zypper', 'remove', '-y'],
+    }[pkg_mgr]
+    print(f"  Removing build-only packages (restoring the machine): {' '.join(pkgs)}")
+    _run_sudo(remove + pkgs, password)
+    if pkg_mgr == 'apt-get':
+        _run_sudo(['apt-get', 'autoremove', '-y'], password)
+    elif pkg_mgr == 'dnf':
+        _run_sudo(['dnf', 'autoremove', '-y'], password)
+
+
 # ── Dependency installation ─────────────────────────────────────────────
 def _install_linux_runtime_deps(password):
     """Install runtime dependencies (cabextract, wget) needed by winetricks.
@@ -205,6 +248,8 @@ def _install_linux_runtime_deps(password):
 
     info = _LINUX_DEPS[pkg_mgr]
     packages = list(info['runtime'])
+    # Track which were absent so build_wine can remove them afterwards.
+    newly = [p for p in packages if not _pkg_installed(p, pkg_mgr)]
 
     print(f"  Package manager: {pkg_mgr}")
     print(f"  Runtime packages to install: {' '.join(packages)}")
@@ -222,6 +267,7 @@ def _install_linux_runtime_deps(password):
               "winetricks may not work correctly.")
         return True  # Non-fatal
 
+    _BUILD_INSTALLED_PKGS.extend(newly)
     print("  Runtime dependencies installed successfully.")
     return True
 
@@ -1080,6 +1126,15 @@ def build_wine(username=None, password=None):
 
     # Step 5: Clean Wine caches (prefix init temp files, winetricks downloads)
     _clean_wine_cache(username, password)
+
+    # Step 6: leave the machine as we found it — remove any runtime packages this
+    # build auto-installed (the bundled Wine needs nothing further from them).
+    try:
+        if system == 'Linux' and _BUILD_INSTALLED_PKGS:
+            _remove_linux_pkgs(list(_BUILD_INSTALLED_PKGS), password)
+            _BUILD_INSTALLED_PKGS.clear()
+    except Exception as e:
+        print(f"  (package cleanup skipped: {e})")
 
     print("  Wine setup complete.")
     return True

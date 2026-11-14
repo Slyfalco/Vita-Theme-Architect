@@ -544,25 +544,28 @@ def _install_vlc_linux_pkgs(password):
     Linux has no official relocatable VLC tarball (unlike the Windows/macOS
     portable downloads), so VLC is installed through the distro package manager
     and its libs copied afterwards. Reuses wine_builder's package-manager
-    helpers so distro detection/sudo handling stays in one place. Returns True
-    if the install command succeeded.
+    helpers so distro detection/sudo handling stays in one place. Returns
+    (ok, newly_installed) where newly_installed is the packages that were absent
+    beforehand (so the caller can remove them again after copying).
     """
     try:
-        from wine_builder import _detect_pkg_manager, _run_sudo, _LINUX_DEPS
+        from wine_builder import _detect_pkg_manager, _run_sudo, _LINUX_DEPS, _pkg_installed
     except Exception as e:
         print(f"  Could not load package installer: {e}")
-        return False
+        return (False, [])
     pkg_mgr = _detect_pkg_manager()
     if not pkg_mgr:
         print("  No supported package manager found; install VLC manually "
               "(libvlc + plugins, e.g. 'apt install libvlc-dev vlc-plugin-base').")
-        return False
+        return (False, [])
     pkgs = _VLC_LINUX_PKGS.get(pkg_mgr, ['vlc'])
+    newly = [p for p in pkgs if not _pkg_installed(p, pkg_mgr)]
     info = _LINUX_DEPS[pkg_mgr]
     print(f"  VLC libraries not found — installing via {pkg_mgr}: {' '.join(pkgs)}")
     if info['update']:
         _run_sudo(info['update'], password or '')
-    return _run_sudo(info['install'] + pkgs, password or '')
+    ok = _run_sudo(info['install'] + pkgs, password or '')
+    return (ok, newly if ok else [])
 
 
 def _download_vlc_linux(vlc_dir, username=None, password=None):
@@ -572,7 +575,9 @@ def _download_vlc_linux(vlc_dir, username=None, password=None):
     no relocatable VLC build, so VLC comes from the distro package manager: if
     libvlc isn't already present it is installed automatically (like the Wine
     step installs its own deps), then libvlc*.so* and vlc/plugins are copied
-    into Tools/VLC/ for bundling.
+    into Tools/VLC/ for bundling. Anything the build had to install is removed
+    again afterwards, so the machine is left as it was found (the copies are
+    already baked into the bundle).
     """
     import glob as glob_module
 
@@ -584,9 +589,11 @@ def _download_vlc_linux(vlc_dir, username=None, password=None):
     print("  Looking for system VLC libraries to bundle...")
     libvlc_src = _find_system_libvlc(search_paths)
 
+    installed_pkgs = []
     if not libvlc_src:
         # No portable Linux VLC exists, so install it then look again.
-        if _install_vlc_linux_pkgs(password):
+        ok, installed_pkgs = _install_vlc_linux_pkgs(password)
+        if ok:
             libvlc_src = _find_system_libvlc(search_paths)
 
     if not libvlc_src:
@@ -619,6 +626,16 @@ def _download_vlc_linux(vlc_dir, username=None, password=None):
             break
     if not copied_plugins:
         print("  WARNING: VLC plugins directory not found; playback may fail.")
+
+    # Leave the machine as we found it: remove any VLC packages the build had to
+    # install (the libs are now copied into Tools/VLC and bundled).
+    if installed_pkgs:
+        try:
+            from wine_builder import _remove_linux_pkgs
+            _remove_linux_pkgs(installed_pkgs, password or '')
+        except Exception as e:
+            print(f"  (VLC package cleanup skipped: {e})")
+
     print(f"  VLC bundled into {vlc_dir}")
     return True
 
