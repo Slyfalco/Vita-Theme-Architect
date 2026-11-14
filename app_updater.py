@@ -97,11 +97,8 @@ def _release_dict(data):
         'prerelease': bool(data.get('prerelease')),
         # Web page for this release's full notes ("Full changelog" button).
         'html_url': data.get('html_url') or '',
-        # `url` is the public browser link (works once public); `api_url` is the
-        # asset API endpoint needed to download from a PRIVATE repo with a token.
         'assets': [{'name': a.get('name', ''),
                     'url': a.get('browser_download_url', ''),
-                    'api_url': a.get('url', ''),
                     'size': a.get('size', 0)}
                    for a in (data.get('assets') or [])],
     }
