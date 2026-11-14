@@ -1217,19 +1217,39 @@ def run_nuitka():
         return n
 
     _done = _threading.Event()
+    # On a real console, update one line in place (live ticking timer). Through a
+    # pipe/log, carriage returns would corrupt the file, so fall back to a fresh
+    # line at a slower cadence.
+    try:
+        _isatty = sys.stdout.isatty()
+    except Exception:
+        _isatty = False
+    # Console: tick every second. Piped: default 30s, but a wrapper (build-all.ps1)
+    # can speed it up via VTA_HEARTBEAT_SECS when it renders the line in place.
+    if _isatty:
+        _interval = 1
+    else:
+        try:
+            _interval = max(1, int(os.environ.get('VTA_HEARTBEAT_SECS', '30') or 30))
+        except ValueError:
+            _interval = 30
 
     def _heartbeat():
         start = _time.time()
-        while not _done.wait(30):
+        while not _done.wait(_interval):
             mins, secs = divmod(int(_time.time() - start), 60)
             objs = _count_objects()
             if objs:
                 phase = f"compiling C code: {objs} object files built"
             else:
-                phase = ("analyzing/optimizing modules "
-                         "(no C files yet - this phase is long and silent)")
-            print(f"  [Nuitka] {mins:02d}:{secs:02d} elapsed - {phase}...",
-                  flush=True)
+                phase = "analyzing/optimizing modules (no C files yet)"
+            line = f"  [Nuitka] {mins:02d}:{secs:02d} elapsed - {phase}"
+            if _isatty:
+                print("\r" + line.ljust(72), end="", flush=True)
+            else:
+                print(line + "...", flush=True)
+        if _isatty:
+            print(flush=True)  # end the in-place line with a newline
 
     _hb = _threading.Thread(target=_heartbeat, daemon=True)
     _hb.start()
