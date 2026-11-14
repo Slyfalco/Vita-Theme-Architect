@@ -1732,10 +1732,24 @@ def main():
 
     # Build/download Wine for non-Windows (at9tool + VGAudioCli.exe need it)
     wine_ok = True
+    wine_optional = False
     if platform.system() != 'Windows':
         print_step(6, "Building/downloading Wine...")
         from wine_builder import build_wine
         wine_ok = build_wine(username=cred_username, password=cred_password)
+        # No pre-built portable Wine exists for Linux ARM64 (it would run the
+        # Windows-only audio tools). Treat its absence as a non-fatal platform
+        # limitation rather than failing the whole build: the app still builds and
+        # runs; only AT9 *encoding* (at9tool via Wine) is unavailable on
+        # linux-arm64 until the native codec (v2). AT9 decode has an ffmpeg
+        # fallback. Everywhere else a Wine failure is still fatal.
+        if (not wine_ok and platform.system() == 'Linux'
+                and platform.machine().lower() in ('aarch64', 'arm64')):
+            wine_optional = True
+            print("\n  NOTE: no pre-built Wine is available for Linux ARM64, so the")
+            print("  Windows audio tools can't run here. Continuing WITHOUT Wine:")
+            print("  AT9 encoding is unavailable on linux-arm64 (decode still works")
+            print("  via ffmpeg); the rest of the app is unaffected.")
 
     print_header("Setup Summary")
     print(f"  {'Build type:':<20} {build_type}")
@@ -1749,9 +1763,16 @@ def main():
         results.append(("Wine (bundled)", wine_ok))
 
     for name, ok in results:
-        print(f"  {name + ':':<20} {'OK' if ok else 'FAILED'}")
+        if name == "Wine (bundled)" and not ok and wine_optional:
+            status = "SKIPPED (unavailable on linux-arm64)"
+        else:
+            status = "OK" if ok else "FAILED"
+        print(f"  {name + ':':<20} {status}")
 
-    if not (all(ok for _, ok in results) and tools_ok):
+    # Wine on linux-arm64 is an optional platform limitation, not a build failure.
+    fatal = [(n, ok) for (n, ok) in results
+             if not (n == "Wine (bundled)" and wine_optional)]
+    if not (all(ok for _, ok in fatal) and tools_ok):
         print(f"\n  Some steps failed. Please resolve issues above before building.")
         sys.exit(1)
 
