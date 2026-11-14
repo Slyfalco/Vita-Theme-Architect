@@ -665,7 +665,15 @@ def download_vlc_portable(username=None, password=None):
 
 
 def install_pip_deps():
-    """Install Python dependencies from requirements.txt."""
+    """Install Python dependencies from requirements.txt.
+
+    Set VTA_SKIP_PIP=1 to skip this when the venv is already provisioned — pip's
+    resolver re-walks the whole tree every run (slow, and it can stall on
+    Windows-ARM), so build-all.ps1 installs deps once and then sets this flag.
+    """
+    if os.environ.get('VTA_SKIP_PIP', '').strip().lower() in ('1', 'true', 'yes'):
+        print("  Skipping dependency install (VTA_SKIP_PIP set — venv already provisioned).")
+        return True
     req_file = os.path.join(PROJECT_ROOT, 'requirements.txt')
     if not os.path.exists(req_file):
         return True
@@ -979,6 +987,18 @@ def run_nuitka():
 
     # ── Build the Nuitka command ────────────────────────────────────────
     cmd = [sys.executable, '-m', 'nuitka']
+
+    # Never prompt to download Nuitka's helper tools (ccache, the Windows
+    # dependency walker, etc.). On a fresh machine an unattended build would
+    # otherwise HANG on a hidden [Y/n] prompt right after "Including Windows
+    # Runtime DLLs" while its output is redirected to a log.
+    cmd += ['--assume-yes-for-downloads']
+
+    # Textual progress (phase + percentage) instead of the terminal-only bar, so
+    # it's visible through a pipe/log (set by build-all.ps1). Otherwise Nuitka is
+    # silent during the minutes-long module-analysis phase and looks hung.
+    if os.environ.get('VTA_NUITKA_PROGRESS', '').strip().lower() in ('1', 'true', 'yes'):
+        cmd += ['--show-progress']
 
     # Mode — standalone on every platform (required for the .app bundle; no
     # extraction lag; and the release secure modules are added to the output
