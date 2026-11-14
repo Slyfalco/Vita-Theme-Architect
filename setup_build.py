@@ -143,6 +143,13 @@ def download_file(url, dest, description=""):
                 total = int(total)
                 downloaded = 0
                 block_size = 8192
+                try:
+                    _tty = sys.stdout.isatty()
+                except Exception:
+                    _tty = False
+                import time as _t
+                _last_pct = -1
+                _last_emit = 0.0
                 while True:
                     chunk = resp.read(block_size)
                     if not chunk:
@@ -150,8 +157,22 @@ def download_file(url, dest, description=""):
                     out.write(chunk)
                     downloaded += len(chunk)
                     pct = int(downloaded * 100 / total)
-                    print(f"\r  Progress: {pct}% ({downloaded // 1024}KB / {total // 1024}KB)", end='', flush=True)
-                print()
+                    if _tty:
+                        # Real console: update one line in place.
+                        print(f"\r  Progress: {pct}% ({downloaded // 1024}KB / {total // 1024}KB)", end='', flush=True)
+                    else:
+                        # Piped (build-all): a \r line never flushes through the pipe
+                        # until the final newline, so emit throttled tagged lines that
+                        # the wrapper renders inline (every 2% or 0.5s, not per block).
+                        now = _t.time()
+                        if pct != _last_pct and (pct >= _last_pct + 2 or now - _last_emit >= 0.5):
+                            print(f"  [download] {pct}% ({downloaded // 1024}KB / {total // 1024}KB)", flush=True)
+                            _last_pct = pct
+                            _last_emit = now
+                if _tty:
+                    print()
+                else:
+                    print(f"  [download] 100% ({total // 1024}KB) done", flush=True)
             else:
                 out.write(resp.read())
         print(f"  Saved to: {dest}")
