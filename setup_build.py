@@ -1193,10 +1193,53 @@ def run_nuitka():
     else:
         mode = f'standalone (dist/{APP_FOLDER_NAME}/)'
     print(f"  Mode: {mode}")
-    print(f"  Running Nuitka...")
+    print(f"  Running Nuitka...  (heartbeat every 30s below; the first phase"
+          f" builds no files and can run many minutes)", flush=True)
+
+    # Guaranteed life signal. Nuitka's own --show-progress can stay silent through
+    # a pipe during the long module-analysis phase, which looks like a hang. This
+    # heartbeat always prints elapsed time and, once C compilation starts, the
+    # number of object files produced so far (so you can see it advancing), no
+    # matter what Nuitka chooses to emit.
+    import time as _time
+    import threading as _threading
+    build_dir = os.path.join(dist_dir, APP_FOLDER_NAME + '.build')
+
+    def _count_objects():
+        n = 0
+        try:
+            for _r, _d, _f in os.walk(build_dir):
+                for _name in _f:
+                    if _name.endswith('.o') or _name.endswith('.obj'):
+                        n += 1
+        except OSError:
+            pass
+        return n
+
+    _done = _threading.Event()
+
+    def _heartbeat():
+        start = _time.time()
+        while not _done.wait(30):
+            mins, secs = divmod(int(_time.time() - start), 60)
+            objs = _count_objects()
+            if objs:
+                phase = f"compiling C code: {objs} object files built"
+            else:
+                phase = ("analyzing/optimizing modules "
+                         "(no C files yet - this phase is long and silent)")
+            print(f"  [Nuitka] {mins:02d}:{secs:02d} elapsed - {phase}...",
+                  flush=True)
+
+    _hb = _threading.Thread(target=_heartbeat, daemon=True)
+    _hb.start()
     try:
-        result = subprocess.run(cmd, cwd=PROJECT_ROOT)
+        proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT)
+        returncode = proc.wait()
+        result = subprocess.CompletedProcess(cmd, returncode)
     finally:
+        _done.set()
+        _hb.join(timeout=2)
         # Generated per build; they live on only inside the executable.
         for path in prebuild_files:
             if os.path.exists(path):
