@@ -43,6 +43,8 @@ Themes/Template/*
 Compile.py
 CompileAlt.py
 .venv-x64/
+.venv-arm64/
+.venv-*/
 
 # Local dev only: private-repo updater test token + launchers (NEVER commit)
 .env
