@@ -89,6 +89,7 @@ jobs:
           PYTHONUTF8: "1"
           VTA_NUITKA_PROGRESS: "1"
           VTA_SKIP_PIP: "1"            # deps installed above
+          VTA_NONINTERACTIVE: "1"      # no tty in CI; skip the sudo credential prompt
         run: |
           FLAG=""
           if [ "${{ matrix.edition }}" = "standard" ]; then FLAG="--no-icon-ai"; fi

@@ -285,9 +285,28 @@ def get_credentials():
         return None, None
 
     import getpass
+    current_user = (os.environ.get('USER') or os.environ.get('LOGNAME')
+                    or os.environ.get('SUDO_USER') or '')
+
+    # Non-interactive build (CI, or no terminal attached): input()/getpass() raise
+    # EOFError with no tty. Use the current user and an optional password from the
+    # environment (CI runners have passwordless sudo). Honour VTA_NONINTERACTIVE
+    # and also auto-detect a missing tty so this never hangs or crashes a build.
+    non_interactive = (os.environ.get('VTA_NONINTERACTIVE', '').strip().lower()
+                       in ('1', 'true', 'yes'))
+    try:
+        if not sys.stdin.isatty():
+            non_interactive = True
+    except Exception:
+        non_interactive = True
+    if non_interactive:
+        user = current_user or 'root'
+        print(f"\n  Non-interactive build: using '{user}' for privileged steps "
+              f"(no credential prompt).")
+        return user, os.environ.get('VTA_SUDO_PASSWORD', '')
+
     print("\n  Some build steps require admin privileges (Wine build, etc.).")
     print("  Credentials are requested once and reused for all steps.")
-    current_user = os.environ.get('USER', os.environ.get('LOGNAME', ''))
     if current_user:
         print(f"  Current user detected: {current_user}")
         use_current = input(f"  Use '{current_user}'? [Y/n]: ").strip().lower()
