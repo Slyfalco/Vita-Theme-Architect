@@ -30,7 +30,7 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkRe
 
 from constants import CURRENT_VERSION, UPDATE_URL, SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, crypted, ONLINE_FEATURES_AVAILABLE, ONLINE_FEATURES_UNAVAILABLE_MSG, theme_pages, store_path, load_path
 import app_updater
-from audio import (convert_at9_to_wav, convert_to_at9, removeTemp, AudioPlayerDialog, find_at9tool, AT9TOOL_REQUIRED_MSG, ENCODABLE_AUDIO_EXTS)
+from audio import (convert_at9_to_wav, convert_to_at9, removeTemp, AudioPlayerDialog, find_at9tool, AT9TOOL_REQUIRED_MSG, ENCODABLE_AUDIO_EXTS, read_at9_loop_info)
 from wine_setup import shutdown_wine
 from widgets import ColorPickerButton, play_done_sound
 from settings_dialog import SettingsDialog
@@ -1060,7 +1060,9 @@ class VitaThemeArchitect(QMainWindow):
         ok = convert_at9_to_wav(bgm_at9_path, temp_wav_path, status_callback=_bgm_status)
         progress.close()
         if ok:
-            player_dialog = AudioPlayerDialog(temp_wav_path, theme_title, self)
+            # Read the AT9 loop point so the player can mimic the Vita's BGM loop.
+            loop_info = read_at9_loop_info(bgm_at9_path)
+            player_dialog = AudioPlayerDialog(temp_wav_path, theme_title, self, loop_info=loop_info)
             if getattr(player_dialog, 'init_ok', False):
                 player_dialog.exec()  # temp wav cleaned in AudioPlayerDialog.closeEvent
             else:

@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import datetime
 import traceback
+import struct
+from collections import namedtuple
 
 from wine_setup import (
     startup_wine_warmup,
@@ -178,7 +180,7 @@ except (ImportError, OSError) as _sf_err:
 
 from PySide6.QtWidgets import (
     QDialog, QPushButton, QVBoxLayout, QHBoxLayout,
-    QSlider, QLabel, QStyle, QMessageBox
+    QSlider, QLabel, QStyle, QMessageBox, QCheckBox
 )
 from PySide6.QtCore import Qt, QTimer, QDir
 
@@ -534,6 +536,137 @@ def _normalise_to_pcm16_wav(input_path, tmp_wav):
     return None
 
 
+# An AT9 file is a RIFF/WAVE container. Its true (un-looped) length and loop
+# points are stored in standard chunks and can be read WITHOUT decoding:
+#   fact  -> field[0] = total decoded samples (the true length);
+#            field[1] = encoder delay in samples (priming, typically 256).
+#   smpl  -> sample loops; each loop start/end is in AT9 sample coordinates,
+#            which INCLUDE the encoder delay.
+# Decoders that strip the delay (at9tool, VGAudioCli) emit audio aligned to
+# sample 0, so loop points in the DECODED WAV are the AT9 values minus the delay.
+# (at9tool prints exactly this: "Loop Position = [smpl.start-delay, total-1]".)
+At9LoopInfo = namedtuple('At9LoopInfo', [
+    'sample_rate',    # Hz
+    'channels',
+    'total_samples',  # true decoded length (fact field[0]); None if unknown
+    'delay',          # encoder priming samples (fact field[1]); 0 if absent
+    'has_loop',       # True when a forward loop is defined
+    'loop_start',     # loop start in DECODED-WAV sample coords (>= 0)
+    'loop_end',       # loop end in DECODED-WAV sample coords (== total_samples)
+    'is_whole_loop',  # True when the loop covers the whole track (start == 0)
+])
+
+
+def read_at9_loop_info(at9_path):
+    """Parse an AT9 (RIFF/WAVE) file's fmt/fact/smpl chunks and return an
+    At9LoopInfo in decoded-WAV sample coordinates, or None if the file isn't a
+    readable AT9/RIFF. Reads only the small header chunks (seeks over `data`),
+    so it's cheap to call before decoding."""
+    try:
+        with open(at9_path, 'rb') as f:
+            if f.read(4) != b'RIFF':
+                return None
+            f.read(4)  # RIFF size
+            if f.read(4) != b'WAVE':
+                return None
+            sample_rate = channels = None
+            total_samples = None
+            delay = 0
+            has_loop = False
+            smpl_start = smpl_end = None
+            while True:
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    break
+                cid = hdr[:4]
+                csize = struct.unpack('<I', hdr[4:8])[0]
+                if cid == b'fmt ':
+                    body = f.read(csize)
+                    if len(body) >= 16:
+                        (_tag, channels, sample_rate,
+                         _avg, _align, _bits) = struct.unpack('<HHIIHH', body[:16])
+                elif cid == b'fact':
+                    body = f.read(csize)
+                    if len(body) >= 4:
+                        total_samples = struct.unpack('<I', body[:4])[0]
+                    if len(body) >= 8:
+                        delay = struct.unpack('<I', body[4:8])[0]
+                elif cid == b'smpl':
+                    body = f.read(csize)
+                    if len(body) >= 36:
+                        num_loops = struct.unpack('<I', body[28:32])[0]
+                        if num_loops >= 1 and len(body) >= 36 + 24:
+                            # first loop: cueId, type, start, end, fraction, playCount
+                            _cue, _ltype, smpl_start, smpl_end = struct.unpack(
+                                '<IIII', body[36:52])
+                            has_loop = True
+                else:
+                    # Skip this chunk's body (plus RIFF word padding).
+                    f.seek(csize + (csize & 1), os.SEEK_CUR)
+                    continue
+                if csize & 1:
+                    f.seek(1, os.SEEK_CUR)  # pad byte after an odd-size body
+
+            if sample_rate is None:
+                return None
+
+            loop_start = loop_end = None
+            is_whole_loop = False
+            if has_loop and smpl_start is not None:
+                loop_start = max(0, smpl_start - delay)
+                # The loop always ends at the true end of the audio.
+                loop_end = total_samples if total_samples else (smpl_end - delay + 1)
+                is_whole_loop = (loop_start == 0)
+            return At9LoopInfo(
+                sample_rate=sample_rate, channels=channels,
+                total_samples=total_samples, delay=delay,
+                has_loop=has_loop, loop_start=loop_start, loop_end=loop_end,
+                is_whole_loop=is_whole_loop,
+            )
+    except Exception as e:
+        _log_error('read_at9_loop_info', f"failed to parse {at9_path}: {e}", exc=e)
+        return None
+
+
+def _trim_wav_to_frames(wav_path, max_frames):
+    """Truncate a WAV to at most max_frames frames (never pads). Returns True if
+    it trimmed. Used to normalise decoder output to the AT9's true length."""
+    import wave
+    try:
+        with wave.open(wav_path, 'rb') as w:
+            nframes = w.getnframes()
+            if nframes <= max_frames:
+                return False
+            params = w.getparams()
+            frames = w.readframes(max_frames)
+        tmp = wav_path + '.trim'
+        with wave.open(tmp, 'wb') as o:
+            o.setnchannels(params.nchannels)
+            o.setsampwidth(params.sampwidth)
+            o.setframerate(params.framerate)
+            o.writeframes(frames)
+        os.replace(tmp, wav_path)
+        return True
+    except Exception as e:
+        _log_error('trim_wav', f"failed to trim {wav_path}: {e}", exc=e)
+        return False
+
+
+def _finalize_decoded_wav(at9_path, wav_path):
+    """Normalise a freshly decoded WAV to the AT9's true, un-looped length.
+
+    Every decoder is made to agree on length: at9tool is called with `-repeat 1`
+    (no baked loop) and VGAudioCli already emits the true length, so this only
+    trims trailing padding (e.g. ffmpeg, which doesn't trim). Best-effort: a
+    failure leaves the decoded WAV untouched."""
+    try:
+        info = read_at9_loop_info(at9_path)
+        if info and info.total_samples:
+            _trim_wav_to_frames(wav_path, info.total_samples)
+    except Exception as e:
+        _log_error('finalize_decoded_wav', f"{wav_path}: {e}", exc=e)
+
+
 def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
     """Convert AT9 to WAV using at9tool (preferred), VGAudioCli, or ffmpeg (last resort).
 
@@ -557,7 +690,11 @@ def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
 
     if os.path.exists(at9tool_path):
         try:
-            cmd = _at9tool_cmd(at9tool_path) + ['-d', at9_path, wav_path]
+            # `-repeat 1`: decode the loop section once (true length). Without it,
+            # at9tool defaults to `-repeat 2`, baking an extra copy of the loop
+            # region and ~doubling the output. With it, at9tool's output matches
+            # VGAudioCli (the true, un-looped length) bit-for-bit.
+            cmd = _at9tool_cmd(at9tool_path) + ['-repeat', '1', '-d', at9_path, wav_path]
             env = _wine_env() if platform.system() != 'Windows' else None
             use_new_session = platform.system() != 'Windows'
             r = subprocess.run(
@@ -566,6 +703,7 @@ def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
             )
             _clean_wine_runtime_cache()
             if r.returncode == 0:
+                _finalize_decoded_wav(at9_path, wav_path)
                 return True
             stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
             print(f"  at9tool decode failed (exit code {r.returncode})")
@@ -616,6 +754,7 @@ def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
                 if not is_win:
                     _clean_wine_runtime_cache()
                 if r.returncode == 0:
+                    _finalize_decoded_wav(at9_path, wav_path)
                     return True
                 stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
                 print(f"  VGAudioCli decode failed (exit code {r.returncode})")
@@ -640,6 +779,7 @@ def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
     # 3) Last resort: ffmpeg — slower but has native ATRAC9 support.
     print("  WARNING: Falling back to ffmpeg for decoding. This may take a little longer.")
     if _try_ffmpeg_decode(at9_path, wav_path, status_callback=status_callback):
+        _finalize_decoded_wav(at9_path, wav_path)
         return True
 
     _log_error('convert_at9_to_wav',
@@ -737,10 +877,22 @@ def removeTemp(file):
         os.remove(QDir.toNativeSeparators(file))
         print(f"Temporary file deleted: {file}")
 
+# When looping is enabled, seek back to the loop point this many ms before the
+# true end. The UI timer polls every 200 ms, so this guard must exceed one tick
+# to catch the end reliably; the small tail skipped is why this best-effort VLC
+# loop isn't seamless (sample-accurate looping needs raw PCM — v2 Phase 2).
+_LOOP_GUARD_MS = 300
+
+
 class AudioPlayerDialog(QDialog):
-    def __init__(self, wav_path, theme_name, parent=None):
+    def __init__(self, wav_path, theme_name, parent=None, loop_info=None):
         super().__init__(parent)
         self.wav_path = wav_path
+        # loop_info: an audio.At9LoopInfo (or None). Drives the loop checkbox —
+        # the fraction of the track to jump back to at the end.
+        self._loop_info = loop_info
+        self._loop_enabled = False
+        self._loop_frac = self._compute_loop_fraction(loop_info)
         self.setWindowTitle(f"🔊 Playing BGM - {theme_name}")
         self.setMinimumWidth(400)
         # The caller checks init_ok and only exec()s the dialog when it is True;
@@ -809,6 +961,24 @@ class AudioPlayerDialog(QDialog):
         self.slider.setEnabled(False)
         layout.addWidget(self.slider)
 
+        # Loop checkbox — mimics the Vita's AT9 looping. When enabled, playback
+        # jumps back to the BGM loop point (read from the AT9) at the end instead
+        # of stopping. The total-length display is unchanged.
+        self.loop_checkbox = QCheckBox("🔁 Loop (mimic Vita BGM looping)")
+        if loop_info is not None and loop_info.has_loop and loop_info.loop_start:
+            # Partial loop: tell the user where it jumps back to.
+            loop_s = loop_info.loop_start // loop_info.sample_rate
+            self.loop_checkbox.setToolTip(
+                f"Loops back to {loop_s // 60:02d}:{loop_s % 60:02d} (the BGM loop "
+                f"point) at the end.\nBest-effort seek — a seamless, gap-free loop "
+                f"is planned for a later version.")
+        else:
+            self.loop_checkbox.setToolTip(
+                "Loops the whole track at the end.\nBest-effort seek — a seamless, "
+                "gap-free loop is planned for a later version.")
+        self.loop_checkbox.toggled.connect(self._on_loop_toggled)
+        layout.addWidget(self.loop_checkbox)
+
         self.status_label = QLabel("00:00 / 00:00")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet(
@@ -831,6 +1001,25 @@ class AudioPlayerDialog(QDialog):
         # ---------------------------------
 
         self.timer.start()
+
+    @staticmethod
+    def _compute_loop_fraction(loop_info):
+        """Fraction (0.0–1.0) of the track to seek back to when looping.
+        Uses the AT9 loop point when known, else 0.0 (loop the whole track)."""
+        if (loop_info is not None and loop_info.total_samples
+                and loop_info.loop_start is not None and loop_info.loop_start > 0):
+            return max(0.0, min(1.0, loop_info.loop_start / loop_info.total_samples))
+        return 0.0
+
+    def _on_loop_toggled(self, checked):
+        self._loop_enabled = bool(checked)
+
+    def _loop_now(self):
+        """Seek back to the loop point and keep playing (best-effort VLC loop)."""
+        self.player.set_position(self._loop_frac)
+        if not self.player.is_playing():
+            self.player.play()
+        self._ended = False
 
     def _load_media(self):
         """Loads media and checks file existence."""
@@ -892,6 +1081,11 @@ class AudioPlayerDialog(QDialog):
         # Poll for end-of-media / error (replaces libVLC event callbacks).
         state = self.player.state()
         if state == vlc_player.STATE_ENDED and not self._ended:
+            # If we reached the true end before the proactive loop-seek caught it,
+            # restart at the loop point (best-effort — there will be a brief gap).
+            if self._loop_enabled:
+                self._loop_now()
+                return
             self._ended = True
             self.endOfMedia()
             return
@@ -910,6 +1104,14 @@ class AudioPlayerDialog(QDialog):
 
         current_ms = self.player.get_time()
         duration_ms = self.player.get_length()
+
+        # Proactively loop back a little before the true end, so playback never
+        # stops (smoother than waiting for STATE_ENDED). Not sample-accurate — a
+        # gap-free loop is a later (PCM-based) feature.
+        if (self._loop_enabled and duration_ms > 0 and current_ms >= 0
+                and (duration_ms - current_ms) <= _LOOP_GUARD_MS):
+            self._loop_now()
+            current_ms = self.player.get_time()
 
         if duration_ms > 0:
             pos_s = current_ms // 1000
