@@ -1147,9 +1147,12 @@ def run_nuitka():
         vlc_app = os.path.join(vlc_dir, 'VLC.app')
         vlc_lib = os.path.join(vlc_app, 'Contents', 'MacOS', 'lib')
         vlc_plugins = os.path.join(vlc_app, 'Contents', 'MacOS', 'plugins')
-        # Use per-file includes to avoid Nuitka's "no data files" warning that
-        # fires when a directory contains only symlinks at its top level.
-        cmd += _include_dir_files(vlc_lib, 'lib')
+        # Per-directory includes (one --include-data-dir per folder that holds
+        # files): avoids Nuitka's "no data files" skip on symlink-only top levels
+        # AND keeps the command line short enough for macOS's small ARG_MAX
+        # (per-file includes for VLC+Wine overflow exec() -> "Argument list too
+        # long").
+        cmd += _include_tree(vlc_lib, 'lib')
         if os.path.isdir(vlc_plugins):
             # Drop plugins.dat — it is a VLC plugin-path cache generated on the
             # build machine with absolute paths that are invalid in the bundle.
@@ -1158,8 +1161,8 @@ def run_nuitka():
             if os.path.exists(plugins_dat):
                 os.remove(plugins_dat)
                 print("  Removed stale plugins.dat from VLC plugins dir")
-            # Use per-file includes for the same symlink-safety reason as lib/.
-            cmd += _include_dir_files(vlc_plugins, 'plugins')
+            # Per-directory includes (same ARG_MAX + symlink reason as lib/).
+            cmd += _include_tree(vlc_plugins, 'plugins')
     elif system == 'Linux':
         for so in glob_module.glob(os.path.join(vlc_dir, 'libvlc*.so*')):
             so_name = os.path.basename(so)
@@ -1175,9 +1178,15 @@ def run_nuitka():
         for subdir in ('bin', 'lib', 'lib64', 'share'):
             src = os.path.join(wine_dir, subdir)
             if os.path.isdir(src):
-                # Use per-file includes for lib/ which may contain only symlinks
-                # at its top level — --include-data-dir warns on those.
-                cmd += _include_dir_files(src, f'Tools/wine_minimal/{subdir}')
+                if system == 'Darwin':
+                    # macOS ARG_MAX is small (~256KB); per-file includes for Wine's
+                    # thousands of files overflow exec() ("Argument list too long").
+                    # Per-directory includes keep the command line short and still
+                    # avoid Nuitka's symlink-only-top-level skip (see _include_tree).
+                    cmd += _include_tree(src, f'Tools/wine_minimal/{subdir}')
+                else:
+                    # Linux has a large ARG_MAX; keep per-file includes.
+                    cmd += _include_dir_files(src, f'Tools/wine_minimal/{subdir}')
         # wine_prefix is NOT bundled — it is built at first launch by
         # startup_wine_warmup() inside _init_wine_prefix_if_needed().
         # This avoids bundling ~10 MB of prefix data and, more importantly,
