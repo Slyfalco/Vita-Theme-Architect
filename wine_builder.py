@@ -750,6 +750,19 @@ def _cleanup_wine_installation(username, password):
     print("  Stripping Wine to minimal at9tool footprint...")
     total_saved = 0
 
+    # The per-DLL/.so/.dylib/bin whitelists below were tuned and TESTED only
+    # against the old CrossOver Wine (now discontinued). The current WineHQ macOS
+    # build ships a different library set, so pruning by that whitelist can
+    # silently delete something it needs -> at9tool/VGAudioCli then fail at
+    # runtime, which a CI build can't catch. So the whitelist prunes run only when
+    # explicitly opted in (VTA_WINE_AGGRESSIVE_STRIP=1) AFTER verifying on a real
+    # Mac. By default keep ALL Wine libraries and strip only clearly-safe content
+    # (unused data dirs, static libs, debug symbols).
+    aggressive = os.environ.get('VTA_WINE_AGGRESSIVE_STRIP', '').strip().lower() in ('1', 'true', 'yes')
+    if not aggressive:
+        print("    Conservative strip: keeping ALL Wine libraries intact")
+        print("    (set VTA_WINE_AGGRESSIVE_STRIP=1 to minimise, once verified on macOS).")
+
     # ── 1. Nuke entire directories that are never needed ─────────────────
     dirs_to_wipe = {
         os.path.join(WINE_DIR, 'share', 'wine', 'gecko'): 'gecko (~100MB)',
@@ -775,7 +788,7 @@ def _cleanup_wine_installation(username, password):
 
     # ── 2. Whitelist-prune x86_64-windows/ — remove all DLLs not needed ──
     win64_dir = os.path.join(WINE_DIR, 'lib', 'wine', 'x86_64-windows')
-    if os.path.isdir(win64_dir):
+    if aggressive and os.path.isdir(win64_dir):
         removed_dll = 0
         removed_count = 0
         for fname in os.listdir(win64_dir):
@@ -804,7 +817,7 @@ def _cleanup_wine_installation(username, password):
 
     # ── 3. Whitelist-prune x86_64-unix/ — remove unused .so loaders ──────
     unix_dir = os.path.join(WINE_DIR, 'lib', 'wine', 'x86_64-unix')
-    if os.path.isdir(unix_dir):
+    if aggressive and os.path.isdir(unix_dir):
         removed_so = 0
         for fname in os.listdir(unix_dir):
             if fname in _KEEP_UNIX_SOS:
@@ -824,7 +837,7 @@ def _cleanup_wine_installation(username, password):
     # ── 4. Deduplicate dylibs (replace copies with symlinks) ─────────────
     #    and remove dylibs not needed for CLI Wine
     lib_dir = os.path.join(WINE_DIR, 'lib')
-    if os.path.isdir(lib_dir):
+    if aggressive and os.path.isdir(lib_dir):
         removed_dylib = 0
         deduped = 0
         dylibs = [f for f in os.listdir(lib_dir)
@@ -890,7 +903,7 @@ def _cleanup_wine_installation(username, password):
     bin_dir = os.path.join(WINE_DIR, 'bin')
     keep_bins = {'wine', 'wine64', 'wine-preloader', 'wine64-preloader',
                  'wineserver', 'wineboot', 'regsvr32'}
-    if os.path.isdir(bin_dir):
+    if aggressive and os.path.isdir(bin_dir):
         removed_bin = 0
         for fname in os.listdir(bin_dir):
             if fname not in keep_bins:
