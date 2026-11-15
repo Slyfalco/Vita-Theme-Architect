@@ -34,23 +34,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Apple Silicon only: GitHub no longer provisions Intel macOS runners for
-        # this repo (macos-13 never schedules, macos-14 instant-cancels); macos-15
-        # (Apple Silicon / arm64) is the one that works. A native x64 build for
-        # Intel Macs can be added later by building under `arch -x86_64` (Rosetta)
-        # on this same arm64 runner.
-        os: [macos-15]                # Apple Silicon (arm64)
+        # All on the Apple Silicon runner (macos-15; GitHub no longer provisions
+        # Intel macOS runners here: macos-13 never schedules, macos-14 instant-
+        # cancels). arm64 builds natively; x64 builds under Rosetta 2 with an
+        # x86_64 Python, for Intel Macs.
+        arch: [arm64, x64]
         edition: [ai, standard]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - name: Set up Python 3.12
+      - name: Install Rosetta 2
+        # x64 jobs run an x86_64 Python + Wine under Rosetta; harmless on arm64.
+        # Installed before Python so every later python invocation can run.
+        run: softwareupdate --install-rosetta --agree-to-license || true
+
+      - name: Set up Python 3.12 (${{ matrix.arch }})
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: "3.12"
+          architecture: ${{ matrix.arch }}
 
       - name: Normalise requirements.txt to UTF-8
         # requirements.txt is stored UTF-16 in-repo; pip can't read that.
@@ -82,11 +87,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-
-      - name: Install Rosetta 2
-        # The bundled Wine is an x86-64 build; it runs on Apple Silicon via
-        # Rosetta 2, which must be present for the build's Wine-prefix init.
-        run: softwareupdate --install-rosetta --agree-to-license || true
 
       - name: Build (${{ matrix.edition }})
         env:
@@ -149,7 +149,7 @@ jobs:
       - name: Upload artifact (backup copy)
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
-          name: vitaThemeArchitect-macos-${{ matrix.os }}-${{ matrix.edition }}
+          name: vitaThemeArchitect-macos-${{ matrix.arch }}-${{ matrix.edition }}
           path: dist/vitaThemeArchitect-macos-*-${{ matrix.edition }}.zip
           if-no-files-found: error
           retention-days: 14
