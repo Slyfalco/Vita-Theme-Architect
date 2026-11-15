@@ -1,0 +1,188 @@
+VitaTheme Architect
+End-User License Agreement (Official Build)
+
+Copyright (c) 2026 Slyfalco. All rights reserved.
+
+IMPORTANT - READ CAREFULLY. This End-User License Agreement ("Agreement") is a
+legal agreement between you ("you" or the "User") and Slyfalco (the "Publisher")
+for the VitaTheme Architect Official Build software application, including its
+executable program, bundled files, documentation, and any updates (together, the
+"Official Build" or "Application"). By installing, copying, or otherwise using the
+Official Build, you agree to be bound by the terms of this Agreement. If you do
+not agree to these terms, do not install or use the Official Build.
+
+
+1. DEFINITIONS
+
+   1.1 "Official Build" means the compiled binary distribution of VitaTheme
+       Architect published by the Publisher, including its executables, bundled
+       libraries, data files, documentation, and any updates provided by the
+       Publisher.
+
+   1.2 "Software" means the VitaTheme Architect source code published by the
+       Publisher, which is licensed separately under the VitaTheme Architect
+       License (the "Source License") in the project's source repository. This
+       Agreement governs your use of the Official Build; the Source License
+       governs the source code and any build you compile yourself from it.
+
+   1.3 "Service" means the online theme service and related online features
+       operated by or on behalf of the Publisher and accessed through the
+       Official Build.
+
+   1.4 "Third-Party Components" means the third-party libraries, runtimes, and
+       tools distributed with the Official Build, each of which is licensed under
+       its own separate terms (see Section 6).
+
+
+2. LICENSE GRANT
+
+   2.1 Subject to your continued compliance with this Agreement, the Publisher
+       grants you a personal, worldwide, non-exclusive, royalty-free, revocable
+       license to install and use the Official Build on devices that you own or
+       control, for your own personal or internal purposes.
+
+   2.2 You may make a reasonable number of copies of the Official Build for
+       back-up and installation purposes, provided that every copy retains this
+       Agreement and all copyright and other proprietary notices.
+
+
+3. RESERVED RIGHTS AND RESTRICTIONS
+
+   The Official Builds, and the name and branding "VitaTheme Architect", are
+   reserved to the Publisher. Except to the extent expressly permitted by this
+   Agreement, by the Source License for builds you compile yourself, or by the
+   licenses of the Third-Party Components, you may NOT:
+
+   3.1 circumvent, disable, remove, or tamper with any integrity-protection,
+       security, or licensing mechanism in the Official Build;
+
+   3.2 modify the Official Build and distribute it as if it were an Official
+       Build, or otherwise present any build as official, or as produced or
+       endorsed by the Publisher, when it is not;
+
+   3.3 use the "VitaTheme Architect" name, logo, or branding other than to
+       identify the unmodified Official Build;
+
+   3.4 remove or obscure any copyright, trademark, or other proprietary notice
+       contained in the Official Build; or
+
+   3.5 use the Official Build to infringe the rights of any third party or in
+       violation of any applicable law.
+
+   Nothing in this Agreement restricts the rights you have under the Source
+   License with respect to builds you compile yourself from the Software, or the
+   rights you have under the separate licenses of the Third-Party Components.
+
+
+4. UPDATES
+
+   The Official Build may check for, download, and install updates, either
+   automatically or at your request. Such updates are provided under the terms of
+   this Agreement unless they are accompanied by separate terms, in which case
+   those separate terms apply to the update.
+
+
+5. ONLINE SERVICE
+
+   5.1 The Official Build may access the Service to list, download, or submit
+       themes and related content. Your use of the Service must comply with
+       applicable law and with any acceptable-use terms made available by the
+       Publisher.
+
+   5.2 The Service is provided on an "as available" basis and may be changed,
+       limited, suspended, or discontinued at any time without notice. Access to
+       the Service may be restricted to Official Builds; unofficial or modified
+       builds are not authorized to access the Service.
+
+   5.3 Content that you download from or submit to the Service may be subject to
+       the rights of third parties. You are solely responsible for your use of
+       such content and for ensuring you have the necessary rights.
+
+
+6. THIRD-PARTY COMPONENTS
+
+   The Official Build includes Third-Party Components that are licensed
+   separately under their own terms, which take precedence for those components.
+   These include, without limitation:
+
+     - Qt (used via PySide6) - GNU Lesser General Public License, version 3
+       (LGPL-3.0);
+     - VLC / libVLC (media playback) - GNU Lesser General Public License;
+     - libsndfile and the associated audio codec libraries (including FLAC, Ogg,
+       Vorbis, Opus, mpg123, and LAME) - under their respective LGPL, BSD, and
+       other open-source licenses;
+     - the Python runtime - under the Python Software Foundation License; and
+     - other open-source components.
+
+   Copies of the applicable license texts and notices are provided with the
+   Official Build and/or in the project's documentation. Where a component is
+   licensed under the GNU Lesser General Public License, the Official Build ships
+   that component as separate, replaceable files so that you may replace it with
+   a compatible version as permitted by that license.
+
+
+7. OPTIONAL AI FEATURES
+
+   Certain optional features (such as AI icon generation) may, only at your
+   request, download additional software or model files, and/or may require you
+   to provide your own third-party API credentials (for example, for a cloud
+   image-generation service). Such downloads and any third-party services are
+   subject to their own terms and may incur costs charged by the relevant
+   provider. The Publisher is not responsible for third-party software, services,
+   or charges that you choose to use.
+
+
+8. DISCLAIMER OF WARRANTY
+
+   THE OFFICIAL BUILD IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF
+   ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO
+   THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+   TITLE, AND NON-INFRINGEMENT. THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE
+   OF THE OFFICIAL BUILD IS WITH YOU.
+
+
+9. LIMITATION OF LIABILITY
+
+   TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+   PUBLISHER BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
+   EXEMPLARY DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, REVENUE, OR GOODWILL,
+   ARISING OUT OF OR IN CONNECTION WITH THE OFFICIAL BUILD OR THIS AGREEMENT,
+   WHETHER IN AN ACTION OF CONTRACT, TORT (INCLUDING NEGLIGENCE), OR OTHERWISE,
+   AND EVEN IF THE PUBLISHER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+   NOTHING IN THIS AGREEMENT EXCLUDES OR LIMITS ANY LIABILITY THAT CANNOT BE
+   EXCLUDED OR LIMITED UNDER APPLICABLE LAW.
+
+
+10. TERMINATION
+
+    This Agreement is effective until terminated. It will terminate automatically
+    and immediately, without notice, if you fail to comply with any of its terms.
+    Upon termination you must cease all use of the Official Build and remove all
+    copies in your possession or control. Sections 3, 6, 8, 9, 10, and 11 survive
+    termination of this Agreement.
+
+
+11. GENERAL
+
+    11.1 This Agreement constitutes the entire agreement between you and the
+         Publisher regarding the Official Build, and it supplements, but does not
+         override, the separate licenses of the Third-Party Components or the
+         Source License.
+
+    11.2 VitaTheme Architect is an independent project. It is not affiliated
+         with, endorsed by, or sponsored by Sony Interactive Entertainment or any
+         of its affiliates. "PlayStation", "PS Vita", and related names and marks
+         are the property of their respective owners and are used for
+         identification purposes only.
+
+    11.3 If any provision of this Agreement is held to be invalid or
+         unenforceable, that provision will be enforced to the maximum extent
+         permissible and the remaining provisions will remain in full force and
+         effect.
+
+    11.4 The Publisher's failure to enforce any provision of this Agreement is
+         not a waiver of that or any other provision.
+
+
+By installing or using the Official Build, you acknowledge that you have read and
+understood this Agreement and agree to be bound by its terms.
