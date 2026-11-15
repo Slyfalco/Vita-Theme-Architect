@@ -37,11 +37,13 @@ WINE_VERSION = '9.0'
 LINUX_WINE_URL = f'https://github.com/Kron4ek/Wine-Builds/releases/download/{WINE_VERSION}/wine-{WINE_VERSION}-amd64.tar.xz'
 LINUX_WINE_ARM64_URL = f'https://github.com/Kron4ek/Wine-Builds/releases/download/{WINE_VERSION}/wine-{WINE_VERSION}-aarch64.tar.xz'
 
-# macOS: CrossOver Wine (Gcenx/winecx) — includes CodeWeavers patches for
-# Apple Silicon.  Standard Wine's preloader cannot exec() under Rosetta 2
-# due to ARM64 low-memory mapping restrictions.  CrossOver Wine fixes this.
-MACOS_WINECX_API_URL = 'https://api.github.com/repos/Gcenx/winecx/releases?per_page=10'
-MACOS_WINECX_FALLBACK_URL = 'https://github.com/Gcenx/winecx/releases/download/crossover-wine-23.7.1-1/wine-crossover-23.7.1-1-osx64.tar.xz'
+# macOS: the official WineHQ macOS packages (Gcenx/macOS_Wine_builds). These are
+# osx64 (x86-64) builds that run on Apple Silicon via Rosetta 2 (Rosetta must be
+# installed). The former CrossOver source (Gcenx/winecx) has been discontinued;
+# modern Wine handles the Apple-Silicon/Rosetta exec restrictions that once
+# required CrossOver.
+MACOS_WINECX_API_URL = 'https://api.github.com/repos/Gcenx/macOS_Wine_builds/releases?per_page=12'
+MACOS_WINECX_FALLBACK_URL = 'https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.21/wine-staging-11.21-osx64.tar.xz'
 
 WINETRICKS_URL = 'https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks'
 
@@ -364,32 +366,41 @@ def _download_wine_linux(username, password):
 
 # ── macOS: download CrossOver Wine ─────────────────────────────────────
 def _get_crossover_wine_url():
-    """Query the Gcenx/winecx GitHub API for the latest CrossOver Wine release.
+    """Query the Gcenx/macOS_Wine_builds GitHub API for the latest Wine macOS
+    package (osx64). Prefers a stable build, then staging, then any osx64 build.
     Falls back to a known-good version if the API is unreachable."""
     try:
-        print("  Querying GitHub API for latest CrossOver Wine release...")
+        print("  Querying GitHub API for latest Wine macOS package...")
         ssl_ctx = _make_ssl_context()
         req = urllib.request.Request(MACOS_WINECX_API_URL,
                                     headers={'User-Agent': 'VitaThemeArchitect-WineBuilder'})
         with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
             import json
             releases = json.loads(resp.read().decode())
-        # Find the latest non-broken release with an osx64 tar.xz asset
+        # Collect osx64 assets from non-broken releases (API is newest-first).
+        candidates = []
         for release in releases:
             if release.get('prerelease') or release.get('draft'):
                 continue
-            name = release.get('name', '')
-            if 'broken' in name.lower():
+            if 'broken' in release.get('name', '').lower():
                 continue
             for asset in release.get('assets', []):
                 if asset['name'].endswith('-osx64.tar.xz'):
-                    tag = release.get('tag_name', '?')
-                    print(f"  Found CrossOver Wine release: {tag} - {asset['name']}")
-                    return asset['browser_download_url']
+                    candidates.append((release.get('tag_name', '?'),
+                                       asset['name'], asset['browser_download_url']))
+        # Prefer stable > staging > devel/other; stable sort keeps newest-first.
+        def _rank(c):
+            n = c[1].lower()
+            return 0 if 'stable' in n else (1 if 'staging' in n else 2)
+        candidates.sort(key=_rank)
+        if candidates:
+            tag, name, url = candidates[0]
+            print(f"  Found Wine macOS release: {tag} - {name}")
+            return url
     except Exception as e:
         print(f"  GitHub API query failed: {e}")
 
-    print("  Using fallback CrossOver Wine URL (23.7.1-1)...")
+    print("  Using fallback Wine macOS URL (wine-staging 11.21)...")
     return MACOS_WINECX_FALLBACK_URL
 
 

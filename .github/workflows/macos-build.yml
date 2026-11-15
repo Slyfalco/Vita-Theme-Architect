@@ -83,6 +83,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Install Rosetta 2
+        # The bundled Wine is an x86-64 build; it runs on Apple Silicon via
+        # Rosetta 2, which must be present for the build's Wine-prefix init.
+        run: softwareupdate --install-rosetta --agree-to-license || true
+
       - name: Build (${{ matrix.edition }})
         env:
           PYTHONUNBUFFERED: "1"
