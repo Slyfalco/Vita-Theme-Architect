@@ -24,8 +24,11 @@ Copyright (c) 2026 Slyfalco
    integrity protection; you may not circumvent, disable, remove, or tamper with
    that protection in an Official Build, you may not redistribute a modified
    Official Build as if it were official, and modified or unofficial builds are
-   not authorized to access the Service. These reservations do not apply to
-   builds you compile yourself from the Software (Section 2).
+   not authorized to access the Service. The components that provide this
+   integrity protection and that enable Service access are proprietary to the
+   copyright holder, are not included in the published source, and are not
+   licensed under Section 2. These reservations do not apply to builds you
+   compile yourself from the Software (Section 2).
 
 4. Third-party components
    The Software is used together with third-party components that are licensed

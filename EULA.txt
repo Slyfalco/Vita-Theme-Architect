@@ -69,6 +69,18 @@ not agree to these terms, do not install or use the Official Build.
    3.5 use the Official Build to infringe the rights of any third party or in
        violation of any applicable law.
 
+   3.6 The Official Build includes proprietary components that protect the
+       integrity and authenticity of Official Builds and that enable access to
+       the Service. These proprietary components are NOT part of the open-source
+       Software, are not included in the published source repository, and remain
+       the exclusive property of the Publisher. You may not reverse-engineer,
+       decompile, disassemble, extract, or otherwise attempt to derive the source
+       code of, or defeat, these proprietary components, except (a) to the extent
+       this restriction is prohibited by applicable law, or (b) as expressly
+       permitted by the licenses of the Third-Party Components (for example,
+       rights granted under the LGPL to reverse-engineer for your own
+       modifications of, and to relink, those components).
+
    Nothing in this Agreement restricts the rights you have under the Source
    License with respect to builds you compile yourself from the Software, or the
    rights you have under the separate licenses of the Third-Party Components.
