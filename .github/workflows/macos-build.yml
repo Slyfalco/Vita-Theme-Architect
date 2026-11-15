@@ -34,7 +34,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13, macos-14]      # macos-13 = Intel x64, macos-14 = Apple Silicon arm64
+        # Apple Silicon only: GitHub no longer provisions Intel macOS runners for
+        # this repo (macos-13 never schedules, macos-14 instant-cancels); macos-15
+        # (Apple Silicon / arm64) is the one that works. A native x64 build for
+        # Intel Macs can be added later by building under `arch -x86_64` (Rosetta)
+        # on this same arm64 runner.
+        os: [macos-15]                # Apple Silicon (arm64)
         edition: [ai, standard]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
