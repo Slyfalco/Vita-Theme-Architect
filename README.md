@@ -67,9 +67,16 @@ govern those components:
   are available from the Qt Project (https://www.qt.io/licensing) and the Free
   Software Foundation (https://www.gnu.org/licenses/lgpl-3.0.html).
 - **VLC / libVLC** (media playback) — LGPL.
-- **FFmpeg / libsndfile** (audio) — LGPL / BSD, where used.
+- **libsndfile** and its bundled audio codec libraries (FLAC, Ogg, Vorbis, Opus,
+  mpg123, LAME) — LGPL / BSD, under their respective licenses.
 - Other libraries (NumPy, Pillow, requests, cryptography, and so on) are under
   their respective permissive open-source licenses.
+
+**FFmpeg is not bundled.** The app can optionally use an **FFmpeg installation
+already present on your system** for some audio decoding (notably on Linux ARM64,
+where the Windows audio tools can't run). FFmpeg is not distributed with the app;
+if you want that feature, install FFmpeg yourself. Its license is governed by the
+FFmpeg project and is not included here because the app does not redistribute it.
 
 Each component's license applies to that component; see the respective projects
 for full terms.
