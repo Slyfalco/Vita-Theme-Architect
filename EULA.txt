@@ -48,8 +48,8 @@ not agree to these terms, do not install or use the Official Build.
 
 3. RESERVED RIGHTS AND RESTRICTIONS
 
-   The Official Builds, and the name and branding "VitaTheme Architect", are
-   reserved to the Publisher. Except to the extent expressly permitted by this
+   The Official Builds are reserved to the Publisher. Except to the extent
+   expressly permitted by this
    Agreement, by the Source License for builds you compile yourself, or by the
    licenses of the Third-Party Components, you may NOT:
 
@@ -60,16 +60,13 @@ not agree to these terms, do not install or use the Official Build.
        Build, or otherwise present any build as official, or as produced or
        endorsed by the Publisher, when it is not;
 
-   3.3 use the "VitaTheme Architect" name, logo, or branding other than to
-       identify the unmodified Official Build;
+   3.3 remove or obscure any copyright or other proprietary notice contained in
+       the Official Build; or
 
-   3.4 remove or obscure any copyright, trademark, or other proprietary notice
-       contained in the Official Build; or
-
-   3.5 use the Official Build to infringe the rights of any third party or in
+   3.4 use the Official Build to infringe the rights of any third party or in
        violation of any applicable law.
 
-   3.6 The Official Build includes proprietary components that protect the
+   3.5 The Official Build includes proprietary components that protect the
        integrity and authenticity of Official Builds and that enable access to
        the Service. These proprietary components are NOT part of the open-source
        Software, are not included in the published source repository, and remain
