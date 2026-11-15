@@ -16,6 +16,9 @@ nuitka-crash-report.xml
 # --- Downloaded by setup_build.py / wine_builder.py ---
 Tools/
 VGAudioCli.exe
+# at9tool.exe is Sony's proprietary tool (user-provided) — never commit/distribute it
+at9tool.exe
+*at9tool*
 
 # --- Python ---
 __pycache__/
