@@ -85,10 +85,6 @@ def _build_tag():
 # (whose name stays the same, so users still see "VitaThemeArchitect").
 APP_FOLDER_NAME = f"vitaThemeArchitect-{_build_tag()}"
 
-# Download URLs
-VGAUDIO_API_URL = 'https://api.github.com/repos/Thealexbarney/VGAudio/releases/latest'
-VGAUDIO_FALLBACK_URL = 'https://github.com/Thealexbarney/VGAudio/releases/download/v2.2.1/VGAudioCli.zip'
-
 # Packages that Nuitka must explicitly include (not always auto-detected).
 NUITKA_INCLUDE_PACKAGES = [
     'cffi', '_cffi_backend',
@@ -188,98 +184,12 @@ def setup_tools_dir():
     print(f"  Tools directory: {TOOLS_DIR}")
 
 
-def _get_release_download_url():
-    """Query the GitHub API for the latest VGAudio release download URL."""
-    try:
-        print("  Querying GitHub API for latest VGAudio release...")
-        ssl_ctx = _make_ssl_context()
-        req = urllib.request.Request(VGAUDIO_API_URL, headers={'User-Agent': 'VitaThemeArchitect-Setup'})
-        with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
-            release = json.loads(resp.read().decode())
-        tag = release.get('tag_name', 'v2.2.1')
-        for asset in release.get('assets', []):
-            if 'VGAudioCli' in asset['name'] and asset['name'].endswith('.zip'):
-                print(f"  Found release: {tag} - {asset['name']}")
-                return asset['browser_download_url']
-    except Exception as e:
-        print(f"  GitHub API query failed: {e}")
-
-    print("  Using fallback download URL (v2.2.1)...")
-    return VGAUDIO_FALLBACK_URL
-
-
-def download_vgaudiocli_exe():
-    """Download pre-built VGAudioCli.exe from GitHub releases.
-
-    On Windows this is the primary decoder.  On macOS/Linux it serves as a
-    Wine-based fallback when the native self-contained binary hangs or crashes.
-    """
-    vgaudio_path = os.path.join(TOOLS_DIR, 'VGAudioCli.exe')
-
-    if os.path.exists(vgaudio_path):
-        print(f"  VGAudioCli already exists: {vgaudio_path}")
-        return True
-
-    download_url = _get_release_download_url()
-
-    tmp = tempfile.mkdtemp()
-    try:
-        archive = os.path.join(tmp, 'VGAudioCli.zip')
-        if not download_file(download_url, archive, 'VGAudioCli'):
-            return False
-
-        print("  Extracting VGAudioCli...")
-        with zipfile.ZipFile(archive, 'r') as zf:
-            zf.extractall(tmp)
-
-        # The zip contains subdirectories (net451/, net451_standalone/, netcoreapp2.0/).
-        # On Windows, prefer net451 (small, uses system .NET Framework).
-        # On macOS/Linux, prefer net451_standalone (self-contained, no .NET runtime needed in Wine).
-        if platform.system() == 'Windows':
-            candidates = ('net451', 'net451_standalone', 'netcoreapp2.0')
-        else:
-            candidates = ('net451_standalone', 'netcoreapp2.0', 'net451')
-        extract_dir = None
-        for candidate in candidates:
-            candidate_path = os.path.join(tmp, candidate)
-            if os.path.isdir(candidate_path):
-                cli_in_candidate = os.path.join(candidate_path, 'VGAudioCli.exe')
-                if os.path.exists(cli_in_candidate):
-                    extract_dir = candidate_path
-                    print(f"  Using variant: {candidate}")
-                    break
-
-        if not extract_dir:
-            print("  ERROR: VGAudioCli.exe not found in any subdirectory")
-            print(f"  Archive contents: {os.listdir(tmp)}")
-            return False
-
-        # Copy all files from the chosen variant into Tools/
-        for item in os.listdir(extract_dir):
-            src = os.path.join(extract_dir, item)
-            dst = os.path.join(TOOLS_DIR, item)
-            if os.path.isdir(src):
-                if os.path.exists(dst):
-                    shutil.rmtree(dst)
-                shutil.copytree(src, dst)
-            else:
-                shutil.copy2(src, dst)
-
-        if os.path.exists(vgaudio_path):
-            return True
-
-        print("  ERROR: VGAudioCli.exe not found after extraction")
-        return False
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
 def get_credentials():
     """Prompt once for (username, password) on non-Windows platforms.
 
     Returns (username, password) on Linux/macOS, or (None, None) on Windows.
     The credentials are used by steps that need elevated privileges
-    (e.g. Wine build).
+    (e.g. installing VLC's runtime libraries via the package manager on Linux).
     """
     if platform.system() == 'Windows':
         return None, None
@@ -305,7 +215,7 @@ def get_credentials():
               f"(no credential prompt).")
         return user, os.environ.get('VTA_SUDO_PASSWORD', '')
 
-    print("\n  Some build steps require admin privileges (Wine build, etc.).")
+    print("\n  Some build steps require admin privileges (installing VLC libs on Linux).")
     print("  Credentials are requested once and reused for all steps.")
     if current_user:
         print(f"  Current user detected: {current_user}")
@@ -578,21 +488,87 @@ def _find_system_libvlc(search_paths):
     return None
 
 
+# Generic Linux package-manager helpers (update/install/query/remove). These
+# were previously shared with the Wine builder, which has been removed now that
+# AT9 is handled by the native codec; they are kept here only to install VLC's
+# runtime libs on Linux (which has no relocatable VLC tarball) and to remove
+# anything the build had to install afterwards, leaving the machine as found.
+_PKG_CMDS = {
+    'apt-get': {'update': ['apt-get', 'update', '-qq'], 'install': ['apt-get', 'install', '-y'],
+                'remove': ['apt-get', 'remove', '-y'], 'autoremove': ['apt-get', 'autoremove', '-y']},
+    'dnf':     {'update': None, 'install': ['dnf', 'install', '-y'],
+                'remove': ['dnf', 'remove', '-y'], 'autoremove': ['dnf', 'autoremove', '-y']},
+    'pacman':  {'update': ['pacman', '-Sy', '--noconfirm'], 'install': ['pacman', '-S', '--noconfirm', '--needed'],
+                'remove': ['pacman', '-Rns', '--noconfirm'], 'autoremove': None},
+    'zypper':  {'update': None, 'install': ['zypper', 'install', '-y'],
+                'remove': ['zypper', 'remove', '-y'], 'autoremove': None},
+}
+
+
+def _run_sudo(cmd, password):
+    """Run a command with sudo, piping the password via stdin."""
+    proc = subprocess.Popen(
+        ['sudo', '-S'] + cmd,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    stdout, stderr = proc.communicate(input=(password + '\n').encode())
+    if stdout:
+        for line in stdout.decode(errors='replace').strip().splitlines():
+            print(f"    {line}")
+    if proc.returncode != 0 and stderr:
+        for line in stderr.decode(errors='replace').strip().splitlines():
+            if 'password' not in line.lower():
+                print(f"    {line}")
+    return proc.returncode == 0
+
+
+def _detect_pkg_manager():
+    """Detect which package manager is available on this Linux system."""
+    for name in ('apt-get', 'dnf', 'pacman', 'zypper'):
+        if shutil.which(name):
+            return name
+    return None
+
+
+def _pkg_installed(pkg, pkg_mgr=None):
+    """True if a system package is currently installed (best-effort per distro)."""
+    pkg_mgr = pkg_mgr or _detect_pkg_manager()
+    try:
+        if pkg_mgr == 'apt-get':
+            return subprocess.run(['dpkg', '-s', pkg], capture_output=True).returncode == 0
+        if pkg_mgr in ('dnf', 'zypper'):
+            return subprocess.run(['rpm', '-q', pkg], capture_output=True).returncode == 0
+        if pkg_mgr == 'pacman':
+            return subprocess.run(['pacman', '-Q', pkg], capture_output=True).returncode == 0
+    except Exception:
+        pass
+    return True  # unsure -> assume present, so we never remove something we didn't add
+
+
+def _remove_linux_pkgs(pkgs, password):
+    """Remove packages the build installed, then autoremove orphaned deps."""
+    pkgs = list(pkgs or [])
+    if not pkgs:
+        return
+    pkg_mgr = _detect_pkg_manager()
+    if not pkg_mgr:
+        return
+    cmds = _PKG_CMDS[pkg_mgr]
+    print(f"  Removing build-only packages (restoring the machine): {' '.join(pkgs)}")
+    _run_sudo(cmds['remove'] + pkgs, password)
+    if cmds.get('autoremove'):
+        _run_sudo(cmds['autoremove'], password)
+
+
 def _install_vlc_linux_pkgs(password):
     """Install VLC runtime libs + plugins via the system package manager.
 
     Linux has no official relocatable VLC tarball (unlike the Windows/macOS
     portable downloads), so VLC is installed through the distro package manager
-    and its libs copied afterwards. Reuses wine_builder's package-manager
-    helpers so distro detection/sudo handling stays in one place. Returns
-    (ok, newly_installed) where newly_installed is the packages that were absent
-    beforehand (so the caller can remove them again after copying).
+    and its libs copied afterwards. Returns (ok, newly_installed) where
+    newly_installed is the packages that were absent beforehand (so the caller
+    can remove them again after copying).
     """
-    try:
-        from wine_builder import _detect_pkg_manager, _run_sudo, _LINUX_DEPS, _pkg_installed
-    except Exception as e:
-        print(f"  Could not load package installer: {e}")
-        return (False, [])
     pkg_mgr = _detect_pkg_manager()
     if not pkg_mgr:
         print("  No supported package manager found; install VLC manually "
@@ -600,11 +576,11 @@ def _install_vlc_linux_pkgs(password):
         return (False, [])
     pkgs = _VLC_LINUX_PKGS.get(pkg_mgr, ['vlc'])
     newly = [p for p in pkgs if not _pkg_installed(p, pkg_mgr)]
-    info = _LINUX_DEPS[pkg_mgr]
+    cmds = _PKG_CMDS[pkg_mgr]
     print(f"  VLC libraries not found — installing via {pkg_mgr}: {' '.join(pkgs)}")
-    if info['update']:
-        _run_sudo(info['update'], password or '')
-    ok = _run_sudo(info['install'] + pkgs, password or '')
+    if cmds['update']:
+        _run_sudo(cmds['update'], password or '')
+    ok = _run_sudo(cmds['install'] + pkgs, password or '')
     return (ok, newly if ok else [])
 
 
@@ -671,7 +647,6 @@ def _download_vlc_linux(vlc_dir, username=None, password=None):
     # install (the libs are now copied into Tools/VLC and bundled).
     if installed_pkgs:
         try:
-            from wine_builder import _remove_linux_pkgs
             _remove_linux_pkgs(installed_pkgs, password or '')
         except Exception as e:
             print(f"  (VLC package cleanup skipped: {e})")
@@ -903,8 +878,6 @@ def verify_tools():
     system = platform.system()
     tools = {}
 
-    tools['VGAudioCli'] = os.path.join(TOOLS_DIR, 'VGAudioCli.exe')
-
     vlc_dir = os.path.join(TOOLS_DIR, 'VLC')
     if system == 'Windows':
         tools['VLC'] = os.path.join(vlc_dir, 'vlc.exe')
@@ -912,6 +885,11 @@ def verify_tools():
         tools['VLC'] = os.path.join(vlc_dir, 'VLC.app')
     else:
         tools['VLC'] = os.path.join(vlc_dir, 'libvlc.so')
+
+    # The native AT9 codec for this build's arch (in-repo, bundled by run_nuitka).
+    _native_dir = os.path.join(PROJECT_ROOT, 'native', _build_tag())
+    _lib = {'Windows': 'at9codec.dll', 'Darwin': 'libat9codec.dylib'}.get(system, 'libat9codec.so')
+    tools['AT9 codec'] = os.path.join(_native_dir, _lib)
 
     print("\n  Tool verification:")
     all_ok = True
@@ -996,17 +974,6 @@ def run_nuitka():
     """
     import glob as glob_module
     system = platform.system()
-
-    # Remove Wine temp files from wine_prefix before bundling.
-    wine_prefix = os.path.join(TOOLS_DIR, 'wine_prefix')
-    if os.path.isdir(wine_prefix):
-        for root, _dirs, files in os.walk(wine_prefix, followlinks=False):
-            for fname in files:
-                if fname.endswith('.tmp'):
-                    try:
-                        os.remove(os.path.join(root, fname))
-                    except OSError:
-                        pass
 
     # Remove only THIS build's own stale output, so builds for other OSes /
     # architectures already in dist/ (e.g. a Linux folder on a Windows machine)
@@ -1130,13 +1097,19 @@ def run_nuitka():
                 cmd += [f'--include-data-files={_fp}=libsndfile/{_f}']
             # (skip placeholders/scripts/docs like PLACE_DLL_HERE.txt)
 
-    # VGAudioCli.exe + any DLLs alongside it
-    vgaudio_exe = os.path.join(TOOLS_DIR, 'VGAudioCli.exe')
-    if os.path.exists(vgaudio_exe):
-        cmd += [f'--include-data-files={vgaudio_exe}=Tools/VGAudioCli.exe']
-        for dll in glob_module.glob(os.path.join(TOOLS_DIR, '*.dll')):
-            dll_name = os.path.basename(dll)
-            cmd += [f'--include-data-files={dll}=Tools/{dll_name}']
+    # Native AT9 codec (at9codec) — the in-process ATRAC9 decoder/encoder that
+    # replaced the Windows audio tools (and Wine). The shared library lives
+    # per-arch in `native/<os>-<arch>/`; only THIS build's arch is bundled,
+    # flattened to `native/` next to the exe, and loaded by at9_native.py.
+    _native_dir = os.path.join(PROJECT_ROOT, 'native', _build_tag())
+    if os.path.isdir(_native_dir):
+        for _f in sorted(os.listdir(_native_dir)):
+            _fp = os.path.join(_native_dir, _f)
+            if os.path.isfile(_fp) and _f.lower().endswith(('.dll', '.dylib', '.so')):
+                cmd += [f'--include-data-files={_fp}=native/{_f}']
+    else:
+        print(f"  WARNING: no native AT9 codec for this arch at {_native_dir} — "
+              f"AT9 audio will be unavailable in this build.")
 
     # VLC
     vlc_dir = os.path.join(TOOLS_DIR, 'VLC')
@@ -1150,8 +1123,8 @@ def run_nuitka():
         # Per-directory includes (one --include-data-dir per folder that holds
         # files): avoids Nuitka's "no data files" skip on symlink-only top levels
         # AND keeps the command line short enough for macOS's small ARG_MAX
-        # (per-file includes for VLC+Wine overflow exec() -> "Argument list too
-        # long").
+        # (per-file includes for VLC's many files overflow exec() -> "Argument
+        # list too long").
         cmd += _include_tree(vlc_lib, 'lib')
         if os.path.isdir(vlc_plugins):
             # Drop plugins.dat — it is a VLC plugin-path cache generated on the
@@ -1170,28 +1143,6 @@ def run_nuitka():
         vlc_plugins = os.path.join(vlc_dir, 'plugins')
         if os.path.isdir(vlc_plugins):
             cmd += [f'--include-data-dir={vlc_plugins}=plugins']
-
-    # Wine (non-Windows) — included as data so Nuitka never touches the Mach-O
-    # headers of wine-preloader/wine64-preloader (same reason as with PyInstaller).
-    if system != 'Windows':
-        wine_dir = os.path.join(TOOLS_DIR, 'wine_minimal')
-        for subdir in ('bin', 'lib', 'lib64', 'share'):
-            src = os.path.join(wine_dir, subdir)
-            if os.path.isdir(src):
-                if system == 'Darwin':
-                    # macOS ARG_MAX is small (~256KB); per-file includes for Wine's
-                    # thousands of files overflow exec() ("Argument list too long").
-                    # Per-directory includes keep the command line short and still
-                    # avoid Nuitka's symlink-only-top-level skip (see _include_tree).
-                    cmd += _include_tree(src, f'Tools/wine_minimal/{subdir}')
-                else:
-                    # Linux has a large ARG_MAX; keep per-file includes.
-                    cmd += _include_dir_files(src, f'Tools/wine_minimal/{subdir}')
-        # wine_prefix is NOT bundled — it is built at first launch by
-        # startup_wine_warmup() inside _init_wine_prefix_if_needed().
-        # This avoids bundling ~10 MB of prefix data and, more importantly,
-        # avoids absolute symlinks in system32/ that are only valid on the
-        # build machine.
 
     # The release modules are NOT included here: they are generated after the
     # build (bind_release_modules).
@@ -1749,58 +1700,27 @@ def main():
     print_step(2, "Installing Python dependencies...")
     pip_ok = install_pip_deps()
 
-    print_step(3, "Downloading VGAudioCli...")
-    vgaudio_ok = download_vgaudiocli_exe()
-
-    print_step(4, "Setting up VLC (portable)...")
+    print_step(3, "Setting up VLC (portable)...")
     vlc_ok = download_vlc_portable(cred_username, cred_password)
 
-    print_step(5, "Verifying tools...")
+    print_step(4, "Verifying tools...")
     tools_ok = verify_tools()
 
-    # Build/download Wine for non-Windows (at9tool + VGAudioCli.exe need it)
-    wine_ok = True
-    wine_optional = False
-    if platform.system() != 'Windows':
-        print_step(6, "Building/downloading Wine...")
-        from wine_builder import build_wine
-        wine_ok = build_wine(username=cred_username, password=cred_password)
-        # No pre-built portable Wine exists for Linux ARM64 (it would run the
-        # Windows-only audio tools). Treat its absence as a non-fatal platform
-        # limitation rather than failing the whole build: the app still builds and
-        # runs; only AT9 *encoding* (at9tool via Wine) is unavailable on
-        # linux-arm64 until the native codec (v2). AT9 decode has an ffmpeg
-        # fallback. Everywhere else a Wine failure is still fatal.
-        if (not wine_ok and platform.system() == 'Linux'
-                and platform.machine().lower() in ('aarch64', 'arm64')):
-            wine_optional = True
-            print("\n  NOTE: no pre-built Wine is available for Linux ARM64, so the")
-            print("  Windows audio tools can't run here. Continuing WITHOUT Wine:")
-            print("  AT9 encoding is unavailable on linux-arm64 (decode still works")
-            print("  via ffmpeg); the rest of the app is unaffected.")
+    # AT9 encode/decode is handled in-process by the bundled native at9codec
+    # library (native/<os>-<arch>/). There is no Wine, VGAudioCli, at9tool or
+    # ffmpeg to download or build any more.
 
     print_header("Setup Summary")
     print(f"  {'Build type:':<20} {build_type}")
     print(f"  {'AI icon generator:':<20} {'included' if ICON_AI_ENABLED else 'not included'}")
     results = [
         ("pip dependencies", pip_ok),
-        ("VGAudioCli", vgaudio_ok),
         ("VLC (portable)", vlc_ok),
     ]
-    if platform.system() != 'Windows':
-        results.append(("Wine (bundled)", wine_ok))
-
     for name, ok in results:
-        if name == "Wine (bundled)" and not ok and wine_optional:
-            status = "SKIPPED (unavailable on linux-arm64)"
-        else:
-            status = "OK" if ok else "FAILED"
-        print(f"  {name + ':':<20} {status}")
+        print(f"  {name + ':':<20} {'OK' if ok else 'FAILED'}")
 
-    # Wine on linux-arm64 is an optional platform limitation, not a build failure.
-    fatal = [(n, ok) for (n, ok) in results
-             if not (n == "Wine (bundled)" and wine_optional)]
-    if not (all(ok for _, ok in fatal) and tools_ok):
+    if not (all(ok for _, ok in results) and tools_ok):
         print(f"\n  Some steps failed. Please resolve issues above before building.")
         sys.exit(1)
 
@@ -1819,7 +1739,7 @@ def main():
     # never bundled and never needs removing by hand.
     dev_stub_stashed = _stash_dev_stub()
     try:
-        print_step(7, "Building with Nuitka...")
+        print_step(5, "Building with Nuitka...")
         build_ok = run_nuitka()
 
         if not build_ok:
@@ -1844,15 +1764,15 @@ def main():
 
         # After the build: the release modules for this build.
         if is_release:
-            print_step(8, "Generating secure modules for this build (release build)...")
+            print_step(6, "Generating secure modules for this build (release build)...")
         else:
-            print_step(8, "Skipping secure module generation (non-release build)...")
+            print_step(6, "Skipping secure module generation (non-release build)...")
         encrypt_ok = bind_release_modules()
         if encrypt_ok is False:
             print("\n  Secure module generation FAILED. Check output above.")
             sys.exit(1)
 
-        print_step(9, "Cleaning up build artifacts...")
+        print_step(7, "Cleaning up build artifacts...")
         cleanup()
     finally:
         _restore_dev_stub(dev_stub_stashed)

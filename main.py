@@ -328,14 +328,6 @@ class SplashScreen(QDialog):
         QApplication.processEvents()
 
     def _run_startup_tasks(self):
-        if platform.system() != 'Windows':
-            try:
-                self._update_status("Warming up OS compatibility...")
-                from wine_setup import startup_wine_warmup
-                startup_wine_warmup(status_callback=self._update_status)
-            except Exception as e:
-                print(f"Wine warmup error (non-fatal): {e}")
-
         self._update_status("Ready — launching app...")
         self._tasks_done = True
         self._check_minimum_time()
@@ -351,11 +343,6 @@ class SplashScreen(QDialog):
 
 if __name__ == "__main__":
     try:
-        import atexit
-        if platform.system() != 'Windows':
-            from wine_setup import shutdown_wine
-            atexit.register(shutdown_wine)
-
         # Named mutex so the Windows installer/updater can detect a running
         # instance (Inno Setup AppMutex) and offer to close it before replacing
         # files. Held for the whole process lifetime; harmless if it can't be

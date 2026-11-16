@@ -30,8 +30,7 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkRe
 
 from constants import CURRENT_VERSION, UPDATE_URL, SETTINGS_FILE, DEFAULT_THEMES_PATH, DEFAULT_EXTRAS_PATH, crypted, ONLINE_FEATURES_AVAILABLE, ONLINE_FEATURES_UNAVAILABLE_MSG, theme_pages, store_path, load_path
 import app_updater
-from audio import (convert_at9_to_wav, convert_to_at9, removeTemp, AudioPlayerDialog, find_at9tool, AT9TOOL_REQUIRED_MSG, ENCODABLE_AUDIO_EXTS, read_at9_loop_info)
-from wine_setup import shutdown_wine
+from audio import (convert_at9_to_wav, convert_to_at9, removeTemp, AudioPlayerDialog, encoding_available, AT9_CODEC_UNAVAILABLE_MSG, ENCODABLE_AUDIO_EXTS, read_at9_loop_info)
 from widgets import ColorPickerButton, play_done_sound
 from settings_dialog import SettingsDialog
 from about_dialog import AboutDialog
@@ -321,14 +320,14 @@ class VitaThemeArchitect(QMainWindow):
         main_layout.addRow("Livearea Preview *:", create_asset_row('preview_livearea.png', '480x272 (auto-resized)'))
         main_layout.addRow("Lockscreen Preview *:", create_asset_row('preview_lockscreen.png', '480x272 (auto-resized)'))
         main_layout.addRow("Thumbnail Preview *:", create_asset_row('preview_thumbnail.png', '226x128 (auto-resized)'))
-        if find_at9tool():
+        if encoding_available():
             main_layout.addRow("Background Music:", create_asset_row('bgm.at9', f"Optional {', '.join(ENCODABLE_AUDIO_EXTS)} or .at9", file_type="Audio"))
         else:
-            main_layout.addRow("Background Music:", create_asset_row('bgm.at9', f"Optional .at9 ({', '.join(ENCODABLE_AUDIO_EXTS)} requires at9tool.exe)", file_type="Audio"))
-            at9tool_notice = QPushButton("⚠ Audio encoding disabled (details)"); at9tool_notice.setFlat(True); at9tool_notice.setCursor(Qt.CursorShape.PointingHandCursor)
-            at9tool_notice.setStyleSheet("color: grey; font-size: 10px; text-align: left; border: none;")
-            at9tool_notice.clicked.connect(lambda: self.show_info_popup(at9tool_notice, AT9TOOL_REQUIRED_MSG))
-            main_layout.addRow("", at9tool_notice)
+            main_layout.addRow("Background Music:", create_asset_row('bgm.at9', "Optional .at9 (audio codec unavailable)", file_type="Audio"))
+            at9_notice = QPushButton("⚠ Audio encoding unavailable (details)"); at9_notice.setFlat(True); at9_notice.setCursor(Qt.CursorShape.PointingHandCursor)
+            at9_notice.setStyleSheet("color: grey; font-size: 10px; text-align: left; border: none;")
+            at9_notice.clicked.connect(lambda: self.show_info_popup(at9_notice, AT9_CODEC_UNAVAILABLE_MSG))
+            main_layout.addRow("", at9_notice)
         self.bgm_loop_label = QLabel("BGM Loop Start Sample:")
         main_layout.addRow(self.bgm_loop_label, create_numeric_row('m_bgmStartSample')); main_tab.setLayout(main_layout); self.asset_widgets['bgm.at9'].textChanged.connect(self.toggle_bgm_loop_input)
         pages_tab_widget = QWidget(); pages_scroll = QScrollArea(); pages_scroll.setWidgetResizable(True); pages_layout = QFormLayout(); pages_tab_widget.setLayout(pages_layout)
@@ -559,14 +558,14 @@ class VitaThemeArchitect(QMainWindow):
     def browse_asset_file(self, line_edit, file_type):
         if file_type == "Image": filter = "Images (*.png *.jpg *.jpeg)"
         elif file_type == "Audio":
-            # Only offer encodable formats when at9tool is available to encode them
-            exts = (ENCODABLE_AUDIO_EXTS + ['.at9']) if find_at9tool() else ['.at9']
+            # Only offer encodable formats when the audio codec is available
+            exts = (ENCODABLE_AUDIO_EXTS + ['.at9']) if encoding_available() else ['.at9']
             filter = f"Audio ({' '.join(f'*{e} *{e.upper()}' for e in exts)})"
         else: filter = "All Files (*.*)"
         path, _ = QFileDialog.getOpenFileName(self, f"Select {file_type} File", "", filter);
         # Fallback: other formats can still be typed into the dialog's filename box
-        if path and file_type == "Audio" and self.bgm_needs_encoding(path) and not find_at9tool():
-            QMessageBox.information(self, "at9tool.exe Required", AT9TOOL_REQUIRED_MSG); return
+        if path and file_type == "Audio" and self.bgm_needs_encoding(path) and not encoding_available():
+            QMessageBox.information(self, "Audio codec unavailable", AT9_CODEC_UNAVAILABLE_MSG); return
         if path: line_edit.setText(path)
 
     # -------------------------------------------------------------------------
@@ -682,8 +681,8 @@ class VitaThemeArchitect(QMainWindow):
             return True
         if not self.asset_widgets.get('m_title').text(): validation_errors.append("Theme Title cannot be empty.")
         check_exists('lockpaper.png', required=True); check_exists('br1.png', required=True); check_exists('preview_livearea.png', required=True); check_exists('preview_lockscreen.png', required=True); check_exists('preview_thumbnail.png', required=True)
-        if check_exists('bgm.at9', required=False, file_types=ENCODABLE_AUDIO_EXTS + ['.at9']) and self.bgm_needs_encoding(self.asset_widgets['bgm.at9'].text()) and not find_at9tool():
-            validation_errors.append(AT9TOOL_REQUIRED_MSG)
+        if check_exists('bgm.at9', required=False, file_types=ENCODABLE_AUDIO_EXTS + ['.at9']) and self.bgm_needs_encoding(self.asset_widgets['bgm.at9'].text()) and not encoding_available():
+            validation_errors.append(AT9_CODEC_UNAVAILABLE_MSG)
         for asset_id, widget in self.asset_widgets.items():
              if asset_id not in ['lockpaper.png', 'br1.png', 'preview_livearea.png', 'preview_lockscreen.png', 'preview_thumbnail.png', 'bgm.at9', 'm_title', 'm_author', 'm_version', 'm_bgmStartSample'] and isinstance(widget, QLineEdit) and widget.text(): check_exists(asset_id, required=False)
         if validation_errors: return False, "\n\n".join(validation_errors)
@@ -1666,7 +1665,7 @@ class VitaThemeArchitect(QMainWindow):
                 "No changes were made.")
             return
         # Proceeding: free AI data on a switch, run the same teardown a normal close
-        # does (stop Wine, clear temp), then quit so the helper can swap the folder.
+        # does (clear temp), then quit so the helper can swap the folder.
         if before_apply:
             before_apply()
         self._run_exit_cleanup()
@@ -1682,9 +1681,9 @@ class VitaThemeArchitect(QMainWindow):
 
     def _run_exit_cleanup(self):
         """Shared teardown for a normal close AND an update/edition-switch
-        restart: drop generated-icon temp folders, remove the upload temp zip,
-        and stop Wine (non-Windows) so nothing holds files in the install folder
-        while it is swapped out. Best-effort — never raises."""
+        restart: drop generated-icon temp folders and remove the upload temp zip
+        so nothing holds files in the install folder while it is swapped out.
+        Best-effort — never raises."""
         try:
             self.clear_generated_icons()
         except Exception as e:
@@ -1693,14 +1692,8 @@ class VitaThemeArchitect(QMainWindow):
             self.cleanup_temp_zip()
         except Exception as e:
             print(f"Temp zip cleanup skipped: {e}")
-        import platform
-        if platform.system() != 'Windows':
-            try:
-                shutdown_wine()
-            except Exception as e:
-                print(f"Wine shutdown skipped: {e}")
 
     def closeEvent(self, event):
-        """Stop Wine processes and clean up the persistent Wine directory on exit."""
+        """Clean up temp folders on exit."""
         self._run_exit_cleanup()
         super().closeEvent(event)

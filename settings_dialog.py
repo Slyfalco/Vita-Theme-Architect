@@ -106,24 +106,6 @@ class SettingsDialog(QDialog):
         extras_path_layout.addWidget(btn_browse_extras_path)
         general_layout.addRow("Extras Library Path:", extras_path_layout)
 
-        # at9tool.exe path — drag-and-drop or Browse
-        self.at9tool_path_input = DragDropLineEdit(file_filter=['.exe'])
-        self.at9tool_path_input.setPlaceholderText("Drag at9tool.exe here, or click Browse…")
-        btn_browse_at9tool = QPushButton("Browse...")
-        btn_browse_at9tool.clicked.connect(self._browse_at9tool)
-        btn_clear_at9tool = QPushButton("Clear")
-        btn_clear_at9tool.clicked.connect(lambda: self.at9tool_path_input.setText(''))
-        at9tool_layout = QHBoxLayout()
-        at9tool_layout.addWidget(self.at9tool_path_input)
-        at9tool_layout.addWidget(btn_browse_at9tool)
-        at9tool_layout.addWidget(btn_clear_at9tool)
-        general_layout.addRow("at9tool.exe Path:", at9tool_layout)
-        at9tool_hint = QLabel("Required for encoding BGM (WAV, MP3, FLAC, OGG, etc.) to AT9 (made by Sony, not included). Works on every OS. Drag the .exe onto the field above.")
-        at9tool_hint.setWordWrap(True)
-        at9tool_hint.setStyleSheet("color: grey; font-size: 10px; padding-bottom: 16px;")
-        at9tool_hint.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        general_layout.addRow(at9tool_hint)
-
         # Update settings live together in a footer pinned to the bottom of the
         # tab (above a thin separator): the auto-check option, then version +
         # project link on the left with the manual check on the right.
@@ -620,14 +602,6 @@ class SettingsDialog(QDialog):
         ig.remove_runtime()
         self.refresh_storage()
 
-    def _browse_at9tool(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select at9tool.exe", self.at9tool_path_input.text(),
-            "Executable (*.exe);;All Files (*.*)"
-        )
-        if path:
-            self.at9tool_path_input.setText(path)
-
     def browse_path(self, line_edit, title):
         path = QFileDialog.getExistingDirectory(self, title, line_edit.text())
         if path: line_edit.setText(path)
@@ -655,7 +629,6 @@ class SettingsDialog(QDialog):
         self.default_author_input.setText(settings.get('default_author', ''))
         self.theme_path_input.setText(load_path(settings.get('theme_library_path', ''), default_theme_path))
         self.extras_path_input.setText(load_path(settings.get('extras_library_path', ''), default_extras_path))
-        self.at9tool_path_input.setText(settings.get('at9tool_path', ''))
         self.vita_ip_input.setText(settings.get('vita_ip', ''))
         self.vita_port_input.setText(settings.get('vita_port', '1337'))
         self.auto_update_checkbox.setChecked(settings.get('auto_update_check', True))
@@ -680,7 +653,6 @@ class SettingsDialog(QDialog):
             'default_author': self.default_author_input.text(),
             'theme_library_path': store_path(self.theme_path_input.text()),
             'extras_library_path': store_path(self.extras_path_input.text()),
-            'at9tool_path': self.at9tool_path_input.text(),
             'vita_ip': self.vita_ip_input.text(),
             'vita_port': self.vita_port_input.text(),
             'auto_update_check': self.auto_update_checkbox.isChecked(),

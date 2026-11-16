@@ -2,31 +2,13 @@ import sys
 import os
 import platform
 import shutil
-import subprocess
 import tempfile
 import datetime
 import traceback
 import struct
 from collections import namedtuple
 
-from wine_setup import (
-    startup_wine_warmup,
-    _wine_version_stamp,
-    _setup_persistent_wine,
-    _wine_tools_dir,
-    _wine_env,
-    _wine_invocation,
-    _find_bundled_wine,
-)
-
-# On Windows, running a console .exe from a windowless GUI app causes a black
-# terminal window to flash open and close for each subprocess call.
-# CREATE_NO_WINDOW suppresses that. The flag only exists on Windows.
-_SUBPROCESS_FLAGS = (
-    {'creationflags': subprocess.CREATE_NO_WINDOW}
-    if platform.system() == 'Windows'
-    else {}
-)
+import at9_native
 
 # --- VLC environment setup (MUST happen before 'import vlc') ---
 # python-vlc checks PYTHON_VLC_LIB_PATH (full path to libvlc shared lib) and
@@ -171,12 +153,12 @@ except (ImportError, OSError) as _sf_err:
     # soundfile bundles libsndfile, which can't load on Windows-on-ARM (the wheel
     # ships an x86-64 libsndfile.dll → "error 0x7e") unless a native libsndfile
     # is bundled (see _prepare_bundled_sndfile). It's only used to normalise a
-    # source file to 16-bit WAV in convert_to_at9, which also falls back to
-    # ffmpeg / a stdlib WAV path, so never let this block startup.
+    # source file to 16-bit WAV in convert_to_at9, which also has a stdlib WAV
+    # fallback, so never let this block startup.
     soundfile = None
     SOUNDFILE_AVAILABLE = False
     print(f"soundfile unavailable ({_sf_err}); audio encoding falls back to "
-          f"ffmpeg or a stdlib WAV path.")
+          f"a stdlib WAV path.")
 
 from PySide6.QtWidgets import (
     QDialog, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -256,264 +238,92 @@ def _log_error(context, message, exc=None):
         pass
 
 
-def _log_wine_error(context, cmd, returncode, stderr_text, wine_path=None, env=None):
-    """Log a Wine-specific error with full diagnostic info to crash.log."""
-    timestamp = datetime.datetime.now().isoformat()
-    tools = _tools_dir()
-    wine_bin_dir = os.path.join(tools, 'wine_minimal', 'bin')
-
-    lines = [
-        f"\n--- {timestamp} [audio/{context}] ---",
-        f"  Platform: {platform.system()} {platform.machine()}",
-        f"  Compiled: {globals().get('__compiled__', False)}",
-        f"  Tools dir: {tools}",
-        f"  Tools dir exists: {os.path.isdir(tools)}",
-        f"  Wine bin dir exists: {os.path.isdir(wine_bin_dir)}",
-    ]
-
-    if os.path.isdir(wine_bin_dir):
-        for name in os.listdir(wine_bin_dir):
-            fpath = os.path.join(wine_bin_dir, name)
-            try:
-                st = os.stat(fpath)
-                lines.append(f"    {name}: mode={oct(st.st_mode)}, size={st.st_size}")
-            except OSError as e:
-                lines.append(f"    {name}: stat failed: {e}")
-
-    if wine_path:
-        lines.append(f"  Wine binary: {wine_path}")
-        lines.append(f"  Wine binary exists: {os.path.exists(wine_path)}")
-    lines.append(f"  Command: {cmd}")
-    lines.append(f"  Exit code: {returncode}")
-    lines.append(f"  stderr: {stderr_text}")
-    if env:
-        for key in ('WINEPREFIX', 'WINEDEBUG', 'PATH', 'DYLD_FALLBACK_LIBRARY_PATH', 'LD_LIBRARY_PATH'):
-            if key in env:
-                lines.append(f"  env[{key}]: {env[key][:200]}")
-
-    log_text = '\n'.join(lines) + '\n'
-    print(log_text)
-    try:
-        log_path = _crash_log_path()
-        _rotate_crash_log_if_needed(log_path)
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(log_text)
-    except Exception:
-        pass
-
-
 # =============================================================================
-# == Tool Path Resolution
+# == Native codec availability
 # =============================================================================
-def _tools_dir():
-    """Return the path to the bundled Tools directory (VGAudioCli, etc.)."""
-    if globals().get('__compiled__', False):
-        if hasattr(sys, '_MEIPASS'):
-            return os.path.join(sys._MEIPASS, 'Tools')
-        return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), 'Tools')
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Tools')
+# AT9 encode/decode is handled in-process by the bundled first-party at9codec
+# shared library (see at9_native.py). There is no external tool, and no Wine.
 
-
-def _at9tool_dir():
-    """Return the path to at9tool's directory.
-    at9tool is user-provided. Checks settings.json for a custom path first,
-    then falls back to the default Tools/ location."""
-    # 1) Check user-configured path in settings.json
-    try:
-        import json
-        _system = platform.system()
-        if _system == 'Darwin':
-            _settings_file = os.path.join(
-                os.path.expanduser('~'), 'Library', 'Application Support',
-                'VitaThemeArchitect', 'settings.json'
-            )
-        elif _system == 'Linux':
-            _xdg = os.environ.get('XDG_DATA_HOME',
-                                   os.path.join(os.path.expanduser('~'), '.local', 'share'))
-            _settings_file = os.path.join(_xdg, 'VitaThemeArchitect', 'settings.json')
-        else:
-            _appdata = os.environ.get('APPDATA') or os.path.expanduser('~')
-            _settings_file = os.path.join(_appdata, 'VitaThemeArchitect', 'settings.json')
-        if os.path.isfile(_settings_file):
-            with open(_settings_file, 'r') as _f:
-                _settings = json.load(_f)
-            _custom = _settings.get('at9tool_path', '')
-            if _custom and os.path.isfile(_custom):
-                return os.path.dirname(_custom)
-    except Exception:
-        pass
-
-    # 2) Default location
-    if globals().get('__compiled__', False):
-        if platform.system() == 'Darwin':
-            # On macOS the .app bundle is read-only; use the writable
-            # Application Support directory so users can place at9tool.exe there.
-            app_support = os.path.join(
-                os.path.expanduser('~'), 'Library', 'Application Support',
-                'VitaThemeArchitect', 'Tools'
-            )
-            os.makedirs(app_support, exist_ok=True)
-            return app_support
-        return os.path.join(os.path.dirname(sys.executable), 'Tools')
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Tools')
-
-
-AT9TOOL_REQUIRED_MSG = (
-    "Audio to AT9 encoding is disabled (only .at9 BGM files can be used).\n\n"
-    "To use this feature you must provide at9tool.exe (made by Sony). "
-    "Set its path in Settings. It works on every OS — on macOS and Linux "
-    "it runs through the bundled Wine."
+# Message shown when the native codec can't be loaded (should not happen in a
+# normal build; only if the bundled library is missing/unloadable).
+AT9_CODEC_UNAVAILABLE_MSG = (
+    "The audio codec could not be loaded, so AT9 BGM can't be created or played "
+    "on this system. This usually means the app's files are incomplete — "
+    "reinstalling should fix it."
 )
 
 # BGM source formats (besides .at9) that can be encoded to AT9. Each is first
-# converted to a temporary WAV in convert_to_at9, then encoded by at9tool.
-# All are decoded by soundfile's bundled libsndfile at their original sample
-# rate, so sample positions (BGM loop start), pitch and speed are unchanged.
+# converted to a temporary WAV in convert_to_at9, then encoded by the native
+# codec. All are decoded by soundfile's bundled libsndfile at their original
+# sample rate, so sample positions (BGM loop start), pitch and speed are
+# unchanged (any needed sample-rate conversion is applied explicitly below).
 ENCODABLE_AUDIO_EXTS = ['.wav', '.flac', '.ogg', '.opus', '.mp3', '.aiff', '.aif']
 
-
-def find_at9tool():
-    """Return the full path to the user-provided at9tool.exe, or None if missing."""
-    at9tool_path = os.path.join(_at9tool_dir(), 'at9tool.exe')
-    return at9tool_path if os.path.isfile(at9tool_path) else None
+# Sample rates the AT9 encoder accepts (the Vita's ATRAC9 rates).
+_AT9_RATES = (48000, 24000, 12000)
 
 
-def _at9tool_cmd(at9tool_path):
-    """Return the command list prefix needed to run at9tool.
-    On Windows it runs natively; on other platforms it needs Wine.
-    Prefers the bundled Wine, falls back to system wine."""
-    if platform.system() == 'Windows':
-        return [at9tool_path]
-    bundled = _find_bundled_wine()
-    if bundled:
-        return _wine_invocation(bundled) + [at9tool_path]
-    return _wine_invocation('wine') + [at9tool_path]
+def encoding_available():
+    """True if AT9 BGM can be created on this system (the native codec loaded).
+
+    With the bundled native codec this is normally always True; it mirrors the
+    former find_at9tool() gate, which asked whether an encoder was present."""
+    return at9_native.available()
 
 
-def _clean_wine_runtime_cache():
-    """Clean Wine temp/cache files after running at9tool/VGAudioCli.
+def _supported_at9_rate(sr):
+    """Nearest AT9-supported rate at or above the source rate (matching the
+    old quantisation: >24k -> 48k, >12k -> 24k, else 12k)."""
+    if sr > 24000:
+        return 48000
+    if sr > 12000:
+        return 24000
+    return 12000
 
-    Removes temporary files Wine creates during execution to prevent
-    disk bloat across repeated conversions. Only runs on non-Windows.
-    """
-    if platform.system() == 'Windows':
-        return
 
-    # Clean both bundled and persistent wine prefix locations
-    prefix_dirs = []
-    tools = _tools_dir()
-    prefix_dirs.append(os.path.join(tools, 'wine_prefix'))
-    wine_tools = _wine_tools_dir()
-    prefix_dirs.append(os.path.join(wine_tools, 'wine_prefix'))
-
-    for wine_prefix in prefix_dirs:
-        if not os.path.isdir(wine_prefix):
-            continue
-
-        temp_dirs = [
-            os.path.join(wine_prefix, 'drive_c', 'windows', 'temp'),
-        ]
-        users_dir = os.path.join(wine_prefix, 'drive_c', 'users')
-        if os.path.isdir(users_dir):
-            for user_folder in os.listdir(users_dir):
-                user_temp = os.path.join(users_dir, user_folder, 'Temp')
-                if os.path.isdir(user_temp):
-                    temp_dirs.append(user_temp)
-
-        for temp_dir in temp_dirs:
-            if os.path.isdir(temp_dir):
-                try:
-                    for entry in os.listdir(temp_dir):
-                        entry_path = os.path.join(temp_dir, entry)
-                        if os.path.isfile(entry_path):
-                            os.remove(entry_path)
-                        elif os.path.isdir(entry_path):
-                            shutil.rmtree(entry_path, ignore_errors=True)
-                except OSError:
-                    pass
+def _resample_wav_16(wav_path, src_rate, dst_rate, loop_start):
+    """Resample a 16-bit PCM WAV in place from src_rate to dst_rate (stdlib
+    audioop.ratecv — no external deps), returning the loop-start sample scaled
+    to the new rate. Used only when a source isn't already a Vita AT9 rate."""
+    import wave
+    import audioop  # stdlib (present in 3.12); only needed for odd input rates
+    with wave.open(wav_path, 'rb') as w:
+        nch = w.getnchannels()
+        frames = w.readframes(w.getnframes())
+    converted, _state = audioop.ratecv(frames, 2, nch, src_rate, dst_rate, None)
+    with wave.open(wav_path, 'wb') as o:
+        o.setnchannels(nch)
+        o.setsampwidth(2)
+        o.setframerate(dst_rate)
+        o.writeframes(converted)
+    if loop_start and loop_start > 0:
+        return int(round(loop_start * dst_rate / src_rate))
+    return loop_start
 
 
 # =============================================================================
 # == Helper Functions (Audio Conversion)
 # =============================================================================
-def _try_ffmpeg_decode(at9_path, wav_path, status_callback=None):
-    """Try decoding AT9 to WAV using system ffmpeg. Returns True on success.
-
-    Used only as a last resort after at9tool and VGAudioCli have both failed.
-    FFmpeg has native ATRAC9 (AT9) support and runs without Wine, but may be
-    slower than the preferred decoders.
-    """
-    ffmpeg = shutil.which('ffmpeg')
-    if not ffmpeg:
-        return False
-    if status_callback:
-        status_callback("Falling back to ffmpeg decoder.\nThis may take a little longer...")
-    try:
-        cmd = [ffmpeg, '-y', '-i', at9_path, wav_path]
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, **_SUBPROCESS_FLAGS)
-        if r.returncode == 0 and os.path.exists(wav_path):
-            return True
-        stderr_text = r.stderr.decode(errors='replace').strip()
-        _log_error('ffmpeg_decode', f"ffmpeg failed (exit {r.returncode}): {stderr_text[-500:]}")
-        return False
-    except subprocess.TimeoutExpired:
-        _log_error('ffmpeg_decode', "ffmpeg timed out (>30s)")
-        return False
-    except Exception as e:
-        _log_error('ffmpeg_decode', f"ffmpeg error: {e}", exc=e)
-        return False
-
-
-def _ffmpeg_to_pcm16_wav(input_path, wav_path):
-    """Normalise any source audio to a 16-bit PCM WAV with system ffmpeg.
-
-    Fallback for convert_to_at9 when soundfile/libsndfile is unavailable (e.g.
-    ARM64 Windows). Returns the output sample rate on success, else None.
-    """
-    ffmpeg = shutil.which('ffmpeg')
-    if not ffmpeg:
-        return None
-    try:
-        cmd = [ffmpeg, '-y', '-i', input_path, '-c:a', 'pcm_s16le', wav_path]
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                           timeout=120, **_SUBPROCESS_FLAGS)
-        if r.returncode == 0 and os.path.exists(wav_path):
-            import wave
-            with wave.open(wav_path, 'rb') as w:
-                return w.getframerate()
-        stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
-        _log_error('ffmpeg_normalise',
-                   f"ffmpeg failed (exit {r.returncode}): {stderr_text[-500:]}")
-        return None
-    except Exception as e:
-        _log_error('ffmpeg_normalise', f"ffmpeg error: {e}", exc=e)
-        return None
-
-
 def _normalise_to_pcm16_wav(input_path, tmp_wav):
     """Produce a 16-bit PCM WAV at tmp_wav from any supported source, trying,
-    in order: soundfile (works on almost every platform), ffmpeg (any format,
-    if installed), then a plain copy when the source is already a 16-bit PCM WAV
-    (stdlib only — no deps). Returns the sample rate, or None if none worked."""
+    in order: soundfile (works on almost every platform), then a plain copy when
+    the source is already an uncompressed PCM WAV (stdlib only — no deps).
+    Returns the sample rate, or None if none worked."""
     # 1) soundfile — preferred; handles mp3/flac/ogg/wav/etc. everywhere its
     #    bundled libsndfile loads (all platforms except Windows-on-ARM).
     if SOUNDFILE_AVAILABLE:
         data, sr = soundfile.read(input_path)
         soundfile.write(tmp_wav, data, sr, subtype='PCM_16')
         return sr
-    # 2) ffmpeg — any format, when soundfile can't load (e.g. Windows-ARM).
-    sr = _ffmpeg_to_pcm16_wav(input_path, tmp_wav)
-    if sr is not None:
-        return sr
-    # 3) No deps (stdlib only): convert any uncompressed PCM WAV to 16-bit.
+    # 2) No deps (stdlib only): convert any uncompressed PCM WAV to 16-bit.
     #    Covers 8/16/24/32-bit PCM WAV in-program, so a WAV source always works
-    #    even with no soundfile and no ffmpeg (e.g. Windows-ARM).
+    #    even with no soundfile (e.g. Windows-ARM without a bundled libsndfile).
     if input_path.lower().endswith('.wav'):
         try:
             import wave
             with wave.open(input_path, 'rb') as w:
                 if w.getcomptype() != 'NONE':
-                    raise ValueError('compressed WAV needs soundfile or ffmpeg')
+                    raise ValueError('compressed WAV needs soundfile')
                 sr = w.getframerate()
                 ch = w.getnchannels()
                 sw = w.getsampwidth()
@@ -628,51 +438,33 @@ def read_at9_loop_info(at9_path):
         return None
 
 
-def _trim_wav_to_frames(wav_path, max_frames):
-    """Truncate a WAV to at most max_frames frames (never pads). Returns True if
-    it trimmed. Used to normalise decoder output to the AT9's true length."""
-    import wave
-    try:
-        with wave.open(wav_path, 'rb') as w:
-            nframes = w.getnframes()
-            if nframes <= max_frames:
-                return False
-            params = w.getparams()
-            frames = w.readframes(max_frames)
-        tmp = wav_path + '.trim'
-        with wave.open(tmp, 'wb') as o:
-            o.setnchannels(params.nchannels)
-            o.setsampwidth(params.sampwidth)
-            o.setframerate(params.framerate)
-            o.writeframes(frames)
-        os.replace(tmp, wav_path)
-        return True
-    except Exception as e:
-        _log_error('trim_wav', f"failed to trim {wav_path}: {e}", exc=e)
-        return False
+def _make_progress(status_callback, verb):
+    """Build a (done, total) progress reporter that posts a throttled percentage
+    to status_callback, or None when there's nothing to report to. Exceptions in
+    the UI callback are swallowed so progress never breaks a conversion."""
+    if not status_callback:
+        return None
+    last = [-1]
 
+    def report(done, total):
+        if total <= 0:
+            return
+        pct = int(done * 100 / total)
+        if pct != last[0]:
+            last[0] = pct
+            try:
+                status_callback(f"{verb} {pct}%")
+            except Exception:
+                pass
 
-def _finalize_decoded_wav(at9_path, wav_path):
-    """Normalise a freshly decoded WAV to the AT9's true, un-looped length.
-
-    Every decoder is made to agree on length: at9tool is called with `-repeat 1`
-    (no baked loop) and VGAudioCli already emits the true length, so this only
-    trims trailing padding (e.g. ffmpeg, which doesn't trim). Best-effort: a
-    failure leaves the decoded WAV untouched."""
-    try:
-        info = read_at9_loop_info(at9_path)
-        if info and info.total_samples:
-            _trim_wav_to_frames(wav_path, info.total_samples)
-    except Exception as e:
-        _log_error('finalize_decoded_wav', f"{wav_path}: {e}", exc=e)
+    return report
 
 
 def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
-    """Convert AT9 to WAV using at9tool (preferred), VGAudioCli, or ffmpeg (last resort).
+    """Decode AT9 to a 16-bit PCM WAV with the bundled native codec.
 
-    status_callback: optional callable(str) — receives status/warning messages
-    for display in a progress window. Called with the ffmpeg fallback warning
-    if neither at9tool nor VGAudioCli succeeds.
+    The native decoder returns the true, un-looped length directly (no trailing
+    loop to trim). status_callback: optional callable(str) for progress text.
     """
     print(f"Converting {at9_path} to {wav_path}")
     if at9_path.lower().endswith(".wav"):
@@ -684,111 +476,30 @@ def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
         _log_error('convert_at9_to_wav', f"Source file not found: {at9_path}")
         return False
 
-    # 1) Try at9tool — user-provided, lives outside _MEIPASS
-    at9_tools = _at9tool_dir()
-    at9tool_path = os.path.join(at9_tools, 'at9tool.exe')
-
-    if os.path.exists(at9tool_path):
-        try:
-            # `-repeat 1`: decode the loop section once (true length). Without it,
-            # at9tool defaults to `-repeat 2`, baking an extra copy of the loop
-            # region and ~doubling the output. With it, at9tool's output matches
-            # VGAudioCli (the true, un-looped length) bit-for-bit.
-            cmd = _at9tool_cmd(at9tool_path) + ['-repeat', '1', '-d', at9_path, wav_path]
-            env = _wine_env() if platform.system() != 'Windows' else None
-            use_new_session = platform.system() != 'Windows'
-            r = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=at9_tools,
-                env=env, start_new_session=use_new_session, **_SUBPROCESS_FLAGS
-            )
-            _clean_wine_runtime_cache()
-            if r.returncode == 0:
-                _finalize_decoded_wav(at9_path, wav_path)
-                return True
-            stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
-            print(f"  at9tool decode failed (exit code {r.returncode})")
-            _log_wine_error('at9tool_decode', cmd, r.returncode, stderr_text,
-                            wine_path=cmd[0] if len(cmd) > 1 else None, env=env)
-        except Exception as e:
-            _clean_wine_runtime_cache()
-            _log_error('at9tool_decode', f"at9tool error: {e}", exc=e)
-
-    # 2) Fallback to VGAudioCli.exe (bundled in _MEIPASS or project Tools/).
-    #    Runs natively on Windows, via Wine on macOS/Linux.
-    tools = _tools_dir()
-    vgaudio_exe = os.path.join(tools, 'VGAudioCli.exe')
-    if os.path.exists(vgaudio_exe):
-        is_win = platform.system() == 'Windows'
-        wine_path = None
-        if is_win:
-            cmd = [vgaudio_exe, '-i', at9_path, '-o', wav_path]
-            env = None
-            can_run = True
-        else:
-            wine_path = _find_bundled_wine() or shutil.which('wine')
-            if wine_path:
-                cmd = _wine_invocation(wine_path) + [vgaudio_exe, '-i', at9_path, '-o', wav_path]
-                env = _wine_env()
-                can_run = True
-            else:
-                _log_error('VGAudioCli_decode',
-                           "Wine not found — cannot run VGAudioCli.exe. "
-                           f"Bundled wine dir: {os.path.join(tools, 'wine_minimal', 'bin')} "
-                           f"exists={os.path.isdir(os.path.join(tools, 'wine_minimal', 'bin'))}")
-                can_run = False
-
-        if can_run:
-            try:
-                print("  Falling back to VGAudioCli for decoding...")
-                # Use start_new_session=True on non-Windows to force
-                # fork+exec instead of posix_spawn.  On macOS ARM64,
-                # posix_spawn can create a process context in which Wine's
-                # subsequent exec of wine-preloader fails ("could not exec
-                # the wine loader").  fork+exec avoids this.
-                use_new_session = not is_win
-                r = subprocess.run(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    cwd=tools, env=env, timeout=30,
-                    start_new_session=use_new_session, **_SUBPROCESS_FLAGS
-                )
-                if not is_win:
-                    _clean_wine_runtime_cache()
-                if r.returncode == 0:
-                    _finalize_decoded_wav(at9_path, wav_path)
-                    return True
-                stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
-                print(f"  VGAudioCli decode failed (exit code {r.returncode})")
-                if stderr_text:
-                    print(f"  stderr: {stderr_text}")
-                _log_wine_error('VGAudioCli_decode', cmd, r.returncode, stderr_text,
-                                wine_path=wine_path, env=env)
-            except subprocess.TimeoutExpired:
-                if not is_win:
-                    _clean_wine_runtime_cache()
-                _log_error('VGAudioCli_decode', "VGAudioCli timed out (>30s)")
-            except Exception as e:
-                if not is_win:
-                    _clean_wine_runtime_cache()
-                _log_error('VGAudioCli_decode', f"VGAudioCli error: {e}", exc=e)
-    else:
+    if not at9_native.available():
         _log_error('convert_at9_to_wav',
-                    f"VGAudioCli.exe not found at {vgaudio_exe}, "
-                    f"tools_dir={tools}, exists={os.path.isdir(tools)}, "
-                    f"contents={os.listdir(tools) if os.path.isdir(tools) else 'N/A'}")
+                   "Native at9codec library not available — cannot decode AT9.")
+        if status_callback:
+            status_callback(AT9_CODEC_UNAVAILABLE_MSG)
+        return False
 
-    # 3) Last resort: ffmpeg — slower but has native ATRAC9 support.
-    print("  WARNING: Falling back to ffmpeg for decoding. This may take a little longer.")
-    if _try_ffmpeg_decode(at9_path, wav_path, status_callback=status_callback):
-        _finalize_decoded_wav(at9_path, wav_path)
-        return True
-
-    _log_error('convert_at9_to_wav',
-               "No working AT9 decoder found (tried at9tool, VGAudioCli, and ffmpeg)")
+    try:
+        if at9_native.decode_to_wav(at9_path, wav_path,
+                                    progress=_make_progress(status_callback, "Decoding audio…")):
+            return True
+        _log_error('convert_at9_to_wav', f"Native AT9 decode failed for {at9_path}")
+    except Exception as e:
+        _log_error('convert_at9_to_wav', f"Native AT9 decode error: {e}", exc=e)
     return False
 
 
-def convert_to_at9(input_path, at9_path, loop_start_sample=None):
-    """Convert WAV/AT9 to AT9 using at9tool (required for encoding)."""
+def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback=None):
+    """Encode WAV/other audio (or pass through .at9) to AT9 with the native codec.
+
+    loop_start_sample: None/0/'' -> whole-track loop; a positive sample index ->
+    loop from there to the end. The source is normalised to a 16-bit WAV and, if
+    its rate isn't a Vita AT9 rate (48/24/12 kHz), resampled (loop index scaled).
+    """
     print(f"Converting {input_path} to {at9_path} (Loop: {loop_start_sample})")
     if input_path.lower().endswith(".at9"):
         if at9_path.lower() != input_path.lower():
@@ -799,77 +510,50 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None):
         _log_error('convert_to_at9', f"Source file not found: {input_path}")
         return False
 
-    # at9tool is user-provided, lives outside _MEIPASS
-    at9_tools = _at9tool_dir()
-    at9tool_path = os.path.join(at9_tools, 'at9tool.exe')
-
-    if not os.path.exists(at9tool_path):
+    if not at9_native.available():
         _log_error('convert_to_at9',
-                    f"at9tool.exe not found in {at9_tools}. {AT9TOOL_REQUIRED_MSG}")
+                   "Native at9codec library not available — cannot encode AT9.")
+        if status_callback:
+            status_callback(AT9_CODEC_UNAVAILABLE_MSG)
         return False
 
-    # Normalise any source format to a 16-bit WAV for at9tool
-    # (soundfile → ffmpeg → plain-WAV passthrough).
-    tmp_wav = os.path.join(at9_tools, 'BGM.wav')
-    samplerate = _normalise_to_pcm16_wav(input_path, tmp_wav)
-    if samplerate is None:
-        _log_error('convert_to_at9',
-                   "Cannot encode audio: soundfile/libsndfile couldn't load on this "
-                   "platform (e.g. ARM64 Windows), ffmpeg was not found, and the source "
-                   "isn't a 16-bit PCM WAV. Install ffmpeg (on PATH), or supply a 16-bit "
-                   "PCM WAV, to convert audio to AT9 here.")
-        return False
-
-    if samplerate > 24000:
-        samplerate = 48000
-    elif samplerate > 12000:
-        samplerate = 24000
-    else:
-        samplerate = 12000
-
+    tmp_wav = os.path.join(tempfile.gettempdir(), 'vta_bgm_encode.wav')
     try:
-        cmd_prefix = _at9tool_cmd(at9tool_path)
-        env = _wine_env() if platform.system() != 'Windows' else None
-        if (loop_start_sample is not None) and (loop_start_sample > 0) and (loop_start_sample != ''):
-            import wave
-            with wave.open(tmp_wav, 'rb') as _w:
-                samples = _w.getnframes() - 1
-            cmd = cmd_prefix + ['-e', '-br', '144', '-fs', str(samplerate),
-                                '-loop', str(loop_start_sample), str(samples), 'BGM.wav', at9_path]
-        else:
-            cmd = cmd_prefix + ['-e', '-br', '144', '-fs', str(samplerate),
-                                '-wholeloop', 'BGM.wav', at9_path]
-
-        use_new_session = platform.system() != 'Windows'
-        r = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=at9_tools,
-            env=env, start_new_session=use_new_session, **_SUBPROCESS_FLAGS
-        )
-        _clean_wine_runtime_cache()
-
-        if os.path.exists(tmp_wav):
-            os.remove(tmp_wav)
-
-        if r.returncode != 0:
-            stderr_text = r.stderr.decode(errors='replace').strip() if r.stderr else ''
-            stdout_text = r.stdout.decode(errors='replace').strip() if r.stdout else ''
-            _log_wine_error('at9tool_encode', cmd, r.returncode,
-                            f"stderr: {stderr_text}\nstdout: {stdout_text}",
-                            wine_path=cmd[0] if len(cmd) > 1 else None, env=env)
+        samplerate = _normalise_to_pcm16_wav(input_path, tmp_wav)
+        if samplerate is None:
+            _log_error('convert_to_at9',
+                       "Cannot read source audio: soundfile/libsndfile couldn't load on "
+                       "this platform (e.g. ARM64 Windows) and the source isn't an "
+                       "uncompressed PCM WAV. Supply a WAV, or a build with libsndfile.")
             return False
-        return True
-    except FileNotFoundError as e:
-        _clean_wine_runtime_cache()
-        if platform.system() != 'Windows':
-            _log_error('at9tool_encode',
-                        "Wine not found. at9tool.exe requires Wine on non-Windows platforms.", exc=e)
+
+        # Whole-track loop unless an explicit (positive) loop start is given.
+        if (loop_start_sample is not None) and (loop_start_sample != '') \
+                and (int(loop_start_sample) > 0):
+            loop_start = int(loop_start_sample)
         else:
-            _log_error('at9tool_encode', "at9tool.exe not found.", exc=e)
+            loop_start = 0  # 0 = whole-track loop (matches the old -wholeloop)
+
+        # The native encoder takes a Vita AT9 rate and does not resample.
+        target = _supported_at9_rate(samplerate)
+        if target != samplerate:
+            loop_start = _resample_wav_16(tmp_wav, samplerate, target, loop_start)
+
+        if at9_native.encode_wav_to_at9(
+                tmp_wav, at9_path, loop_start=loop_start,
+                progress=_make_progress(status_callback, "Encoding audio…")):
+            return True
+        _log_error('convert_to_at9', "Native AT9 encode failed.")
         return False
     except Exception as e:
-        _clean_wine_runtime_cache()
-        _log_error('at9tool_encode', f"Conversion error: {e}", exc=e)
+        _log_error('convert_to_at9', f"Conversion error: {e}", exc=e)
         return False
+    finally:
+        if os.path.exists(tmp_wav):
+            try:
+                os.remove(tmp_wav)
+            except OSError:
+                pass
 
 def removeTemp(file):
     if os.path.exists(file):
