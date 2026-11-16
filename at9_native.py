@@ -21,6 +21,11 @@ import wave
 # --- status codes (mirror native/at9codec.h) ---
 AT9_OK = 0
 
+# Theme-BGM size caps (mirror native/at9codec.h). The Vita won't use a theme AT9
+# larger than ~5 MB; a theme that must also run on PS4/PS5 is capped at 2 MiB.
+VITA_BGM_MAX_BYTES = 5 * 1024 * 1024
+PS_CROSS_BGM_MAX_BYTES = 2 * 1024 * 1024
+
 # Progress callback type: (user, done, total) -> None.
 _ProgressCb = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32)
 
@@ -84,6 +89,7 @@ def _bind(lib):
         ctypes.c_char_p, ctypes.c_size_t,                     # wav, len
         ctypes.c_uint32,                                      # bitrate
         ctypes.c_int32,                                       # loop_start
+        ctypes.c_size_t,                                      # max_bytes
         _ProgressCb, ctypes.c_void_p,                         # cb, user
         ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8)),       # out_at9
         ctypes.POINTER(ctypes.c_size_t),                      # out_len
@@ -184,12 +190,14 @@ def decode_to_wav(at9_path, wav_path, progress=None):
     return True
 
 
-def encode_wav_to_at9(wav_path, at9_path, loop_start=0, bitrate=0, progress=None):
+def encode_wav_to_at9(wav_path, at9_path, loop_start=0, bitrate=0, max_bytes=0,
+                      progress=None):
     """Encode a 16-bit PCM WAV (12/24/48 kHz) to an AT9 file.
 
     loop_start: 0 = whole-track loop, >0 = loop from that sample to the end,
-    <0 = no loop. Returns True on success. Raises At9NativeError if the library
-    is missing."""
+    <0 = no loop. max_bytes: 0 = no size cap, else keep the output at or under
+    that size (e.g. VITA_BGM_MAX_BYTES for theme BGM). Returns True on success.
+    Raises At9NativeError if the library is missing."""
     lib = _load()
     if lib is None:
         raise At9NativeError("at9codec native library not available")
@@ -201,7 +209,8 @@ def encode_wav_to_at9(wav_path, at9_path, loop_start=0, bitrate=0, progress=None
     out_len = ctypes.c_size_t()
     rc = lib.at9_encode_wav_ex(
         data, len(data), ctypes.c_uint32(bitrate), ctypes.c_int32(loop_start),
-        cb, None, ctypes.byref(out_at9), ctypes.byref(out_len),
+        ctypes.c_size_t(max_bytes), cb, None,
+        ctypes.byref(out_at9), ctypes.byref(out_len),
     )
     if rc != AT9_OK:
         return False

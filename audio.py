@@ -460,6 +460,25 @@ def _make_progress(status_callback, verb):
     return report
 
 
+def _warn_if_bgm_too_large(at9_path, status_callback=None):
+    """Warn (log + status) if an AT9 BGM exceeds the PS Vita's theme-BGM size
+    limit, which the console won't use. Returns True if it's within the limit.
+    Called after encoding and for a user-supplied .at9 passed through as-is."""
+    try:
+        size = os.path.getsize(at9_path)
+    except OSError:
+        return True
+    if size <= at9_native.VITA_BGM_MAX_BYTES:
+        return True
+    msg = ("This background music is larger than the PS Vita's AT9 size limit "
+           f"(about 5 MB) at {size / (1024 * 1024):.1f} MB, so the Vita may not "
+           "use it. Use a shorter track.")
+    _log_error('convert_to_at9', msg)
+    if status_callback:
+        status_callback(msg)
+    return False
+
+
 def convert_at9_to_wav(at9_path, wav_path, status_callback=None):
     """Decode AT9 to a 16-bit PCM WAV with the bundled native codec.
 
@@ -504,6 +523,8 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback
     if input_path.lower().endswith(".at9"):
         if at9_path.lower() != input_path.lower():
             shutil.copy(input_path, at9_path)
+        # A user-supplied .at9 is used as-is; still warn if it's over the limit.
+        _warn_if_bgm_too_large(at9_path, status_callback)
         return True
 
     if not os.path.exists(input_path):
@@ -539,9 +560,15 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback
         if target != samplerate:
             loop_start = _resample_wav_16(tmp_wav, samplerate, target, loop_start)
 
+        # Theme BGM is Vita system BGM: cap the file so the console will use it
+        # (the encoder auto-picks the highest standard bitrate that fits).
         if at9_native.encode_wav_to_at9(
                 tmp_wav, at9_path, loop_start=loop_start,
+                max_bytes=at9_native.VITA_BGM_MAX_BYTES,
                 progress=_make_progress(status_callback, "Encoding audio…")):
+            # The encoder already picks the highest bitrate that fits the cap; if
+            # the track is so long it overflows even at the lowest bitrate, warn.
+            _warn_if_bgm_too_large(at9_path, status_callback)
             return True
         _log_error('convert_to_at9', "Native AT9 encode failed.")
         return False
