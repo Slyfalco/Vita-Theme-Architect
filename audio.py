@@ -526,15 +526,15 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback
         # and the loop start in that rate's samples.
 
         # Encode theme BGM at the best bitrate that fits the Vita's size limit:
-        # bitrate=0 starts at the top standard rate (192 kbps stereo / 96 kbps
-        # mono) and the codec steps down to the highest standard rate whose file
-        # stays under max_bytes. So a short/medium track gets 192 kbps and only
-        # long tracks drop (144, then lower) to stay under the 5 MB ceiling. The
-        # rate is chosen by calculation in a single pass, so starting high costs
-        # no extra encode time. max_bytes is the console size limit's safety net.
+        # with no bitrate given the codec defaults to auto — it starts at the top
+        # standard rate (192 kbps stereo / 96 kbps mono) and steps down to the
+        # highest standard rate whose file stays under max_bytes. So a short/medium
+        # track gets 192 kbps and only long tracks drop (144, then lower) to stay
+        # under the 5 MB ceiling. The rate is chosen by calculation in a single
+        # pass, so starting high costs no extra encode time. max_bytes is the
+        # console size limit's safety net.
         if at9_native.encode_wav_to_at9(
                 tmp_wav, at9_path, loop_start=loop_start,
-                bitrate=0,
                 max_bytes=at9_native.VITA_BGM_MAX_BYTES,
                 progress=_make_progress(status_callback, "Encoding audio…")):
             # If the track is so long it overflows even at the lowest bitrate, warn.
