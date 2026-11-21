@@ -1047,14 +1047,18 @@ class VitaThemeArchitect(QMainWindow):
             QMessageBox.warning(self, "Error", "bgm.at9 not found in the theme folder.")
             return
         temp_wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); temp_wav_path = temp_wav_file.name; temp_wav_file.close()
-        progress = QProgressDialog("Converting audio...", None, 0, 0, self)
+        progress = QProgressDialog("Converting audio...", None, 0, 100, self)
         progress.setWindowTitle("Processing")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.show()
         QApplication.processEvents()
-        def _bgm_status(msg):
-            progress.setLabelText(msg)
+        def _bgm_status(msg, num=None):
+            # The codec calls back with (text, percent) for progress and (text)
+            # for one-off status/errors, so percent is optional.
+            progress.setLabelText(f"{msg} {num}%" if num is not None else msg)
+            if num is not None:
+                progress.setValue(num)
             QApplication.processEvents()
         ok = convert_at9_to_wav(bgm_at9_path, temp_wav_path, status_callback=_bgm_status)
         progress.close()
@@ -1087,14 +1091,16 @@ class VitaThemeArchitect(QMainWindow):
             return
         save_path, _ = QFileDialog.getSaveFileName(self, "Save BGM As WAV", f"{safe_title}_bgm.wav", "WAV Files (*.wav)");
         if save_path:
-            progress = QProgressDialog("Converting audio...", None, 0, 0, self)
+            progress = QProgressDialog("Converting audio...", None, 0, 100, self)
             progress.setWindowTitle("Processing")
             progress.setWindowModality(Qt.WindowModality.WindowModal)
             progress.setMinimumDuration(0)
             progress.show()
             QApplication.processEvents()
-            def _extract_status(msg):
-                progress.setLabelText(msg)
+            def _extract_status(msg, num=None):
+                progress.setLabelText(f"{msg} {num}%" if num is not None else msg)
+                if num is not None:
+                    progress.setValue(num)
                 QApplication.processEvents()
             ok = convert_at9_to_wav(bgm_at9_path, save_path, status_callback=_extract_status)
             progress.close()
