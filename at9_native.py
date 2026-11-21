@@ -29,6 +29,29 @@ PS_CROSS_BGM_MAX_BYTES = 2 * 1024 * 1024
 # Progress callback type: (user, done, total) -> None.
 _ProgressCb = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32)
 
+
+class _DecodeOptions(ctypes.Structure):
+    """Mirrors At9DecodeOptions in native/at9codec.h."""
+    _fields_ = [
+        ('struct_size', ctypes.c_uint32),
+        ('progress', _ProgressCb),
+        ('user', ctypes.c_void_p),
+    ]
+
+
+class _EncodeOptions(ctypes.Structure):
+    """Mirrors At9EncodeOptions in native/at9codec.h."""
+    _fields_ = [
+        ('struct_size', ctypes.c_uint32),
+        ('bitrate', ctypes.c_uint32),
+        ('max_bytes', ctypes.c_size_t),
+        ('loop_start', ctypes.c_int32),
+        ('loop_end', ctypes.c_int32),
+        ('progress', _ProgressCb),
+        ('user', ctypes.c_void_p),
+    ]
+
+
 _lib = None
 _load_tried = False
 
@@ -72,10 +95,10 @@ def _bind(lib):
     lib.at9_version.restype = ctypes.c_char_p
     lib.at9_version.argtypes = []
 
-    lib.at9_decode_ex.restype = ctypes.c_int32
-    lib.at9_decode_ex.argtypes = [
+    lib.at9_decode.restype = ctypes.c_int32
+    lib.at9_decode.argtypes = [
         ctypes.c_char_p, ctypes.c_size_t,                     # at9, len
-        _ProgressCb, ctypes.c_void_p,                         # cb, user
+        ctypes.POINTER(_DecodeOptions),                       # opts (NULL = defaults)
         ctypes.POINTER(ctypes.POINTER(ctypes.c_int16)),       # out_pcm
         ctypes.POINTER(ctypes.c_size_t),                      # out_count
         ctypes.POINTER(ctypes.c_uint16),                      # out_channels
@@ -84,13 +107,10 @@ def _bind(lib):
     lib.at9_free_pcm.restype = None
     lib.at9_free_pcm.argtypes = [ctypes.POINTER(ctypes.c_int16), ctypes.c_size_t]
 
-    lib.at9_encode_wav_ex.restype = ctypes.c_int32
-    lib.at9_encode_wav_ex.argtypes = [
+    lib.at9_encode_wav.restype = ctypes.c_int32
+    lib.at9_encode_wav.argtypes = [
         ctypes.c_char_p, ctypes.c_size_t,                     # wav, len
-        ctypes.c_uint32,                                      # bitrate
-        ctypes.c_int32,                                       # loop_start
-        ctypes.c_size_t,                                      # max_bytes
-        _ProgressCb, ctypes.c_void_p,                         # cb, user
+        ctypes.POINTER(_EncodeOptions),                       # opts (NULL = defaults)
         ctypes.POINTER(ctypes.POINTER(ctypes.c_uint8)),       # out_at9
         ctypes.POINTER(ctypes.c_size_t),                      # out_len
     ]
@@ -164,14 +184,14 @@ def decode_to_wav(at9_path, wav_path, progress=None):
         raise At9NativeError("at9codec native library not available")
     with open(at9_path, 'rb') as f:
         data = f.read()
-
     cb, _keep = _wrap_progress(progress)
+    opts = _DecodeOptions(struct_size=ctypes.sizeof(_DecodeOptions), progress=cb, user=None)
     out_pcm = ctypes.POINTER(ctypes.c_int16)()
     out_count = ctypes.c_size_t()
     out_ch = ctypes.c_uint16()
     out_sr = ctypes.c_uint32()
-    rc = lib.at9_decode_ex(
-        data, len(data), cb, None,
+    rc = lib.at9_decode(
+        data, len(data), ctypes.byref(opts),
         ctypes.byref(out_pcm), ctypes.byref(out_count),
         ctypes.byref(out_ch), ctypes.byref(out_sr),
     )
@@ -190,14 +210,15 @@ def decode_to_wav(at9_path, wav_path, progress=None):
     return True
 
 
-def encode_wav_to_at9(wav_path, at9_path, loop_start=0, bitrate=0, max_bytes=0,
-                      progress=None):
-    """Encode a 16-bit PCM WAV (12/24/48 kHz) to an AT9 file.
+def encode_wav_to_at9(wav_path, at9_path, loop_start=0, loop_end=0, bitrate=0,
+                      max_bytes=0, progress=None):
+    """Encode a WAV (12/24/48 kHz) to an AT9 file.
 
-    loop_start: 0 = whole-track loop, >0 = loop from that sample to the end,
-    <0 = no loop. max_bytes: 0 = no size cap, else keep the output at or under
-    that size (e.g. VITA_BGM_MAX_BYTES for theme BGM). Returns True on success.
-    Raises At9NativeError if the library is missing."""
+    loop_start: 0 = whole-track loop, >0 = loop from that sample, <0 = no loop.
+    loop_end: 0 = to the track end, >0 = inclusive last sample of the loop.
+    max_bytes: 0 = no size cap, else keep the output at or under that size (e.g.
+    VITA_BGM_MAX_BYTES for theme BGM). Returns True on success. Raises
+    At9NativeError if the library is missing."""
     lib = _load()
     if lib is None:
         raise At9NativeError("at9codec native library not available")
@@ -205,11 +226,15 @@ def encode_wav_to_at9(wav_path, at9_path, loop_start=0, bitrate=0, max_bytes=0,
         data = f.read()
 
     cb, _keep = _wrap_progress(progress)
+    opts = _EncodeOptions(
+        struct_size=ctypes.sizeof(_EncodeOptions),
+        bitrate=bitrate, max_bytes=max_bytes,
+        loop_start=loop_start, loop_end=loop_end, progress=cb, user=None,
+    )
     out_at9 = ctypes.POINTER(ctypes.c_uint8)()
     out_len = ctypes.c_size_t()
-    rc = lib.at9_encode_wav_ex(
-        data, len(data), ctypes.c_uint32(bitrate), ctypes.c_int32(loop_start),
-        ctypes.c_size_t(max_bytes), cb, None,
+    rc = lib.at9_encode_wav(
+        data, len(data), ctypes.byref(opts),
         ctypes.byref(out_at9), ctypes.byref(out_len),
     )
     if rc != AT9_OK:

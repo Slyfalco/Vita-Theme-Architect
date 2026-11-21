@@ -254,13 +254,10 @@ AT9_CODEC_UNAVAILABLE_MSG = (
 
 # BGM source formats (besides .at9) that can be encoded to AT9. Each is first
 # converted to a temporary WAV in convert_to_at9, then encoded by the native
-# codec. All are decoded by soundfile's bundled libsndfile at their original
-# sample rate, so sample positions (BGM loop start), pitch and speed are
-# unchanged (any needed sample-rate conversion is applied explicitly below).
+# codec. All are decoded by soundfile's bundled libsndfile; the codec resamples
+# any non-Vita rate to a supported one itself (scaling loop points), so the
+# sample positions the user sees (BGM loop start) are given in the source rate.
 ENCODABLE_AUDIO_EXTS = ['.wav', '.flac', '.ogg', '.opus', '.mp3', '.aiff', '.aif']
-
-# Sample rates the AT9 encoder accepts (the Vita's ATRAC9 rates).
-_AT9_RATES = (48000, 24000, 12000)
 
 # Target bitrate for theme BGM. 144 kbps is the long-standing Vita theme value:
 # stereo encodes at 144 kbps, mono snaps down to its 96 kbps maximum, and a
@@ -275,36 +272,6 @@ def encoding_available():
     With the bundled native codec this is normally always True; it mirrors the
     former find_at9tool() gate, which asked whether an encoder was present."""
     return at9_native.available()
-
-
-def _supported_at9_rate(sr):
-    """Nearest AT9-supported rate at or above the source rate (matching the
-    old quantisation: >24k -> 48k, >12k -> 24k, else 12k)."""
-    if sr > 24000:
-        return 48000
-    if sr > 12000:
-        return 24000
-    return 12000
-
-
-def _resample_wav_16(wav_path, src_rate, dst_rate, loop_start):
-    """Resample a 16-bit PCM WAV in place from src_rate to dst_rate (stdlib
-    audioop.ratecv — no external deps), returning the loop-start sample scaled
-    to the new rate. Used only when a source isn't already a Vita AT9 rate."""
-    import wave
-    import audioop  # stdlib (present in 3.12); only needed for odd input rates
-    with wave.open(wav_path, 'rb') as w:
-        nch = w.getnchannels()
-        frames = w.readframes(w.getnframes())
-    converted, _state = audioop.ratecv(frames, 2, nch, src_rate, dst_rate, None)
-    with wave.open(wav_path, 'wb') as o:
-        o.setnchannels(nch)
-        o.setsampwidth(2)
-        o.setframerate(dst_rate)
-        o.writeframes(converted)
-    if loop_start and loop_start > 0:
-        return int(round(loop_start * dst_rate / src_rate))
-    return loop_start
 
 
 # =============================================================================
@@ -459,7 +426,7 @@ def _make_progress(status_callback, verb):
         if pct != last[0]:
             last[0] = pct
             try:
-                status_callback(f"{verb} {pct}%")
+                status_callback(verb, pct)
             except Exception:
                 pass
 
@@ -561,10 +528,9 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback
         else:
             loop_start = 0  # 0 = whole-track loop (matches the old -wholeloop)
 
-        # The native encoder takes a Vita AT9 rate and does not resample.
-        target = _supported_at9_rate(samplerate)
-        if target != samplerate:
-            loop_start = _resample_wav_16(tmp_wav, samplerate, target, loop_start)
+        # The codec resamples a non-Vita rate (48/24/12 kHz) to a supported one
+        # itself and scales the loop point, so we pass the WAV at its native rate
+        # and the loop start in that rate's samples.
 
         # Encode theme BGM at the proven 144 kbps (what the Vita theme pipeline
         # has always used — stereo lands on 144 kbps, mono snaps to its 96 kbps
