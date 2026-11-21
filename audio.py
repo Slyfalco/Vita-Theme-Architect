@@ -259,13 +259,6 @@ AT9_CODEC_UNAVAILABLE_MSG = (
 # sample positions the user sees (BGM loop start) are given in the source rate.
 ENCODABLE_AUDIO_EXTS = ['.wav', '.flac', '.ogg', '.opus', '.mp3', '.aiff', '.aif']
 
-# Target bitrate for theme BGM. 144 kbps is the long-standing Vita theme value:
-# stereo encodes at 144 kbps, mono snaps down to its 96 kbps maximum, and a
-# ~3-minute track is ~3.2 MB — comfortably under the 5 MB Vita limit. The size
-# cap (VITA_BGM_MAX_BYTES) still steps the bitrate down for longer tracks.
-BGM_TARGET_BITRATE = 144000
-
-
 def encoding_available():
     """True if AT9 BGM can be created on this system (the native codec loaded).
 
@@ -532,14 +525,16 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback
         # itself and scales the loop point, so we pass the WAV at its native rate
         # and the loop start in that rate's samples.
 
-        # Encode theme BGM at the proven 144 kbps (what the Vita theme pipeline
-        # has always used — stereo lands on 144 kbps, mono snaps to its 96 kbps
-        # max). A 3-minute track is ~3.2 MB, well under the 5 MB Vita ceiling
-        # (headroom to ~4m35s); longer tracks auto-drop below 144 to stay under
-        # the cap. max_bytes is the safety net the console size limit needs.
+        # Encode theme BGM at the best bitrate that fits the Vita's size limit:
+        # bitrate=0 starts at the top standard rate (192 kbps stereo / 96 kbps
+        # mono) and the codec steps down to the highest standard rate whose file
+        # stays under max_bytes. So a short/medium track gets 192 kbps and only
+        # long tracks drop (144, then lower) to stay under the 5 MB ceiling. The
+        # rate is chosen by calculation in a single pass, so starting high costs
+        # no extra encode time. max_bytes is the console size limit's safety net.
         if at9_native.encode_wav_to_at9(
                 tmp_wav, at9_path, loop_start=loop_start,
-                bitrate=BGM_TARGET_BITRATE,
+                bitrate=0,
                 max_bytes=at9_native.VITA_BGM_MAX_BYTES,
                 progress=_make_progress(status_callback, "Encoding audio…")):
             # If the track is so long it overflows even at the lowest bitrate, warn.
