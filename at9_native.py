@@ -20,11 +20,15 @@ import wave
 
 # --- status codes (mirror native/at9codec.h) ---
 AT9_OK = 0
+AT9_ERR_BITRATE = -5    # bitrate is not a standard rate (use 0 = auto)
+AT9_ERR_TOO_LARGE = -6  # too long to fit the size limit at any standard bitrate
 
-# Theme-BGM size caps (mirror native/at9codec.h). The Vita won't use a theme AT9
-# larger than ~5 MB; a theme that must also run on PS4/PS5 is capped at 2 MiB.
-VITA_BGM_MAX_BYTES = 5 * 1024 * 1024
-PS_CROSS_BGM_MAX_BYTES = 2 * 1024 * 1024
+# --- size profiles (mirror native/at9codec.h) ---
+# Name a console target and the codec applies its own byte cap for it, so the limit
+# values live only in the codec (query profile_max_bytes() if you need the number).
+AT9_SIZE_NONE = 0
+AT9_SIZE_VITA_BGM = 1   # PS Vita system/theme BGM (under 5 MB)
+AT9_SIZE_PS_CROSS = 2   # tighter 2 MiB cap for PS4/PS5 cross-support
 
 # Progress callback type: (user, done, total) -> None.
 _ProgressCb = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32)
@@ -49,6 +53,7 @@ class _EncodeOptions(ctypes.Structure):
         ('loop_end', ctypes.c_int32),
         ('progress', _ProgressCb),
         ('user', ctypes.c_void_p),
+        ('size_profile', ctypes.c_uint32),
     ]
 
 
@@ -116,6 +121,9 @@ def _bind(lib):
     ]
     lib.at9_free_at9.restype = None
     lib.at9_free_at9.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t]
+
+    lib.at9_profile_max_bytes.restype = ctypes.c_size_t
+    lib.at9_profile_max_bytes.argtypes = [ctypes.c_uint32]
 
 
 def _load():
@@ -210,15 +218,34 @@ def decode_to_wav(at9_path, wav_path, progress=None):
     return True
 
 
+def profile_max_bytes(size_profile):
+    """The codec's byte cap for a size profile (AT9_SIZE_*); 0 = no cap/unknown.
+    Reads the limit from the library so callers never hard-code it. Raises
+    At9NativeError if the library is missing."""
+    lib = _load()
+    if lib is None:
+        raise At9NativeError("at9codec native library not available")
+    return int(lib.at9_profile_max_bytes(size_profile))
+
+
+class At9TooLargeError(At9NativeError):
+    """Encoding failed because the track is too long to fit the size limit even at
+    the lowest standard bitrate."""
+
+
 def encode_wav_to_at9(wav_path, at9_path, loop_start=0, loop_end=0, bitrate=0,
-                      max_bytes=0, progress=None):
+                      size_profile=AT9_SIZE_NONE, max_bytes=0, progress=None):
     """Encode a WAV (12/24/48 kHz) to an AT9 file.
 
     loop_start: 0 = whole-track loop, >0 = loop from that sample, <0 = no loop.
     loop_end: 0 = to the track end, >0 = inclusive last sample of the loop.
-    max_bytes: 0 = no size cap, else keep the output at or under that size (e.g.
-    VITA_BGM_MAX_BYTES for theme BGM). Returns True on success. Raises
-    At9NativeError if the library is missing."""
+    bitrate: 0 = auto (highest standard rate that fits the size limit); a non-zero
+    value must be a standard rate or encoding fails.
+    size_profile: AT9_SIZE_VITA_BGM / AT9_SIZE_PS_CROSS to let the codec apply its
+    own console size cap; AT9_SIZE_NONE (default) uses max_bytes instead.
+    max_bytes: custom size cap in bytes (ignored when size_profile is set).
+    Returns True on success. Raises At9TooLargeError if the track can't fit the
+    size limit, or At9NativeError if the library is missing."""
     lib = _load()
     if lib is None:
         raise At9NativeError("at9codec native library not available")
@@ -230,6 +257,7 @@ def encode_wav_to_at9(wav_path, at9_path, loop_start=0, loop_end=0, bitrate=0,
         struct_size=ctypes.sizeof(_EncodeOptions),
         bitrate=bitrate, max_bytes=max_bytes,
         loop_start=loop_start, loop_end=loop_end, progress=cb, user=None,
+        size_profile=size_profile,
     )
     out_at9 = ctypes.POINTER(ctypes.c_uint8)()
     out_len = ctypes.c_size_t()
@@ -237,6 +265,9 @@ def encode_wav_to_at9(wav_path, at9_path, loop_start=0, loop_end=0, bitrate=0,
         data, len(data), ctypes.byref(opts),
         ctypes.byref(out_at9), ctypes.byref(out_len),
     )
+    if rc == AT9_ERR_TOO_LARGE:
+        raise At9TooLargeError(
+            "track is too long to fit the size limit at any standard bitrate")
     if rc != AT9_OK:
         return False
     try:

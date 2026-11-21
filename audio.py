@@ -429,16 +429,21 @@ def _make_progress(status_callback, verb):
 def _warn_if_bgm_too_large(at9_path, status_callback=None):
     """Warn (log + status) if an AT9 BGM exceeds the PS Vita's theme-BGM size
     limit, which the console won't use. Returns True if it's within the limit.
-    Called after encoding and for a user-supplied .at9 passed through as-is."""
+    Used for a user-supplied .at9 passed through as-is (our own encode enforces the
+    limit in the codec). The limit value comes from the codec, not hard-coded here."""
     try:
         size = os.path.getsize(at9_path)
     except OSError:
         return True
-    if size <= at9_native.VITA_BGM_MAX_BYTES:
+    try:
+        limit = at9_native.profile_max_bytes(at9_native.AT9_SIZE_VITA_BGM)
+    except Exception:
+        return True  # codec unavailable: don't block on a size check
+    if not limit or size <= limit:
         return True
     msg = ("This background music is larger than the PS Vita's AT9 size limit "
-           f"(about 5 MB) at {size / (1024 * 1024):.1f} MB, so the Vita may not "
-           "use it. Use a shorter track.")
+           f"(about {limit / (1024 * 1024):.0f} MB) at {size / (1024 * 1024):.1f} MB, "
+           "so the Vita may not use it. Use a shorter track.")
     _log_error('convert_to_at9', msg)
     if status_callback:
         status_callback(msg)
@@ -525,22 +530,27 @@ def convert_to_at9(input_path, at9_path, loop_start_sample=None, status_callback
         # itself and scales the loop point, so we pass the WAV at its native rate
         # and the loop start in that rate's samples.
 
-        # Encode theme BGM at the best bitrate that fits the Vita's size limit:
-        # with no bitrate given the codec defaults to auto — it starts at the top
-        # standard rate (192 kbps stereo / 96 kbps mono) and steps down to the
-        # highest standard rate whose file stays under max_bytes. So a short/medium
-        # track gets 192 kbps and only long tracks drop (144, then lower) to stay
-        # under the 5 MB ceiling. The rate is chosen by calculation in a single
-        # pass, so starting high costs no extra encode time. max_bytes is the
-        # console size limit's safety net.
+        # Encode theme BGM for the PS Vita system-BGM target: the codec owns the
+        # size limit, so we just name the target (AT9_SIZE_VITA_BGM) instead of
+        # passing a byte cap. With no bitrate given it defaults to auto — starting at
+        # the top standard rate (192 kbps stereo / 96 kbps mono) and stepping down to
+        # the highest rate whose file stays under the Vita limit. The rate is chosen
+        # by calculation in a single pass, so starting high costs no extra time. If
+        # the track is too long to fit even at the lowest rate, the codec raises
+        # At9TooLargeError rather than writing an unusable oversized file.
         if at9_native.encode_wav_to_at9(
                 tmp_wav, at9_path, loop_start=loop_start,
-                max_bytes=at9_native.VITA_BGM_MAX_BYTES,
+                size_profile=at9_native.AT9_SIZE_VITA_BGM,
                 progress=_make_progress(status_callback, "Encoding audio…")):
-            # If the track is so long it overflows even at the lowest bitrate, warn.
-            _warn_if_bgm_too_large(at9_path, status_callback)
             return True
         _log_error('convert_to_at9', "Native AT9 encode failed.")
+        return False
+    except at9_native.At9TooLargeError as e:
+        msg = ("This background music is too long to fit the PS Vita's AT9 size "
+               "limit even at the lowest bitrate. Use a shorter track.")
+        _log_error('convert_to_at9', f"{msg} ({e})")
+        if status_callback:
+            status_callback(msg)
         return False
     except Exception as e:
         _log_error('convert_to_at9', f"Conversion error: {e}", exc=e)
