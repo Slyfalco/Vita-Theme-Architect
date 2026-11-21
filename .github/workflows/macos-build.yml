@@ -88,6 +88,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Verify native AT9 codec is committed
+        # The macOS build bundles the committed native/macos-<arch>/ codec (no
+        # cross-repo fetch in CI). If it's missing, fail clearly rather than ship a
+        # build without AT9. Populate it with scripts/update_native_libs.py + commit.
+        run: |
+          LIB="native/macos-${{ matrix.arch }}/libat9codec.dylib"
+          if [ ! -f "$LIB" ]; then
+            echo "::error::$LIB is missing. Run 'python scripts/update_native_libs.py' and commit native/ before building."
+            exit 1
+          fi
+          echo "found $LIB"
+
       - name: Build (${{ matrix.edition }})
         env:
           PYTHONUNBUFFERED: "1"
