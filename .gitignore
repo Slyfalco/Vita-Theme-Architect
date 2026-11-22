@@ -25,6 +25,9 @@ __pycache__/
 *.py[cod]
 *.pyd
 *.so
+# ...but DO track the bundled native at9codec libraries (they are shipped libs, not
+# Python build artifacts); *.so above would otherwise silently drop the Linux ones.
+!native/**/*.so
 .venv/
 venv/
 
