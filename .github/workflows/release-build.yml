@@ -75,6 +75,26 @@ jobs:
           python-version: "3.12"
           architecture: ${{ matrix.pyarch }}
 
+      - name: Use a real x86_64 Python for the Intel macOS build
+        # setup-python yields an arm64 Python on the Apple-Silicon runner, and Nuitka
+        # can't cross-compile — so for macos-x64 fetch a genuine x86_64 CPython 3.12
+        # (runs under Rosetta) and put it first on PATH, so every later `python` is
+        # x86_64 and produces a true Intel build (not a mislabeled arm64 one).
+        if: matrix.tag == 'macos-x64'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api repos/astral-sh/python-build-standalone/releases/latest \
+            --jq '.assets[].browser_download_url
+                  | select(test("cpython-3\\.12\\.[0-9]+\\+.*x86_64-apple-darwin-install_only\\.tar\\.gz$"))' | head -1)
+          echo "x86_64 python-build-standalone: $url"
+          curl -fL "$url" -o pyx64.tar.gz
+          tar -xzf pyx64.tar.gz          # extracts ./python/
+          ln -sf python3 python/bin/python
+          echo "$PWD/python/bin" >> "$GITHUB_PATH"
+          ./python/bin/python3 -c "import platform; print('build python arch:', platform.machine())"
+
       - name: Linux build + runtime dependencies
         if: runner.os == 'Linux'
         run: |
