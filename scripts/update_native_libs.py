@@ -61,7 +61,9 @@ def main():
         cmd = ["gh", "release", "download"]
         if args.tag:
             cmd.append(args.tag)
-        cmd += ["--repo", args.repo, "--pattern", "at9codec-*.zip",
+        cmd += ["--repo", args.repo,
+                "--pattern", "at9codec-*.zip",
+                "--pattern", "at9codec.h",   # standalone shared header
                 "--dir", tmp, "--clobber"]
         print(f"Downloading {'tag ' + args.tag if args.tag else 'latest release'} "
               f"from {args.repo} ...")
@@ -77,7 +79,6 @@ def main():
                   "Run the at9codec build script / workflow to upload them first.")
 
         updated = []
-        header_written = False
         license_written = False
         for z in zips:
             m = ASSET_RE.match(z)
@@ -90,15 +91,10 @@ def main():
                     base = os.path.basename(name)
                     if not base:
                         continue
-                    low = base.lower()
-                    if low.endswith(LIB_SUFFIXES):
+                    if base.lower().endswith(LIB_SUFFIXES):
                         with zf.open(name) as src, open(os.path.join(dest, base), "wb") as out:
                             shutil.copyfileobj(src, out)
                         libs.append(base)
-                    elif base == "at9codec.h" and not header_written:
-                        with zf.open(name) as src, open(os.path.join(NATIVE_DIR, "at9codec.h"), "wb") as out:
-                            shutil.copyfileobj(src, out)
-                        header_written = True
                     elif base == "LICENSE" and not license_written:
                         with zf.open(name) as src, open(os.path.join(NATIVE_DIR, "LICENSE-at9codec"), "wb") as out:
                             shutil.copyfileobj(src, out)
@@ -108,6 +104,12 @@ def main():
                 print(f"  {tag}: {', '.join(libs)}")
             else:
                 print(f"  {tag}: WARNING - no library file in {z}", file=sys.stderr)
+
+        # The C header ships once as a standalone release asset (same across platforms).
+        hdr = os.path.join(tmp, "at9codec.h")
+        if os.path.isfile(hdr):
+            shutil.copyfile(hdr, os.path.join(NATIVE_DIR, "at9codec.h"))
+            print("  header: at9codec.h")
 
     if not updated:
         _fail("downloaded assets but found no library files in them.")
