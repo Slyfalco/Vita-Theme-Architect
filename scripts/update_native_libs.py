@@ -17,9 +17,8 @@ must have uploaded the assets). By default it pulls the *latest* release.
     python scripts/update_native_libs.py --repo Owner/repo
 
 Requires the GitHub CLI ``gh`` authenticated as an account with read access to the
-at9codec repo (or ``GH_TOKEN`` set to such a token). While at9codec is private, the
-repo's default ``gh`` login may lack access — export a read-token in ``GH_TOKEN`` for
-this command, or run it once the repo is public.
+at9codec repo (the Slyfalco login has it). On a machine whose ``gh`` lacks access to
+the private repo, set ``GH_TOKEN`` to a read-token for this command instead.
 """
 
 import argparse
