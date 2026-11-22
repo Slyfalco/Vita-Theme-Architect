@@ -31,10 +31,11 @@ import tempfile
 import zipfile
 
 REPO_DEFAULT = "Slyfalco/at9codec"
-# Per-os/arch asset names, e.g. at9codec-windows-x64.zip. The combined
-# at9codec-native-libs.zip is intentionally NOT matched.
+# Per-os/arch asset names, e.g. at9codec-windows-x64.zip.
 ASSET_RE = re.compile(r"^at9codec-(windows|linux|macos)-(x64|arm64)\.zip$")
-LIB_SUFFIXES = (".dll", ".so", ".dylib", ".dll.lib")
+# Only the runtime library is needed: the app loads it at runtime via ctypes, so the
+# Windows import lib (at9codec.dll.lib, a build-time linker stub) is skipped.
+LIB_SUFFIXES = (".dll", ".so", ".dylib")
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NATIVE_DIR = os.path.join(REPO_ROOT, "native")
