@@ -199,3 +199,99 @@ jobs:
           path: dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.*
           if-no-files-found: error
           retention-days: 14
+
+  # Windows installers (offline both-editions + online stub), compiled with Inno
+  # Setup after the portable builds exist. The off-git installer/ tooling is staged
+  # from the VTA_INSTALLER_B64 secret (tooling only; the wizard images are
+  # regenerated, and both-edition payloads are the release's own portable zips).
+  # continue-on-error: windows-11-arm is flaky — build the arm installer locally if
+  # it skips. Installers are Windows-only.
+  installers:
+    name: installers ${{ matrix.tag }}
+    needs: build
+    if: ${{ always() }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, tag: windows-x64 }
+          - { os: windows-11-arm, tag: windows-arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Unpack installer tooling (off-git, from secret)
+        shell: bash
+        env:
+          INST: ${{ secrets.VTA_INSTALLER_B64 }}
+        run: |
+          if [ -z "${INST:-}" ]; then
+            echo "::error::Secret VTA_INSTALLER_B64 is not set; cannot build installers."
+            exit 1
+          fi
+          echo "$INST" | base64 -d > installer.tgz
+          tar -xzf installer.tgz
+          rm -f installer.tgz
+          ls installer
+
+      - name: Regenerate wizard images
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+          python installer/assets/make_wizard_images.py
+
+      - name: Install Inno Setup
+        shell: bash
+        run: choco install innosetup -y --no-progress
+
+      - name: Download edition payloads from the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          TAG="${TAG:-v2.0}"
+          mkdir -p _payload_dl
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "vitaThemeArchitect-${{ matrix.tag }}-ai.zip" \
+            --pattern "vitaThemeArchitect-${{ matrix.tag }}-standard.zip" \
+            --dir _payload_dl --clobber
+
+      - name: Stage both-edition payloads
+        shell: bash
+        run: |
+          for ed in ai standard; do
+            zip="_payload_dl/vitaThemeArchitect-${{ matrix.tag }}-$ed.zip"
+            [ -f "$zip" ] || { echo "::error::missing payload $zip (its build job must have skipped)"; exit 1; }
+            mkdir -p "installer/payload/$ed" "_unz_$ed"
+            unzip -q "$zip" -d "_unz_$ed"
+            cp -r _unz_$ed/vitaThemeArchitect-*/* "installer/payload/$ed/"
+          done
+          ls installer/payload
+
+      - name: Build installers (reuse staged payloads)
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File installer/build-installers.ps1 -SkipBuild
+
+      - name: Upload installers to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          TAG="${TAG:-v2.0}"
+          found=0
+          for f in "dist/vitaThemeArchitect-${{ matrix.tag }}-setup.exe" \
+                   "dist/vitaThemeArchitect-${{ matrix.tag }}-online-setup.exe"; do
+            if [ -f "$f" ]; then echo "upload $f"; gh release upload "$TAG" "$f" --clobber --repo "$GITHUB_REPOSITORY"; found=1; fi
+          done
+          [ "$found" = "1" ] || { echo "::error::no installer .exe produced"; ls -la dist || true; exit 1; }
