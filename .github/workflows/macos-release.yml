@@ -72,6 +72,10 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      # Only ~1 macOS runner is reliably available to this account at a time; two
+      # concurrent jobs make the loser sit queued and hit the ~15-min queued-job
+      # timeout (cancelled, no runner, no log). Run them strictly one at a time.
+      max-parallel: 1
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
       - name: Checkout
