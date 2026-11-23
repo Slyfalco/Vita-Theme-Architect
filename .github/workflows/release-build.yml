@@ -334,3 +334,55 @@ jobs:
             if [ -f "$f" ]; then echo "upload $f"; gh release upload "$TAG" "$f" --clobber --repo "$GITHUB_REPOSITORY"; found=1; fi
           done
           [ "$found" = "1" ] || { echo "::error::no installer .exe produced"; ls -la dist || true; exit 1; }
+
+  # macOS drag-to-Applications .dmg installers. Just repackages the already-built .app
+  # from the release's portable zip (hdiutil + an Applications symlink) — no release
+  # secret, nothing sensitive, so it runs visibly. One .dmg per arch × edition.
+  mac-installers:
+    name: dmg ${{ matrix.tag }} ${{ matrix.edition }}
+    needs: build
+    if: ${{ always() }}
+    runs-on: macos-15
+    continue-on-error: true
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { tag: macos-x64,   edition: ai }
+          - { tag: macos-x64,   edition: standard }
+          - { tag: macos-arm64, edition: ai }
+          - { tag: macos-arm64, edition: standard }
+    steps:
+      - name: Download the portable .app zip from the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          TAG="${TAG:-v2.0}"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip" \
+            --dir _dl --clobber
+
+      - name: Build the drag-to-Applications .dmg
+        shell: bash
+        run: |
+          unzip -q "_dl/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip" -d _unz
+          APP=$(find _unz -maxdepth 2 -name "*.app" -type d | head -1)
+          [ -n "$APP" ] || { echo "::error::no .app found in the portable zip"; exit 1; }
+          staging=$(mktemp -d)
+          cp -R "$APP" "$staging/"
+          ln -s /Applications "$staging/Applications"
+          out="vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg"
+          hdiutil create -volname "VitaTheme Architect" -srcfolder "$staging" -ov -format UDZO "$out"
+          echo "built $out"
+
+      - name: Upload the .dmg to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          TAG="${TAG:-v2.0}"
+          gh release upload "$TAG" "vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg" --clobber --repo "$GITHUB_REPOSITORY"
