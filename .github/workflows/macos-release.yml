@@ -23,6 +23,11 @@ on:
         description: "Non-release build, visible output, no upload (toolchain/smoke only)"
         type: boolean
         default: false
+      only_arch:
+        description: "Build just one arch (so x64 doesn't compete with arm64 for scarce macOS runners / isn't needlessly rebuilt)"
+        type: choice
+        options: [both, x64, arm64]
+        default: both
 
 permissions:
   contents: write
@@ -34,6 +39,8 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.tag }} ${{ matrix.edition }}
+    # only_arch lets a fill/fix run target one architecture (default: both).
+    if: ${{ github.event.inputs.only_arch == 'both' || github.event.inputs.only_arch == matrix.pyarch }}
     runs-on: macos-15
     continue-on-error: true
     timeout-minutes: 90
