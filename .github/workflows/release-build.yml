@@ -85,12 +85,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          url=$(gh api repos/astral-sh/python-build-standalone/releases/latest \
-            --jq '.assets[].browser_download_url
-                  | select(test("cpython-3\\.12\\.[0-9]+\\+.*x86_64-apple-darwin-install_only\\.tar\\.gz$"))' | head -1)
-          echo "x86_64 python-build-standalone: $url"
-          curl -fL "$url" -o pyx64.tar.gz
-          tar -xzf pyx64.tar.gz          # extracts ./python/
+          # Pull the x86_64 CPython 3.12 straight from the latest python-build-standalone
+          # release (gh resolves "latest" + the glob — no jq/url wrangling).
+          gh release download --repo astral-sh/python-build-standalone \
+            --pattern 'cpython-3.12.*-x86_64-apple-darwin-install_only.tar.gz' \
+            --dir pydl --clobber
+          tar -xzf pydl/cpython-3.12.*-x86_64-apple-darwin-install_only.tar.gz   # -> ./python/
           ln -sf python3 python/bin/python
           echo "$PWD/python/bin" >> "$GITHUB_PATH"
           ./python/bin/python3 -c "import platform; print('build python arch:', platform.machine())"
@@ -163,7 +163,21 @@ jobs:
         run: |
           FLAG=""
           if [ "${{ matrix.edition }}" = "standard" ]; then FLAG="--no-icon-ai"; fi
-          python -u setup_build.py $FLAG
+          # PUBLIC-REPO SAFETY: the release build generates/handles secret key material
+          # (and its sub-tools echo raw output), so its stdout/stderr must NEVER reach
+          # the public workflow log. Capture to a file we never surface; on failure print
+          # only a generic message (the captured output may contain secrets) and delete it.
+          set +e
+          python -u setup_build.py $FLAG > build_output.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::release build failed (exit $rc). Output withheld (may contain secrets); reproduce locally to debug."
+            rm -f build_output.log
+            exit "$rc"
+          fi
+          rm -f build_output.log
+          echo "release build succeeded (output withheld for public-log safety)."
 
       - name: Clean up staged inputs
         if: always()
@@ -193,13 +207,18 @@ jobs:
         run: |
           APP=$(find dist -maxdepth 3 -name "*.app" -type d | head -1)
           [ -z "$APP" ] && { echo "no .app found; skipping smoke"; exit 0; }
-          EXE=$(find "$APP/Contents/MacOS" -maxdepth 1 -type f -perm +111 | head -1)
-          [ -z "$EXE" ] && { echo "no executable in .app; skipping smoke"; exit 0; }
-          echo "launching: $EXE (offscreen, 25s)"
-          QT_QPA_PLATFORM=offscreen "$EXE" >/tmp/smoke.log 2>&1 &
+          # Launch the REAL bundle executable (CFBundleExecutable), not the first
+          # exec-bit file — that picked a .so before. Do not dump the app's output to
+          # the public log.
+          EXENAME=$(plutil -extract CFBundleExecutable raw "$APP/Contents/Info.plist" 2>/dev/null)
+          EXE="$APP/Contents/MacOS/$EXENAME"
+          [ -x "$EXE" ] && [ -f "$EXE" ] || { echo "bundle executable not found ($EXE); skipping smoke"; exit 0; }
+          echo "launching: $EXENAME (offscreen, 25s)"
+          QT_QPA_PLATFORM=offscreen "$EXE" >smoke.log 2>&1 &
           PID=$!; sleep 25
-          if kill -0 "$PID" 2>/dev/null; then echo "smoke OK"; kill "$PID" 2>/dev/null || true
-          else wait "$PID"; RC=$?; echo "exited rc=$RC"; tail -40 /tmp/smoke.log || true; fi
+          if kill -0 "$PID" 2>/dev/null; then echo "smoke OK: still running after 25s"; kill "$PID" 2>/dev/null || true
+          else wait "$PID"; RC=$?; echo "app exited early rc=$RC (output withheld for public-log safety)"; fi
+          rm -f smoke.log
 
       - name: Upload to the GitHub release
         shell: bash
