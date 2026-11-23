@@ -12,6 +12,21 @@ A desktop app for creating, editing, importing, downloading and installing custo
 - **Background music** — preview and convert audio (WAV, MP3, FLAC, OGG and more) to the Vita's AT9 format.
 - **AI icon generator (optional)** — generate a matching set of app icons for a theme from its wallpapers. This is an optional component that downloads its own tools on first use; nothing heavy is bundled with the app.
 
+## Download
+
+Get the latest build from the [Releases page](https://github.com/Slyfalco/Vita-Theme-Architect/releases/latest), picking by **OS + architecture + edition**:
+
+- **OS / architecture** — Windows, macOS or Linux, each in **x64** and **arm64**. Most PCs are x64; Apple Silicon Macs (M1/M2/M3…) and newer ARM devices are arm64.
+- **Edition** — **AI** includes the AI icon generator; **Standard** is a smaller download without it.
+
+Then:
+
+- **Windows** — run the installer (`…-setup.exe`, or the small `…-online-setup.exe`) and choose your edition, or use the portable `.zip`.
+- **macOS** — open the `.dmg` and drag the app to Applications, or use the portable `.zip`.
+- **Linux** — extract the `.tar.gz` and run the app.
+
+The in-app updater keeps you on the same edition and preserves your settings and library.
+
 ## Running from source
 
 Requires Python 3.12.
@@ -32,13 +47,12 @@ python setup_build.py                # standalone build for the current OS/archi
 python setup_build.py --no-icon-ai  # build without the AI icon generator and its features
 ```
 
-The build downloads the extra tools it needs (such as the audio converter and a portable media player) automatically, and outputs to `dist/`.
+The build downloads the extra tools it needs (such as a portable media player) automatically, and outputs to `dist/`.
 
 ## Platform notes
 
-- **Windows / Linux-x64** are supported.
-- Will support Mac-os and linux-Arm in the future.
-- On Linux currently, the Windows-only audio tools run through a bundled, stripped-down minimal build of Wine, set up automatically on first use.
+- **Windows, macOS and Linux** are supported, each on **x64** and **arm64**.
+- AT9 theme audio is handled by a first-party native codec built into the app — there are no external audio tools and no Wine dependency on any platform.
 
 ## Using it with your Vita
 
@@ -72,12 +86,6 @@ govern those components:
   mpg123, LAME) — LGPL / BSD, under their respective licenses.
 - Other libraries (NumPy, Pillow, requests, cryptography, and so on) are under
   their respective permissive open-source licenses.
-
-**FFmpeg is not bundled.** The app can optionally use an **FFmpeg installation
-already present on your system** for some audio decoding (notably on Linux ARM64,
-where the Windows audio tools can't run). FFmpeg is not distributed with the app;
-if you want that feature, install FFmpeg yourself. Its license is governed by the
-FFmpeg project and is not included here because the app does not redistribute it.
 
 Each component's license applies to that component; see the respective projects
 for full terms.
