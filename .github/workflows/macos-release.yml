@@ -37,21 +37,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Build the matrix from only_arch, so a single-arch fill/fix run never even creates
+  # the other arch's jobs (they can't then compete for scarce macOS runners). A
+  # job-level `if` can't see `matrix`, hence this dynamic matrix.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - id: gen
+        shell: bash
+        env:
+          ONLY: ${{ github.event.inputs.only_arch }}
+        run: |
+          ONLY="${ONLY:-both}"
+          python3 - "$ONLY" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, sys
+          only = sys.argv[1]
+          full = [
+            {"tag": "macos-x64",   "pyarch": "x64",   "edition": "ai"},
+            {"tag": "macos-x64",   "pyarch": "x64",   "edition": "standard"},
+            {"tag": "macos-arm64", "pyarch": "arm64", "edition": "ai"},
+            {"tag": "macos-arm64", "pyarch": "arm64", "edition": "standard"},
+          ]
+          inc = [m for m in full if only in ("both", m["pyarch"])]
+          print("matrix=" + json.dumps({"include": inc}))
+          PY
+
   build:
     name: ${{ matrix.tag }} ${{ matrix.edition }}
-    # only_arch lets a fill/fix run target one architecture (default: both).
-    if: ${{ github.event.inputs.only_arch == 'both' || github.event.inputs.only_arch == matrix.pyarch }}
+    needs: setup
     runs-on: macos-15
     continue-on-error: true
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { tag: macos-x64,   pyarch: x64,   edition: ai }
-          - { tag: macos-x64,   pyarch: x64,   edition: standard }
-          - { tag: macos-arm64, pyarch: arm64, edition: ai }
-          - { tag: macos-arm64, pyarch: arm64, edition: standard }
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
