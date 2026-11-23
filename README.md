@@ -58,6 +58,10 @@ The build downloads the extra tools it needs (such as a portable media player) a
 
 You'll need a Vita running custom firmware with **VitaShell**. In the app's **Settings → Connection** there's a step-by-step guide for starting VitaShell's FTP server and entering your Vita's IP address and port.
 
+## Roadmap
+
+A full UI overhaul is in the works, potentially including a change of the app's implementation language away from Python. The current feature set and theme format will carry over.
+
 ## License
 
 VitaTheme Architect's own source code is released under the **VitaTheme Architect
