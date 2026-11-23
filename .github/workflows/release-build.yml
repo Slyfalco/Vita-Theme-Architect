@@ -4,6 +4,10 @@
 # anything it skips locally with build-all.ps1 (and the Windows installers, which are
 # built locally only).
 #
+# For a mac-only fill/fix (when a full run only failed on macOS), use macos-release.yml
+# instead so you don't rebuild Windows/Linux — it produces the same macos zips plus the
+# drag-to-Applications .dmgs.
+#
 # Manual trigger only (workflow_dispatch): the build uses the release secret, so it
 # must never run from an untrusted pull_request. Third-party actions pinned by SHA.
 #
