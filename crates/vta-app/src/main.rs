@@ -345,6 +345,15 @@ fn dev_preselect(app: &App) {
     if std::env::var("VTA_DEV_ICONGEN").is_ok() {
         app.window.global::<Creator>().invoke_open_icon_generator();
     }
+    if let Some(i) = std::env::var("VTA_DEV_CSELECT").ok().and_then(|v| v.parse::<i32>().ok()) {
+        // Community data loads asynchronously; select after it has arrived.
+        let w = app.window.as_weak();
+        Timer::single_shot(Duration::from_secs(10), move || {
+            if let Some(app) = w.upgrade() {
+                app.global::<Community>().invoke_select(i);
+            }
+        });
+    }
     if let Some(t) = std::env::var("VTA_DEV_STAGE").ok().and_then(|v| v.parse().ok()) {
         app.window.global::<Library>().set_stage_tab(t);
     }

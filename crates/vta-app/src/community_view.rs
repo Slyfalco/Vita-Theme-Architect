@@ -126,6 +126,9 @@ fn rows(entries: &[Entry], previews: &HashMap<String, Image>) -> Vec<RemoteTheme
                 downloads: compact_count(e.num("downloads")).into(),
                 has_preview: preview.is_some(),
                 preview: preview.unwrap_or_default(),
+                verified: e.verified(),
+                stars: e.stars(),
+                rating: if e.has_validation() { format!("{:.1}", e.stars()) } else { String::new() }.into(),
             }
         })
         .collect()
@@ -221,6 +224,11 @@ fn select(app: &AppWindow, index: i32) {
     c.set_d_updated(epoch_to_date(&e.str("id")).into());
     let (w, er) = (e.str("warnings"), e.str("errors"));
     c.set_d_validation(format!("{} Warnings, {} Errors", if w.is_empty() { "0".into() } else { w }, if er.is_empty() { "0".into() } else { er }).into());
+    c.set_d_vita_validated(e.vita_validated());
+    c.set_d_verified(e.verified());
+    c.set_d_stars(e.stars());
+    c.set_d_rating(if e.has_validation() { format!("{:.1}", e.stars()) } else { String::new() }.into());
+    c.set_d_votes(if e.has_validation() { format!("{} checks", e.validation_votes()) } else { String::new() }.into());
     // v2: tags from 'tags', or from a comma-separated description when tags is empty.
     let (tags_s, desc) = (e.str("tags"), e.str("description"));
     let (tags, description): (Vec<String>, String) = if desc.contains(',') && tags_s.is_empty() {

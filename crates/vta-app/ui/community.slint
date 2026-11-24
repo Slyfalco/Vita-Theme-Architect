@@ -14,6 +14,10 @@ export struct RemoteTheme {
     downloads: string,
     preview: image,
     has-preview: bool,
+    // Repository rating (worked out by the online module):
+    verified: bool,       // clean validation → "Verified" badge
+    stars: float,         // 0.0–5.0
+    rating: string,       // the stars as text, e.g. "4.9"
 }
 
 export struct PageButton {
@@ -44,6 +48,11 @@ export global Community {
     in property <string> d-added;
     in property <string> d-updated;
     in property <string> d-validation;
+    in property <bool> d-vita-validated;
+    in property <bool> d-verified;
+    in property <string> d-rating;       // e.g. "4.9"
+    in property <float> d-stars;
+    in property <string> d-votes;        // e.g. "101 checks"
     in property <string> d-description;
     in property <[string]> d-tags;
     in property <bool> d-has-extra;
@@ -101,6 +110,56 @@ component ThemeTile inherits Rectangle {
                 size: 30px;
                 tint: Palette.text-lo;
             }
+            // Repository badge (top-left): Verified (clean validation) or Community.
+            Rectangle {
+                x: 8px;
+                y: 8px;
+                width: badge-row.preferred-width + 16px;
+                height: 24px;
+                border-radius: 12px;
+                background: root.theme.verified ? #0f2b1dbf : #1e293bbf;
+                border-width: 1px;
+                border-color: root.theme.verified ? Palette.success.transparentize(50%) : #ffffff1f;
+                badge-row := HorizontalLayout {
+                    x: 8px;
+                    spacing: 4px;
+                    alignment: center;
+                    if root.theme.verified: Icon {
+                        source: Icons.check-circle;
+                        size: 13px;
+                        tint: Palette.success-text;
+                    }
+                    Text {
+                        text: root.theme.verified ? "Verified" : "Community";
+                        color: root.theme.verified ? Palette.success-text : Palette.text-mid;
+                        font-size: Type.label-sm;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            // Star rating (bottom-right).
+            if root.theme.stars > 0: Rectangle {
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                width: star-row.preferred-width + 16px;
+                height: 24px;
+                border-radius: 12px;
+                background: #0b1220cc;
+                star-row := HorizontalLayout {
+                    x: 8px;
+                    spacing: 4px;
+                    alignment: center;
+                    Text { text: "★"; color: Palette.success-text; font-size: 13px; vertical-alignment: center; }
+                    Text {
+                        text: root.theme.rating;
+                        color: Palette.text-hi;
+                        font-size: Type.label-md;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
         }
         Text {
             text: root.theme.title;
@@ -152,6 +211,7 @@ component ThemeTile inherits Rectangle {
 component StatTile inherits Rectangle {
     in property <string> label;
     in property <string> value;
+    in property <string> sub;
     border-radius: 10px;
     background: Palette.inset;
     VerticalLayout {
@@ -168,6 +228,11 @@ component StatTile inherits Rectangle {
             font-size: Type.body-lg;
             font-weight: 600;
             wrap: word-wrap;
+        }
+        if root.sub != "": Text {
+            text: root.sub;
+            color: Palette.text-lo;
+            font-size: Type.label-sm;
         }
     }
 }
@@ -241,12 +306,41 @@ component Inspector inherits Panel {
                     font-size: Type.body-sm;
                 }
             }
-            Text {
-                text: Community.d-title;
-                color: Palette.text-hi;
-                font-size: Type.headline-lg + 4px;
-                font-weight: 700;
-                wrap: word-wrap;
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: Community.d-title;
+                    color: Palette.text-hi;
+                    font-size: Type.headline-lg + 4px;
+                    font-weight: 700;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+                // "Vita Validated" (no errors) or "Community" (has errors / unchecked).
+                VerticalLayout {
+                    alignment: start;
+                    Rectangle {
+                        height: 26px;
+                        width: val-row.preferred-width + 20px;
+                        border-radius: 13px;
+                        background: Community.d-vita-validated ? #0f2b1dbf : #1e293bbf;
+                        border-width: 1px;
+                        border-color: Community.d-vita-validated ? Palette.success.transparentize(50%) : #ffffff1f;
+                        val-row := HorizontalLayout {
+                            x: 10px;
+                            spacing: 5px;
+                            alignment: center;
+                            if Community.d-vita-validated: Icon { source: Icons.check-circle; size: 14px; tint: Palette.success-text; }
+                            Text {
+                                text: Community.d-vita-validated ? "Vita Validated" : "Community";
+                                color: Community.d-vita-validated ? Palette.success-text : Palette.text-mid;
+                                font-size: Type.label-md;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
             }
             HorizontalLayout {
                 spacing: 6px;
@@ -259,12 +353,21 @@ component Inspector inherits Panel {
                 spacing: 8px;
                 Row {
                     StatTile { label: "Total Downloads"; value: Community.d-downloads; }
-                    StatTile { label: "Validation"; value: Community.d-validation; }
+                    StatTile {
+                        label: "Community Rating";
+                        value: Community.d-stars > 0 ? "★ " + Community.d-rating : "Not rated";
+                        sub: Community.d-stars > 0 ? Community.d-votes : "";
+                    }
                 }
                 Row {
                     StatTile { label: "Date Added"; value: Community.d-added; }
                     StatTile { label: "Last Updated"; value: Community.d-updated; }
                 }
+            }
+            Text {
+                text: "Validation: " + Community.d-validation;
+                color: Palette.text-lo;
+                font-size: Type.label-md;
             }
             if Community.d-description != "": VerticalLayout {
                 spacing: 6px;
