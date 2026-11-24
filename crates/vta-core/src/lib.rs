@@ -5,6 +5,7 @@ pub mod iconai;
 pub mod iconai_net;
 pub mod import;
 pub mod integrity;
+pub mod legacy;
 pub mod library;
 pub mod migrations;
 pub mod paths;

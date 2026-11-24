@@ -259,7 +259,12 @@ fn startup_checks() {
                 .show();
             std::process::exit(1);
         }
-    } else if let (Ok(exe), Some(home)) = (std::env::current_exe(), std::env::var_os("HOME")) {
+    }
+    cleanup_v2_leftovers();
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    if let (Ok(exe), Some(home)) = (std::env::current_exe(), std::env::var_os("HOME")) {
         if exe.starts_with(std::path::Path::new(&home).join("Downloads")) {
             rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Warning)
@@ -272,6 +277,17 @@ fn startup_checks() {
                 .show();
         }
     }
+}
+
+/// After an in-place update from v2, remove the v2 runtime left in the install
+/// folder (never anything v3 ships, nor data). On macOS there is no overlay, so
+/// nothing is treated as shipped beyond the patterns' own exclusions.
+fn cleanup_v2_leftovers() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let (Some(dir), Some(name)) = (exe.parent(), exe.file_name()) else { return };
+    let manifest = vta_core::integrity::read_manifest(&exe).unwrap_or_default();
+    let shipped = vta_core::legacy::shipped_top_level(manifest.keys());
+    vta_core::legacy::cleanup(dir, &name.to_string_lossy(), &shipped);
 }
 
 /// Centre a window on the monitor it opened on (falls back to the primary one).
