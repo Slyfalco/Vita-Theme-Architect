@@ -148,7 +148,7 @@ export component NavRail inherits Rectangle {
         NavItem {
             text: "Theme Creator";
             icon: Icons.palette;
-            active: Shell.page == Page.creator;
+            active: Shell.page == Page.creator || Shell.page == Page.icongen;
             clicked => { Shell.navigate(Page.creator); }
         }
         NavItem {

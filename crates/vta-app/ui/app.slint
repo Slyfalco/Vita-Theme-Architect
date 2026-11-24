@@ -13,8 +13,9 @@ import { DialogLayer, Dialog, DialogButton, DialogIcon, PickItem } from "dialogs
 import { ButtonKind } from "widgets.slint";
 import { CommunityPage, Community, RemoteTheme, PageButton } from "community.slint";
 import { SubmitWindow, ThemeExists, ThemeExistsLayer, ExistingTheme } from "submit.slint";
+import { IconGenPage, IconGen, GenIcon, ReqRow } from "icongen.slint";
 
-export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup, Community, RemoteTheme, PageButton, SubmitWindow, ThemeExists, ExistingTheme }
+export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup, Community, RemoteTheme, PageButton, SubmitWindow, ThemeExists, ExistingTheme, IconGen, GenIcon, ReqRow }
 
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-Medium.ttf";
@@ -59,11 +60,13 @@ export component AppWindow inherits Window {
 
     property <string> page-title: Shell.page == Page.library ? "Theme Library"
         : Shell.page == Page.creator ? "Theme Creator"
+        : Shell.page == Page.icongen ? "AI Icon Generator"
         : Shell.page == Page.community ? "Community Browser" : "Settings";
 
     keys := FocusScope {
         key-pressed(event) => {
             if (Dialog.open || Dialog.progress-open || Dialog.picker-open || ColorPicker.open) { return accept; }
+            if (Shell.page == Page.icongen && event.text == Key.F5 && IconGen.can-generate && !IconGen.busy) { IconGen.generate(); return accept; }
             if (event.modifiers.control) {
                 if (Shell.page == Page.settings && (event.text == "s" || event.text == "S")) { SettingsState.save(); return accept; }
                 if (Shell.page == Page.creator && (event.text == "s" || event.text == "S")) { Creator.build(); return accept; }
@@ -119,6 +122,7 @@ export component AppWindow inherits Window {
                         if Shell.page == Page.creator: CreatorPage { }
                         if Shell.page == Page.community: CommunityPage { }
                         if Shell.page == Page.settings: SettingsPage { }
+                        if Shell.page == Page.icongen: IconGenPage { }
                     }
                 }
             }

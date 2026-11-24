@@ -1,7 +1,15 @@
-//! AI icon generator (AI edition). Opened from the Theme Creator.
+//! AI icon generator (AI edition), opened from the Theme Creator.
+//! (Controller being ported from v2 `IconGeneratorDialog`.)
 
-use crate::AppWindow;
+use crate::{AppWindow, IconGen, Page, Shell};
+use slint::ComponentHandle;
 
 pub fn open(app: &AppWindow) {
-    crate::dialogs::message(app, crate::DialogIcon::Info, "AI Icon Generator", "The AI icon generator is being ported to v3.");
+    app.global::<IconGen>().set_view(0);
+    app.global::<Shell>().set_page(Page::Icongen);
+}
+
+pub fn wire(app: &AppWindow) {
+    let a = app.as_weak();
+    app.global::<IconGen>().on_close(move || a.unwrap().global::<Shell>().set_page(Page::Creator));
 }
