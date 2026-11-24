@@ -180,10 +180,12 @@ pub fn sort(themes: &mut [LibraryTheme], mode: SortMode) {
     }
 }
 
-/// Case-insensitive substring search on title and author.
-pub fn matches(theme: &LibraryTheme, search: &str) -> bool {
-    let s = search.trim().to_lowercase();
-    s.is_empty() || theme.title().to_lowercase().contains(&s) || theme.author().to_lowercase().contains(&s)
+/// v2 `filter_local_themes`: case-insensitive substring search on the title
+/// (`by_author` false) or the author.
+pub fn matches(theme: &LibraryTheme, search: &str, by_author: bool) -> bool {
+    let s = search.to_lowercase();
+    let target = if by_author { theme.author() } else { theme.title() };
+    target.to_lowercase().contains(&s)
 }
 
 #[cfg(test)]

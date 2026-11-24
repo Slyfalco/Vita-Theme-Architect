@@ -187,10 +187,19 @@ component FilterRow inherits Panel {
             min-width: 200px;
             max-width: 520px;
             search := SearchField {
-                placeholder: "Search themes by title or author";
+                placeholder: Library.search-field == 0 ? "Search themes by title" : "Search themes by author";
                 hotkey: "Ctrl+F";
                 text <=> Library.search;
                 edited(t) => { Library.search-changed(t); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Dropdown {
+                min-width: 170px;
+                options: ["Search by Title", "Search by Author"];
+                current-index <=> Library.search-field;
+                selected(i) => { Library.search-field-changed(i); }
             }
         }
         VerticalLayout {

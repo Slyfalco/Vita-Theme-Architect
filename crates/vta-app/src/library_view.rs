@@ -131,11 +131,12 @@ pub fn refresh_view(app: &AppWindow, state: &SharedLibrary) {
     library::sort(&mut s.all, mode);
     let search = lib.get_search().to_string();
     let filter = lib.get_filter();
+    let by_author = lib.get_search_field() == 1;
     s.visible = s
         .all
         .iter()
         .enumerate()
-        .filter(|(_, t)| library::matches(t, &search))
+        .filter(|(_, t)| library::matches(t, &search, by_author))
         .filter(|(_, t)| match filter {
             1 => t.has_bgm(),
             2 => t.icon_count() > 0,
@@ -196,6 +197,8 @@ pub fn wire(app: &AppWindow, state: &SharedLibrary) {
     });
     let (a, s) = (app.as_weak(), state.clone());
     lib.on_sort_changed(move |_| refresh_view(&a.unwrap(), &s));
+    let (a, s) = (app.as_weak(), state.clone());
+    lib.on_search_field_changed(move |_| refresh_view(&a.unwrap(), &s));
 
     let s = state.clone();
     lib.on_open_library_folder(move || crate::platform::open_path(&s.borrow().root));

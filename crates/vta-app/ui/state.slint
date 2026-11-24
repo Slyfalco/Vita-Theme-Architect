@@ -67,6 +67,8 @@ export global Library {
     in property <ThemeDetail> detail;
     in-out property <string> search;
     in-out property <int> filter: 0;      // 0 all, 1 with BGM, 2 custom icons
+    in-out property <int> search-field: 0; // 0 title, 1 author (v2 "Search by")
+    callback search-field-changed(int);
     in-out property <int> sort: 0;        // index into sort-options
     in property <[string]> sort-options: ["Alphabetical (A-Z)"];
     in-out property <int> stage-tab: 0;   // 0 home, 1 lock, 2 icons
