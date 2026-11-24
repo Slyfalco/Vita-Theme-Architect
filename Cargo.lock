@@ -6259,6 +6259,7 @@ dependencies = [
  "vta-core",
  "vta-online",
  "windows-sys 0.61.2",
+ "winresource",
  "wry",
  "zip",
 ]
@@ -6290,6 +6291,7 @@ dependencies = [
 name = "vta-online"
 version = "3.0.0"
 dependencies = [
+ "libloading",
  "serde_json",
  "ureq",
 ]
@@ -7254,6 +7256,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "toml 1.2.2+spec-1.1.0",
+ "version_check",
+]
+
+[[package]]
 name = "write-fonts"
 version = "0.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7414,6 +7426,16 @@ name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
+
+[[package]]
+name = "xtask"
+version = "3.0.0"
+dependencies = [
+ "flate2",
+ "tar",
+ "vta-core",
+ "zip",
+]
 
 [[package]]
 name = "yazi"

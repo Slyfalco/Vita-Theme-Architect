@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/vta-core", "crates/vta-online", "crates/vta-app"]
+members = ["crates/vta-core", "crates/vta-online", "crates/vta-app", "crates/xtask"]
 
 [workspace.package]
 version = "3.0.0"
