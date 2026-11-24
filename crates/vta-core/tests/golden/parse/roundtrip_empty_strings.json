@@ -1,0 +1,26 @@
+{
+ "title": "",
+ "author": "",
+ "version": "",
+ "assets": {
+  "lockpaper.png": "lockpaper.png",
+  "preview_livearea.png": "preview_livearea.png",
+  "preview_lockscreen.png": "preview_lockscreen.png",
+  "preview_thumbnail.png": "preview_thumbnail.png"
+ },
+ "colors": {
+  "m_dateColor": "ffffffff",
+  "m_notifyBgColor": "ffffffff",
+  "m_notifyBorderColor": "ffcccccc",
+  "m_notifyFontColor": "ffffffff",
+  "m_indicatorColor": "ffffffff",
+  "m_noticeFontColor": "ffffffff",
+  "m_noticeGlowColor": "ffca0000"
+ },
+ "page_colors": {
+  "br1_color": "ffffffff"
+ },
+ "page_waves": {
+  "br1_wave": "12"
+ }
+}

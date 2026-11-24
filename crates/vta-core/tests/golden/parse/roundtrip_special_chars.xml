@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme format-ver="01.00" package="0">
+	<HomeProperty>
+		<m_bgParam>
+			<BackgroundParam>
+				<m_imageFilePath>br1.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr1.png</m_thumbnailFilePath>
+				<m_waveType>12</m_waveType>
+				<m_fontColor>ffffffff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+		</m_bgParam>
+		<m_bgmFilePath>my bgm &amp; stuff.at9</m_bgmFilePath>
+	</HomeProperty>
+	<InfomationBarProperty>
+		<m_barColor>ff000000</m_barColor>
+		<m_indicatorColor>ffffffff</m_indicatorColor>
+		<m_noticeFontColor>ffffffff</m_noticeFontColor>
+		<m_noticeGlowColor>ffca0000</m_noticeGlowColor>
+	</InfomationBarProperty>
+	<InfomationProperty>
+		<m_provider>
+			<m_default>Ünïcødé 日本語 ✨</m_default>
+			<m_param>
+				<m_da>Ünïcødé 日本語 ✨</m_da>
+				<m_de>Ünïcødé 日本語 ✨</m_de>
+				<m_es>Ünïcødé 日本語 ✨</m_es>
+				<m_fi>Ünïcødé 日本語 ✨</m_fi>
+				<m_fr>Ünïcødé 日本語 ✨</m_fr>
+				<m_it>Ünïcødé 日本語 ✨</m_it>
+				<m_nl>Ünïcødé 日本語 ✨</m_nl>
+				<m_no>Ünïcødé 日本語 ✨</m_no>
+				<m_pl>Ünïcødé 日本語 ✨</m_pl>
+				<m_pt>Ünïcødé 日本語 ✨</m_pt>
+				<m_sv>Ünïcødé 日本語 ✨</m_sv>
+				<m_ja>Ünïcødé 日本語 ✨</m_ja>
+			</m_param>
+		</m_provider>
+		<m_contentVer>01.00</m_contentVer>
+		<m_title>
+			<m_default>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_default>
+			<m_param>
+				<m_da>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_da>
+				<m_de>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_de>
+				<m_es>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_es>
+				<m_fi>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_fi>
+				<m_fr>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_fr>
+				<m_it>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_it>
+				<m_nl>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_nl>
+				<m_no>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_no>
+				<m_pl>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_pl>
+				<m_pt>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_pt>
+				<m_sv>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_sv>
+				<m_ja>Tom &amp; Jerry &lt;&quot;quoted&quot;&gt; 'apos' &gt; end</m_ja>
+			</m_param>
+		</m_title>
+		<m_homePreviewFilePath>preview_livearea.png</m_homePreviewFilePath>
+		<m_startPreviewFilePath>preview_lockscreen.png</m_startPreviewFilePath>
+		<m_packageImageFilePath>preview_thumbnail.png</m_packageImageFilePath>
+	</InfomationProperty>
+	<StartScreenProperty>
+		<m_dateColor>ffffffff</m_dateColor>
+		<m_dateLayout>0</m_dateLayout>
+		<m_filePath>lockpaper.png</m_filePath>
+		<m_notifyBgColor>ffffffff</m_notifyBgColor>
+		<m_notifyBorderColor>ffcccccc</m_notifyBorderColor>
+		<m_notifyFontColor>ffffffff</m_notifyFontColor>
+	</StartScreenProperty>
+</theme>

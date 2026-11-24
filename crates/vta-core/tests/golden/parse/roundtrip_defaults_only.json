@@ -1,0 +1,28 @@
+{
+ "title": "Untitled",
+ "author": "Unknown",
+ "version": "01.00",
+ "assets": {
+  "lockpaper.png": "lockpaper.png",
+  "preview_livearea.png": "preview_livearea.png",
+  "preview_lockscreen.png": "preview_lockscreen.png",
+  "preview_thumbnail.png": "preview_thumbnail.png",
+  "br1.png": "br1.png"
+ },
+ "colors": {
+  "m_dateColor": "ffffffff",
+  "m_notifyBgColor": "ffffffff",
+  "m_notifyBorderColor": "ffcccccc",
+  "m_notifyFontColor": "ffffffff",
+  "m_barColor": "ff000000",
+  "m_indicatorColor": "ffffffff",
+  "m_noticeFontColor": "ffffffff",
+  "m_noticeGlowColor": "ffca0000"
+ },
+ "page_colors": {
+  "br1_color": "ffffffff"
+ },
+ "page_waves": {
+  "br1_wave": "12"
+ }
+}

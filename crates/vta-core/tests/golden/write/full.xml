@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme format-ver="01.00" package="0">
+	<HomeProperty>
+		<m_bgParam>
+			<BackgroundParam>
+				<m_imageFilePath>br1.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr1.png</m_thumbnailFilePath>
+				<m_waveType>1</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br2.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr2.png</m_thumbnailFilePath>
+				<m_waveType>2</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br3.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr3.png</m_thumbnailFilePath>
+				<m_waveType>3</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br4.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr4.png</m_thumbnailFilePath>
+				<m_waveType>4</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br5.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr5.png</m_thumbnailFilePath>
+				<m_waveType>5</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br6.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr6.png</m_thumbnailFilePath>
+				<m_waveType>6</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br7.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr7.png</m_thumbnailFilePath>
+				<m_waveType>7</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br8.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr8.png</m_thumbnailFilePath>
+				<m_waveType>8</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br9.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr9.png</m_thumbnailFilePath>
+				<m_waveType>9</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br10.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr10.png</m_thumbnailFilePath>
+				<m_waveType>10</m_waveType>
+				<m_fontColor>ff7bd0ff</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+		</m_bgParam>
+		<m_bgmFilePath>BGM.at9</m_bgmFilePath>
+		<m_browser>
+			<m_iconFilePath>icon_web.png</m_iconFilePath>
+		</m_browser>
+		<m_calendar>
+			<m_iconFilePath>icon_calendar.png</m_iconFilePath>
+		</m_calendar>
+		<m_camera>
+			<m_iconFilePath>icon_photos.png</m_iconFilePath>
+		</m_camera>
+		<m_email>
+			<m_iconFilePath>icon_email.png</m_iconFilePath>
+		</m_email>
+		<m_friend>
+			<m_iconFilePath>icon_friend.png</m_iconFilePath>
+		</m_friend>
+		<m_hostCollabo>
+			<m_iconFilePath>icon_cma.png</m_iconFilePath>
+		</m_hostCollabo>
+		<m_message>
+			<m_iconFilePath>icon_message.png</m_iconFilePath>
+		</m_message>
+		<m_music>
+			<m_iconFilePath>icon_music.png</m_iconFilePath>
+		</m_music>
+		<m_near>
+			<m_iconFilePath>icon_near.png</m_iconFilePath>
+		</m_near>
+		<m_parental>
+			<m_iconFilePath>icon_parental.png</m_iconFilePath>
+		</m_parental>
+		<m_party>
+			<m_iconFilePath>icon_party.png</m_iconFilePath>
+		</m_party>
+		<m_power>
+			<m_iconFilePath>icon_power.png</m_iconFilePath>
+		</m_power>
+		<m_ps3Link>
+			<m_iconFilePath>icon_ps3link.png</m_iconFilePath>
+		</m_ps3Link>
+		<m_ps4Link>
+			<m_iconFilePath>icon_ps4link.png</m_iconFilePath>
+		</m_ps4Link>
+		<m_settings>
+			<m_iconFilePath>icon_settings.png</m_iconFilePath>
+		</m_settings>
+		<m_trophy>
+			<m_iconFilePath>icon_trophy.png</m_iconFilePath>
+		</m_trophy>
+		<m_video>
+			<m_iconFilePath>icon_video.png</m_iconFilePath>
+		</m_video>
+		<m_basePageFilePath>screen_other.png</m_basePageFilePath>
+		<m_curPageFilePath>screen_current.png</m_curPageFilePath>
+	</HomeProperty>
+	<InfomationBarProperty>
+		<m_barColor>ff000000</m_barColor>
+		<m_indicatorColor>ffffffff</m_indicatorColor>
+		<m_noticeFontColor>ff00ff00</m_noticeFontColor>
+		<m_noticeGlowColor>ffca0000</m_noticeGlowColor>
+		<m_noNoticeFilePath>noNotice.png</m_noNoticeFilePath>
+		<m_newNoticeFilePath>newNotice.png</m_newNoticeFilePath>
+	</InfomationBarProperty>
+	<InfomationProperty>
+		<m_provider>
+			<m_default>Difad002 Slyfalco</m_default>
+			<m_param>
+				<m_da>Difad002 Slyfalco</m_da>
+				<m_de>Difad002 Slyfalco</m_de>
+				<m_es>Difad002 Slyfalco</m_es>
+				<m_fi>Difad002 Slyfalco</m_fi>
+				<m_fr>Difad002 Slyfalco</m_fr>
+				<m_it>Difad002 Slyfalco</m_it>
+				<m_nl>Difad002 Slyfalco</m_nl>
+				<m_no>Difad002 Slyfalco</m_no>
+				<m_pl>Difad002 Slyfalco</m_pl>
+				<m_pt>Difad002 Slyfalco</m_pt>
+				<m_sv>Difad002 Slyfalco</m_sv>
+				<m_ja>Difad002 Slyfalco</m_ja>
+			</m_param>
+		</m_provider>
+		<m_contentVer>02.10</m_contentVer>
+		<m_title>
+			<m_default>Corpse Party Blood Drive</m_default>
+			<m_param>
+				<m_da>Corpse Party Blood Drive</m_da>
+				<m_de>Corpse Party Blood Drive</m_de>
+				<m_es>Corpse Party Blood Drive</m_es>
+				<m_fi>Corpse Party Blood Drive</m_fi>
+				<m_fr>Corpse Party Blood Drive</m_fr>
+				<m_it>Corpse Party Blood Drive</m_it>
+				<m_nl>Corpse Party Blood Drive</m_nl>
+				<m_no>Corpse Party Blood Drive</m_no>
+				<m_pl>Corpse Party Blood Drive</m_pl>
+				<m_pt>Corpse Party Blood Drive</m_pt>
+				<m_sv>Corpse Party Blood Drive</m_sv>
+				<m_ja>Corpse Party Blood Drive</m_ja>
+			</m_param>
+		</m_title>
+		<m_homePreviewFilePath>preview_livearea.png</m_homePreviewFilePath>
+		<m_startPreviewFilePath>preview_lockscreen.png</m_startPreviewFilePath>
+		<m_packageImageFilePath>preview_thumbnail.png</m_packageImageFilePath>
+	</InfomationProperty>
+	<StartScreenProperty>
+		<m_dateColor>ff112233</m_dateColor>
+		<m_dateLayout>0</m_dateLayout>
+		<m_filePath>lockpaper.png</m_filePath>
+		<m_notifyBgColor>ff445566</m_notifyBgColor>
+		<m_notifyBorderColor>ff778899</m_notifyBorderColor>
+		<m_notifyFontColor>ffaabbcc</m_notifyFontColor>
+	</StartScreenProperty>
+</theme>

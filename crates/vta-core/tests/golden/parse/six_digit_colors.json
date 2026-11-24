@@ -1,0 +1,20 @@
+{
+ "title": "Six",
+ "author": "Dev",
+ "version": "01.00",
+ "assets": {
+  "br1.png": "br1.png",
+  "br2.png": "br2.png"
+ },
+ "colors": {
+  "m_barColor": "ff123456",
+  "m_indicatorColor": "ffabcdef"
+ },
+ "page_colors": {
+  "br1_color": "ffa1b2c3",
+  "br2_color": "ff00ff00"
+ },
+ "page_waves": {
+  "br1_wave": "3"
+ }
+}

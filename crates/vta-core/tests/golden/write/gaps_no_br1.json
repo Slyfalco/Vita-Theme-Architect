@@ -1,0 +1,13 @@
+{
+ "title": "Gaps",
+ "author": "B",
+ "version": "01.00",
+ "assets": {
+  "tbr1.png": "custom_tbr1.png",
+  "br2.png": "br2.png",
+  "br10.png": "br10.png"
+ },
+ "colors": {},
+ "page_colors": {},
+ "page_waves": {}
+}

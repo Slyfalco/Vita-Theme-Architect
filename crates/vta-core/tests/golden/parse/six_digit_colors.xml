@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme format-ver="01.00" package="0">
+	<HomeProperty>
+		<m_bgParam>
+			<BackgroundParam>
+				<m_imageFilePath>br1.png</m_imageFilePath>
+				<m_fontColor>#a1b2c3</m_fontColor>
+				<m_waveType>3</m_waveType>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br2.png</m_imageFilePath>
+				<m_fontColor>ff00ff00</m_fontColor>
+			</BackgroundParam>
+		</m_bgParam>
+	</HomeProperty>
+	<InfomationBarProperty>
+		<m_barColor>#123456</m_barColor>
+		<m_indicatorColor>abcdef</m_indicatorColor>
+	</InfomationBarProperty>
+	<InfomationProperty>
+		<m_title><m_default>Six</m_default></m_title>
+		<m_provider><m_default>Dev</m_default></m_provider>
+		<m_contentVer>01.00</m_contentVer>
+	</InfomationProperty>
+</theme>

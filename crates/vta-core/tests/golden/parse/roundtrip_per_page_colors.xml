@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme format-ver="01.00" package="0">
+	<HomeProperty>
+		<m_bgParam>
+			<BackgroundParam>
+				<m_imageFilePath>br1.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr1.png</m_thumbnailFilePath>
+				<m_waveType>12</m_waveType>
+				<m_fontColor>ff010101</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br3.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr3.png</m_thumbnailFilePath>
+				<m_waveType>5</m_waveType>
+				<m_fontColor>ffabcdef</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+			<BackgroundParam>
+				<m_imageFilePath>br7.png</m_imageFilePath>
+				<m_thumbnailFilePath>tbr1.png</m_thumbnailFilePath>
+				<m_waveType>12</m_waveType>
+				<m_fontColor>ff070707</m_fontColor>
+				<m_fontShadow>1</m_fontShadow>
+			</BackgroundParam>
+		</m_bgParam>
+	</HomeProperty>
+	<InfomationBarProperty>
+		<m_barColor>ff000000</m_barColor>
+		<m_indicatorColor>ffffffff</m_indicatorColor>
+		<m_noticeFontColor>ffffffff</m_noticeFontColor>
+		<m_noticeGlowColor>ffca0000</m_noticeGlowColor>
+	</InfomationBarProperty>
+	<InfomationProperty>
+		<m_provider>
+			<m_default>A</m_default>
+			<m_param>
+				<m_da>A</m_da>
+				<m_de>A</m_de>
+				<m_es>A</m_es>
+				<m_fi>A</m_fi>
+				<m_fr>A</m_fr>
+				<m_it>A</m_it>
+				<m_nl>A</m_nl>
+				<m_no>A</m_no>
+				<m_pl>A</m_pl>
+				<m_pt>A</m_pt>
+				<m_sv>A</m_sv>
+				<m_ja>A</m_ja>
+			</m_param>
+		</m_provider>
+		<m_contentVer>01.00</m_contentVer>
+		<m_title>
+			<m_default>Per page</m_default>
+			<m_param>
+				<m_da>Per page</m_da>
+				<m_de>Per page</m_de>
+				<m_es>Per page</m_es>
+				<m_fi>Per page</m_fi>
+				<m_fr>Per page</m_fr>
+				<m_it>Per page</m_it>
+				<m_nl>Per page</m_nl>
+				<m_no>Per page</m_no>
+				<m_pl>Per page</m_pl>
+				<m_pt>Per page</m_pt>
+				<m_sv>Per page</m_sv>
+				<m_ja>Per page</m_ja>
+			</m_param>
+		</m_title>
+		<m_homePreviewFilePath>preview_livearea.png</m_homePreviewFilePath>
+		<m_startPreviewFilePath>preview_lockscreen.png</m_startPreviewFilePath>
+		<m_packageImageFilePath>preview_thumbnail.png</m_packageImageFilePath>
+	</InfomationProperty>
+	<StartScreenProperty>
+		<m_dateColor>ffffffff</m_dateColor>
+		<m_dateLayout>0</m_dateLayout>
+		<m_filePath>lockpaper.png</m_filePath>
+		<m_notifyBgColor>ffffffff</m_notifyBgColor>
+		<m_notifyBorderColor>ffcccccc</m_notifyBorderColor>
+		<m_notifyFontColor>ffffffff</m_notifyFontColor>
+	</StartScreenProperty>
+</theme>

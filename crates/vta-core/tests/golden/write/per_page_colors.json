@@ -1,0 +1,22 @@
+{
+ "title": "Per page",
+ "author": "A",
+ "version": "01.00",
+ "use_global_font_color": false,
+ "assets": {
+  "br1.png": "br1.png",
+  "br3.png": "br3.png",
+  "tbr3.png": "tbr3.png",
+  "br7.png": "br7.png"
+ },
+ "colors": {
+  "m_fontColor": "ffabcdef"
+ },
+ "page_colors": {
+  "br1_color": "ff010101",
+  "br7_color": "ff070707"
+ },
+ "page_waves": {
+  "br3_wave": "5"
+ }
+}

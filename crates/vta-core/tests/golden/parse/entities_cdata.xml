@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme><InfomationProperty><m_title><m_default>A &amp; B &lt;C&gt; &#x65E5;</m_default></m_title>
+<m_provider><m_default><![CDATA[raw <cdata> & stuff]]></m_default></m_provider>
+<m_contentVer>  01.00  </m_contentVer></InfomationProperty>
+<StartScreenProperty><m_filePath>lock.png</m_filePath><m_dateColor></m_dateColor></StartScreenProperty></theme>

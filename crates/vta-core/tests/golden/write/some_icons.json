@@ -1,0 +1,13 @@
+{
+ "title": "Icons",
+ "author": "C",
+ "version": "01.00",
+ "assets": {
+  "icon_power.png": "icon_power.png",
+  "icon_web.png": "web.png",
+  "noNotice.png": "noNotice.png"
+ },
+ "colors": {},
+ "page_colors": {},
+ "page_waves": {}
+}
