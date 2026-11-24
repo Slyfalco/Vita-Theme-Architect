@@ -216,6 +216,47 @@ fn library_paths(dirs: &DataDirs, settings: &mut Settings) -> std::path::PathBuf
     themes
 }
 
+/// True for builds made by the packaging tool (it sets VTA_PACKAGED=1 at compile
+/// time and embeds the integrity manifest). Plain `cargo` builds are development
+/// builds, like v2's runs from source.
+const PACKAGED: bool = option_env!("VTA_PACKAGED").is_some();
+
+/// v2 `main`: the install-integrity check (packaged Windows/Linux builds; fails
+/// closed) and, on macOS, the "running from Downloads" note.
+fn startup_checks() {
+    if !PACKAGED {
+        return;
+    }
+    if !cfg!(target_os = "macos") {
+        let problems = std::env::current_exe().map(|exe| vta_core::integrity::check(&exe)).unwrap_or_default();
+        if !problems.is_empty() {
+            let mut list = problems.iter().take(8).cloned().collect::<Vec<_>>().join("\n");
+            if problems.len() > 8 {
+                list.push_str("\n…");
+            }
+            rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("Installation Problem")
+                .set_description(format!("VitaTheme Architect's files look corrupted or modified:\n\n{list}\n\nPlease reinstall or re-download the app."))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            std::process::exit(1);
+        }
+    } else if let (Ok(exe), Some(home)) = (std::env::current_exe(), std::env::var_os("HOME")) {
+        if exe.starts_with(std::path::Path::new(&home).join("Downloads")) {
+            rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title("Move to Applications")
+                .set_description(
+                    "VitaTheme Architect is running from your Downloads folder.\n\n\
+                     macOS will ask for Downloads access on every launch because the app's resources are stored there.\n\n\
+                     Move VitaThemeArchitect.app to your Applications folder to avoid this prompt.",
+                )
+                .show();
+        }
+    }
+}
+
 /// Centre a window on the monitor it opened on (falls back to the primary one).
 /// Returns false while the native window doesn't exist yet.
 pub(crate) fn center_on_screen(window: &slint::Window) -> bool {
@@ -277,6 +318,7 @@ fn dev_preselect(_: &App) {}
 
 fn main() -> Result<(), slint::PlatformError> {
     crashlog::install();
+    startup_checks();
     #[cfg(all(windows, debug_assertions))]
     // SAFETY: plain Win32 call with a constant argument; failure just means no console.
     unsafe {

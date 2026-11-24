@@ -2,6 +2,7 @@
 
 pub mod build;
 pub mod import;
+pub mod integrity;
 pub mod library;
 pub mod migrations;
 pub mod paths;

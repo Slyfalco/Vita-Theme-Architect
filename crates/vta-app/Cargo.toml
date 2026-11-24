@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "VitaThemeArchitect"
+name = "vitaThemeArchitect"
 path = "src/main.rs"
 
 [dependencies]
@@ -29,6 +29,7 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 slint-build = "1.19"
+winresource = "0.1"
 
 [features]
 # The AI icon generator edition (v2 builds it by default; --no-default-features = Standard).
