@@ -1,0 +1,2 @@
+# Golden files must keep their exact bytes (theme.xml parity tests).
+crates/vta-core/tests/golden/** -text
