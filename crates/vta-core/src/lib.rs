@@ -1,5 +1,6 @@
 //! Core (UI-independent) logic for VitaTheme Architect v3.
 
+pub mod build;
 pub mod import;
 pub mod library;
 pub mod paths;
