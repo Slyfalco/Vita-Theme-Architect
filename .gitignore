@@ -64,3 +64,6 @@ run-dev-token.sh
 
 # --- Rust (v3) ---
 target/
+
+# Local-only development settings (never committed)
+.dev/

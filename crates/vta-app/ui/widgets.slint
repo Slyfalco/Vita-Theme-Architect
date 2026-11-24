@@ -391,3 +391,160 @@ export component Caption inherits Text {
     font-weight: 600;
     letter-spacing: 1px;
 }
+
+// Single-line text field with an optional leading icon, password mode and suffix.
+export component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <bool> password: false;
+    in property <bool> mono: false;
+    in property <bool> read-only: false;
+    in property <string> suffix;
+    callback edited(string);
+    height: Density.compact ? 40px : 46px;
+    border-radius: Palette.radius-control;
+    background: Palette.inset;
+    border-width: 1px;
+    border-color: input.has-focus ? Palette.accent : Palette.outline;
+    animate border-color { duration: 120ms; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 10px;
+        if root.has-icon: Icon {
+            source: root.icon;
+            size: 18px;
+            tint: Palette.text-lo;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            input := TextInput {
+                text <=> root.text;
+                read-only: root.read-only;
+                input-type: root.password ? InputType.password : InputType.text;
+                color: Palette.text-hi;
+                font-size: Type.body-md;
+                font-family: root.mono ? Palette.mono-font : Palette.ui-font;
+                vertical-alignment: center;
+                single-line: true;
+                edited => { root.edited(self.text); }
+            }
+            if root.text == "": Text {
+                text: root.placeholder;
+                color: Palette.text-lo;
+                font-size: Type.body-md;
+                vertical-alignment: center;
+                x: 0;
+                width: parent.width;
+                overflow: elide;
+            }
+        }
+        if root.suffix != "": Text {
+            text: root.suffix;
+            color: Palette.text-lo;
+            font-family: Palette.mono-font;
+            font-size: Type.label-sm;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// On/off switch.
+export component Toggle inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    width: 46px;
+    height: 26px;
+    border-radius: 13px;
+    background: root.checked ? Palette.primary : Palette.surface3;
+    animate background { duration: 150ms; }
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: #ffffff;
+        animate x { duration: 150ms; easing: ease-out; }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+// Checkbox with a label (wraps).
+export component CheckRow inherits HorizontalLayout {
+    in-out property <bool> checked;
+    in property <string> text;
+    in property <string> hint;
+    spacing: 12px;
+    Rectangle {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        background: root.checked ? Palette.primary : transparent;
+        border-width: root.checked ? 0 : 1.5px;
+        border-color: Palette.text-lo;
+        if root.checked: Text {
+            text: "✓";
+            color: Palette.on-primary;
+            font-weight: 700;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.checked = !root.checked; }
+        }
+    }
+    VerticalLayout {
+        spacing: 3px;
+        horizontal-stretch: 1;
+        Text {
+            text: root.text;
+            color: Palette.text-hi;
+            font-size: Type.body-md;
+            font-weight: 500;
+            wrap: word-wrap;
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.checked = !root.checked; }
+            }
+        }
+        if root.hint != "": Text {
+            text: root.hint;
+            color: Palette.text-mid;
+            font-size: Type.body-sm;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// A labelled form row: label (+ optional right note) over the control.
+export component FormRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> note;
+    in property <bool> required: false;
+    spacing: 8px;
+    HorizontalLayout {
+        Text {
+            text: root.label + (root.required ? "  *" : "");
+            color: Palette.text-hi;
+            font-size: Type.body-sm;
+            font-weight: 600;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: root.note;
+            color: Palette.text-lo;
+            font-size: Type.body-sm;
+        }
+    }
+    @children
+}

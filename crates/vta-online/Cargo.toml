@@ -1,0 +1,13 @@
+[package]
+name = "vta-online"
+description = "Online theme list access for VitaTheme Architect (public interface to the official online module)"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = "3"
+libloading = "0.8"

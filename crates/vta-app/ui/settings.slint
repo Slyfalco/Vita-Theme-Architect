@@ -1,0 +1,625 @@
+// Settings (design/v3-ui/settings_*): General, Connection and (AI edition) AI Icons.
+
+import { ScrollView } from "std-widgets.slint";
+import { Palette, Type, Density } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind, IconBtn, KeyChip, Segment, Panel, Caption, StatusPill, Dropdown, Field, Toggle, CheckRow, FormRow } from "widgets.slint";
+import { Shell } from "state.slint";
+
+export global SettingsState {
+    in-out property <int> tab: 0;               // 0 general, 1 connection, 2 AI icons
+    in property <bool> ai-edition: false;
+    in property <bool> official-build: false;
+    in property <string> version-line;
+    in property <string> repo-url: "github.com/Slyfalco/Vita-Theme-Architect";
+    // General
+    in-out property <string> default-author;
+    in-out property <string> theme-library-path;
+    in-out property <string> extras-library-path;
+    in-out property <bool> auto-update-check: true;
+    in property <string> update-status;
+    in property <bool> update-checking: false;
+    in property <[string]> app-themes: ["Obsidian Vita Deck"];
+    in-out property <int> app-theme-index: 0;
+    // Connection
+    in-out property <string> vita-ip;
+    in-out property <string> vita-port: "1337";
+    in property <string> conn-status;
+    in property <int> conn-state: 0;            // 0 none, 1 testing, 2 ok, 3 failed
+    // AI icons
+    in-out property <string> google-api-key;
+    in property <[string]> gemini-models;
+    in-out property <int> gemini-model-index: 0;
+    in-out property <string> custom-base-model;
+    in-out property <int> custom-arch-index: 0;  // auto, sd15, sdxl
+    in-out property <string> shared-model-cache;
+    in-out property <string> hf-token;
+    in-out property <bool> ai-min-memory: false;
+    in-out property <bool> show-key: false;
+    in-out property <bool> show-token: false;
+    // Footer
+    in property <string> footer-status;
+
+    callback browse-theme-library();
+    callback browse-extras-library();
+    callback check-updates();
+    callback open-repo();
+    callback app-theme-changed(int);
+    callback test-connection();
+    callback browse-model-file();
+    callback browse-model-folder();
+    callback browse-shared-cache();
+    callback open-gemini-keys();
+    callback save();
+    callback cancel();
+}
+
+component Card inherits Panel {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> icon;
+    in property <bool> has-icon: true;
+    VerticalLayout {
+        padding: Density.compact ? 20px : 28px;
+        spacing: 18px;
+        if root.title != "": HorizontalLayout {
+            spacing: 12px;
+            if root.has-icon: Icon {
+                source: root.icon;
+                size: 26px;
+                tint: Palette.accent;
+            }
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: root.title;
+                    color: Palette.text-hi;
+                    font-size: Type.headline-lg;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                if root.subtitle != "": Text {
+                    text: root.subtitle;
+                    color: Palette.text-mid;
+                    font-size: Type.body-md;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        @children
+    }
+}
+
+component PathRow inherits HorizontalLayout {
+    in-out property <string> text;
+    in property <image> icon;
+    callback browse();
+    spacing: 10px;
+    Field {
+        text <=> root.text;
+        icon: root.icon;
+        has-icon: true;
+        mono: true;
+        horizontal-stretch: 1;
+    }
+    Btn {
+        text: "Browse...";
+        icon: Icons.folder-open;
+        has-icon: true;
+        clicked => { root.browse(); }
+    }
+}
+
+component GeneralTab inherits VerticalLayout {
+    spacing: 18px;
+    Card {
+        has-icon: false;
+        FormRow {
+            label: "Default Author Name";
+            Field {
+                text <=> SettingsState.default-author;
+                placeholder: "Your name (pre-filled as the author of new themes)";
+                icon: Icons.person;
+                has-icon: true;
+            }
+        }
+        FormRow {
+            label: "Theme Library Path";
+            PathRow {
+                text <=> SettingsState.theme-library-path;
+                icon: Icons.folder;
+                browse => { SettingsState.browse-theme-library(); }
+            }
+        }
+        Text {
+            text: "Tip: the default is a hidden app-data folder. Pick your own folder (e.g. in Documents) so themes are easy to find and back up. Existing themes are not moved automatically.";
+            color: Palette.text-mid;
+            font-size: Type.body-sm;
+            wrap: word-wrap;
+        }
+        FormRow {
+            label: "Extras Library Path";
+            PathRow {
+                text <=> SettingsState.extras-library-path;
+                icon: Icons.stacks;
+                browse => { SettingsState.browse-extras-library(); }
+            }
+        }
+        FormRow {
+            label: "App Theme";
+            note: "The look of this app (not your Vita theme)";
+            HorizontalLayout {
+                Dropdown {
+                    options: SettingsState.app-themes;
+                    current-index <=> SettingsState.app-theme-index;
+                    selected(i) => { SettingsState.app-theme-changed(i); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+        Rectangle {
+            height: 1px;
+            background: Palette.outline.transparentize(40%);
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            Toggle {
+                checked <=> SettingsState.auto-update-check;
+                enabled: SettingsState.official-build;
+                opacity: SettingsState.official-build ? 1 : 0.45;
+            }
+            Text {
+                text: "Check for updates automatically on startup";
+                color: Palette.text-hi;
+                font-size: Type.body-md;
+                vertical-alignment: center;
+            }
+            Btn {
+                text: SettingsState.update-checking ? "Checking…" : "Check for updates now";
+                compact: true;
+                enabled: SettingsState.official-build && !SettingsState.update-checking;
+                clicked => { SettingsState.check-updates(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: SettingsState.version-line;
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+            }
+            Text {
+                text: "•";
+                color: Palette.text-lo;
+            }
+            Text {
+                text: SettingsState.repo-url;
+                color: Palette.accent;
+                font-size: Type.body-sm;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { SettingsState.open-repo(); }
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        if SettingsState.update-status != "": Text {
+            text: SettingsState.update-status;
+            color: Palette.text-lo;
+            font-size: Type.body-sm;
+            font-italic: true;
+        }
+    }
+}
+
+component GuideStep inherits HorizontalLayout {
+    in property <string> num;
+    in property <string> text;
+    spacing: 14px;
+    Rectangle {
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        background: Palette.primary.transparentize(78%);
+        Text {
+            text: root.num;
+            color: Palette.accent;
+            font-weight: 700;
+            font-size: Type.body-sm;
+        }
+    }
+    Text {
+        text: root.text;
+        color: Palette.text-hi;
+        font-size: Type.body-md;
+        wrap: word-wrap;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+}
+
+component ConnectionTab inherits VerticalLayout {
+    spacing: 18px;
+    Card {
+        title: "PS Vita Network Connection";
+        subtitle: "Specify the IP and listening port displayed on your console's VitaShell interface.";
+        icon: Icons.devices;
+        FormRow {
+            label: "PS Vita IP Address";
+            note: "IPv4 Local Area Network";
+            required: true;
+            Field {
+                text <=> SettingsState.vita-ip;
+                placeholder: "e.g., 192.168.1.50";
+                icon: Icons.storage;
+                has-icon: true;
+                mono: true;
+            }
+        }
+        FormRow {
+            label: "PS Vita Port";
+            note: "VitaShell Standard: 1337";
+            required: true;
+            Field {
+                text <=> SettingsState.vita-port;
+                icon: Icons.tag;
+                has-icon: true;
+                mono: true;
+                suffix: "PORT";
+            }
+        }
+        Rectangle {
+            height: 1px;
+            background: Palette.outline.transparentize(40%);
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            Btn {
+                text: SettingsState.conn-state == 1 ? "Testing…" : "Test Connection";
+                icon: Icons.sync;
+                has-icon: true;
+                enabled: SettingsState.conn-state != 1;
+                clicked => { SettingsState.test-connection(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if SettingsState.conn-status != "": VerticalLayout {
+                alignment: center;
+                StatusPill {
+                    text: SettingsState.conn-status;
+                    dot: SettingsState.conn-state == 2 ? Palette.success : SettingsState.conn-state == 3 ? Palette.danger : Palette.text-lo;
+                    fg: SettingsState.conn-state == 2 ? Palette.success-text : SettingsState.conn-state == 3 ? Palette.danger : Palette.text-mid;
+                }
+            }
+        }
+    }
+    Card {
+        has-icon: false;
+        HorizontalLayout {
+            Caption {
+                text: "TARGET STORAGE PARTITION";
+            }
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 70px;
+                border-radius: 10px;
+                background: Palette.inset;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 4px;
+                    Text { text: "Base Mount"; color: Palette.text-mid; font-size: Type.body-sm; }
+                    Text { text: "ux0:"; color: Palette.text-hi; font-family: Palette.mono-font; font-weight: 700; }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 70px;
+                border-radius: 10px;
+                background: Palette.inset;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 4px;
+                    Text { text: "Target Directory"; color: Palette.text-mid; font-size: Type.body-sm; }
+                    Text { text: "customtheme/"; color: Palette.accent; font-family: Palette.mono-font; font-weight: 700; }
+                }
+            }
+        }
+    }
+    Card {
+        title: "How to connect to your PS Vita";
+        icon: Icons.info;
+        GuideStep { num: "1"; text: "Connect the PS Vita and this PC to the same Wi-Fi network."; }
+        GuideStep { num: "2"; text: "On the Vita, open VitaShell (install it with HENkaku/h-encore if you haven't)."; }
+        GuideStep { num: "3"; text: "Press SELECT in VitaShell to start the FTP server."; }
+        GuideStep { num: "4"; text: "VitaShell shows an address such as ftp://192.168.1.50:1337. Type the IP (192.168.1.50) and port (1337) into the boxes above."; }
+        GuideStep { num: "5"; text: "Click Test Connection to confirm it works, then use Send to Vita / Import from Vita to transfer themes."; }
+        Rectangle {
+            border-radius: 10px;
+            background: Palette.inset;
+            HorizontalLayout {
+                padding: 16px;
+                spacing: 12px;
+                Icon {
+                    source: Icons.info;
+                    size: 20px;
+                    tint: Palette.accent;
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Tip"; color: Palette.text-hi; font-weight: 700; font-size: Type.body-sm; }
+                    Text {
+                        text: "If the connection fails, make sure the FTP server is still running in VitaShell (it stops when the app closes or the Vita sleeps) and that no firewall is blocking this PC.";
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component AiTab inherits VerticalLayout {
+    spacing: 18px;
+    Card {
+        title: "Cloud AI Provider (Google Gemini)";
+        subtitle: "Generate icons with Google's Gemini image models instead of on this PC.";
+        icon: Icons.auto-awesome;
+        FormRow {
+            label: "Google API Key";
+            HorizontalLayout {
+                spacing: 10px;
+                Field {
+                    text <=> SettingsState.google-api-key;
+                    placeholder: "Paste your Gemini API key";
+                    password: !SettingsState.show-key;
+                    mono: true;
+                    horizontal-stretch: 1;
+                }
+                Btn {
+                    text: SettingsState.show-key ? "Hide" : "Show";
+                    icon: Icons.visibility;
+                    has-icon: true;
+                    clicked => { SettingsState.show-key = !SettingsState.show-key; }
+                }
+            }
+        }
+        Text {
+            text: "Used when the icon generator is set to Google Gemini. Gemini image models are paid (no free tier): each icon is billed to this key. The key is stored in this app's settings file on this PC.";
+            color: Palette.text-mid;
+            font-size: Type.body-sm;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Get a key at aistudio.google.com/apikey";
+            color: Palette.accent;
+            font-size: Type.body-sm;
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { SettingsState.open-gemini-keys(); }
+            }
+        }
+        FormRow {
+            label: "Gemini Image Model";
+            HorizontalLayout {
+                Dropdown {
+                    options: SettingsState.gemini-models;
+                    current-index <=> SettingsState.gemini-model-index;
+                    min-width: 360px;
+                    max-width: 520px;
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+    }
+    Card {
+        title: "Local AI Model (This PC)";
+        subtitle: "The local generator downloads a default model on first use. To use your own, pick a .safetensors checkpoint (SD 1.5 or SDXL), used in place with no copy.";
+        icon: Icons.memory;
+        FormRow {
+            label: "Custom Model Checkpoint";
+            HorizontalLayout {
+                spacing: 8px;
+                Field {
+                    text <=> SettingsState.custom-base-model;
+                    placeholder: "Default model (downloaded automatically)";
+                    read-only: true;
+                    mono: true;
+                    horizontal-stretch: 1;
+                }
+                Btn { text: "File…"; clicked => { SettingsState.browse-model-file(); } }
+                Btn { text: "Folder…"; clicked => { SettingsState.browse-model-folder(); } }
+                Btn { text: "Clear"; kind: ButtonKind.ghost; clicked => { SettingsState.custom-base-model = ""; } }
+            }
+        }
+        FormRow {
+            label: "Model Architecture";
+            HorizontalLayout {
+                Dropdown {
+                    options: ["Auto-detect", "SD 1.5", "SDXL"];
+                    current-index <=> SettingsState.custom-arch-index;
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+        FormRow {
+            label: "Shared Model Cache";
+            note: "Reuse models other apps downloaded";
+            HorizontalLayout {
+                spacing: 8px;
+                Field {
+                    text <=> SettingsState.shared-model-cache;
+                    placeholder: "Default (inside this app's data folder)";
+                    read-only: true;
+                    mono: true;
+                    horizontal-stretch: 1;
+                }
+                Btn { text: "Browse…"; clicked => { SettingsState.browse-shared-cache(); } }
+                Btn { text: "Clear"; kind: ButtonKind.ghost; clicked => { SettingsState.shared-model-cache = ""; } }
+            }
+        }
+        FormRow {
+            label: "Hugging Face User Access Token";
+            note: "Optional • only for the full FLUX.2 (Ultra+) model";
+            HorizontalLayout {
+                spacing: 10px;
+                Field {
+                    text <=> SettingsState.hf-token;
+                    password: !SettingsState.show-token;
+                    mono: true;
+                    horizontal-stretch: 1;
+                }
+                Btn {
+                    text: SettingsState.show-token ? "Hide" : "Show";
+                    icon: Icons.visibility;
+                    has-icon: true;
+                    clicked => { SettingsState.show-token = !SettingsState.show-token; }
+                }
+            }
+        }
+        Rectangle {
+            border-radius: 12px;
+            background: Palette.inset;
+            VerticalLayout {
+                padding: 16px;
+                CheckRow {
+                    checked <=> SettingsState.ai-min-memory;
+                    text: "Minimal VRAM mode (offloads to system RAM to lower GPU memory; slower)";
+                    hint: "Keeps every local model using as little GPU memory as possible by offloading layers to system RAM and decoding in tiles. Uses more RAM and is slower per icon, but frees the GPU for other apps.";
+                }
+            }
+        }
+    }
+}
+
+export component SettingsPage inherits Rectangle {
+    VerticalLayout {
+        ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            VerticalLayout {
+                padding-left: 28px;
+                padding-right: 28px;
+                padding-top: 4px;
+                padding-bottom: 20px;
+                spacing: 18px;
+                // Header
+                HorizontalLayout {
+                    spacing: 14px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: "PREFERENCES  •  SYSTEM ENGINE " + Shell.version;
+                            color: Palette.success-text;
+                            font-size: Type.label-md;
+                            letter-spacing: 1px;
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text {
+                                text: "Application Settings";
+                                color: Palette.text-hi;
+                                font-size: Type.headline-xl + 4px;
+                                font-weight: 700;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                KeyChip { text: "settings.json"; }
+                            }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    if Shell.vita-address != "": VerticalLayout {
+                        alignment: center;
+                        StatusPill {
+                            text: "VitaShell FTP " + Shell.vita-address;
+                            dot: Palette.accent;
+                            fg: Palette.text-hi;
+                            glow: false;
+                        }
+                    }
+                }
+                // Tabs
+                HorizontalLayout {
+                    spacing: 6px;
+                    Segment {
+                        text: "General";
+                        selected: SettingsState.tab == 0;
+                        height: 46px;
+                        clicked => { SettingsState.tab = 0; }
+                    }
+                    Segment {
+                        text: "Connection";
+                        selected: SettingsState.tab == 1;
+                        height: 46px;
+                        clicked => { SettingsState.tab = 1; }
+                    }
+                    if SettingsState.ai-edition: Segment {
+                        text: "AI Icons";
+                        selected: SettingsState.tab == 2;
+                        height: 46px;
+                        clicked => { SettingsState.tab = 2; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Palette.outline.transparentize(40%);
+                }
+                if SettingsState.tab == 0: GeneralTab { }
+                if SettingsState.tab == 1: ConnectionTab { }
+                if SettingsState.tab == 2 && SettingsState.ai-edition: AiTab { }
+            }
+        }
+        // Footer
+        Rectangle {
+            height: Density.compact ? 56px : 64px;
+            background: Palette.surface1;
+            Rectangle {
+                y: 0;
+                height: 1px;
+                background: Palette.outline.transparentize(40%);
+            }
+            HorizontalLayout {
+                padding-left: 28px;
+                padding-right: 28px;
+                spacing: 12px;
+                Icon {
+                    source: Icons.check-circle;
+                    size: 18px;
+                    tint: Palette.success-text;
+                }
+                Text {
+                    text: SettingsState.footer-status;
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        text: "Cancel";
+                        kind: ButtonKind.ghost;
+                        clicked => { SettingsState.cancel(); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        text: "Save Changes";
+                        icon: Icons.check-circle;
+                        has-icon: true;
+                        hotkey: "Ctrl+S";
+                        kind: ButtonKind.primary;
+                        clicked => { SettingsState.save(); }
+                    }
+                }
+            }
+        }
+    }
+}

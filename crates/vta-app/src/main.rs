@@ -11,6 +11,8 @@ mod dialogs;
 mod library_actions;
 mod library_view;
 mod platform;
+mod settings_view;
+mod updater_view;
 
 use library_view::{LibraryState, SharedLibrary};
 use slint::winit_030::winit::window::ResizeDirection;
@@ -39,6 +41,7 @@ struct App {
     dirs: DataDirs,
     settings: Rc<RefCell<Settings>>,
     library: SharedLibrary,
+    themes: Vec<app_theme::AppTheme>,
 }
 
 pub(crate) fn show_toast(app: &AppWindow, text: &str, error: bool) {
@@ -56,7 +59,7 @@ pub(crate) fn show_toast(app: &AppWindow, text: &str, error: bool) {
     });
 }
 
-fn wire_shell(app: &App) {
+fn wire_shell(app: &App, ctx: Rc<settings_view::SettingsCtx>) {
     let shell = app.window.global::<Shell>();
     shell.set_version(format!("v{CURRENT_VERSION}").into());
     shell.set_native_frame(cfg!(target_os = "macos"));
@@ -107,6 +110,9 @@ fn wire_shell(app: &App) {
     let w = app.window.as_weak();
     shell.on_navigate(move |page| {
         if let Some(app) = w.upgrade() {
+            if page == Page::Settings && app.global::<Shell>().get_page() != Page::Settings {
+                settings_view::load(&app, &ctx);
+            }
             app.global::<Shell>().set_page(page);
         }
     });
@@ -129,9 +135,9 @@ fn wire_shell(app: &App) {
 }
 
 /// Values from settings.json shown in the shell.
-fn apply_settings(app: &App) {
-    let s = app.settings.borrow();
-    let shell = app.window.global::<Shell>();
+pub(crate) fn apply_settings(window: &AppWindow, settings: &Rc<RefCell<Settings>>, library: &SharedLibrary) {
+    let s = settings.borrow();
+    let shell = window.global::<Shell>();
     let ip = s.str_or("vita_ip", "");
     let port = match s.values.get("vita_port") {
         Some(serde_json::Value::Number(n)) => n.to_string(),
@@ -139,7 +145,7 @@ fn apply_settings(app: &App) {
         _ => "1337".into(),
     };
     shell.set_vita_address(if ip.is_empty() { "".into() } else { format!("{ip}:{port}").into() });
-    let library = app.library.borrow().root.clone();
+    let library = library.borrow().root.clone();
     shell.set_library_path(library.to_string_lossy().as_ref().into());
 }
 
@@ -192,7 +198,10 @@ fn dev_preselect(app: &App) {
             "settings" => Page::Settings,
             _ => Page::Library,
         };
-        app.window.global::<Shell>().set_page(page);
+        app.window.global::<Shell>().invoke_navigate(page);
+    }
+    if let Some(t) = std::env::var("VTA_DEV_TAB").ok().and_then(|v| v.parse().ok()) {
+        app.window.global::<SettingsState>().set_tab(t);
     }
     if let Some(i) = std::env::var("VTA_DEV_SELECT").ok().and_then(|v| v.parse().ok()) {
         library_view::select(&app.window, &app.library, i);
@@ -250,7 +259,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     app_theme::apply(&window, &t);
                 }
                 let library = Rc::new(RefCell::new(LibraryState { root, ..Default::default() }));
-                *slot = Some(App { window, dirs, settings: Rc::new(RefCell::new(settings)), library });
+                *slot = Some(App { window, dirs, settings: Rc::new(RefCell::new(settings)), library, themes });
                 None
             }),
         ),
@@ -258,8 +267,18 @@ fn main() -> Result<(), slint::PlatformError> {
             "Scanning theme library…",
             Box::new(|slot| {
                 let app = slot.as_ref()?;
-                wire_shell(app);
-                apply_settings(app);
+                let ctx = Rc::new(settings_view::SettingsCtx {
+                    dirs: app.dirs.clone(),
+                    settings: app.settings.clone(),
+                    library: app.library.clone(),
+                    themes: app.themes.clone(),
+                });
+                wire_shell(app, ctx.clone());
+                settings_view::wire(&app.window, ctx);
+                apply_settings(&app.window, &app.settings, &app.library);
+                if app.dirs.is_portable() {
+                    updater_view::PORTABLE_DATA.with(|p| *p.borrow_mut() = Some(app.dirs.app_support.clone()));
+                }
                 library_view::wire(&app.window, &app.library);
                 bgm_view::wire(&app.window, &app.library);
                 dialogs::wire(&app.window);
@@ -334,6 +353,15 @@ fn main() -> Result<(), slint::PlatformError> {
                     show_toast(&app.window, n, true);
                 }
                 dev_preselect(app);
+                // Silent startup update check (official builds, if enabled).
+                if settings_view::official_build() && app.settings.borrow().flag("auto_update_check", true) {
+                    let w = app.window.as_weak();
+                    Timer::single_shot(Duration::from_secs(2), move || {
+                        if let Some(app) = w.upgrade() {
+                            updater_view::check(&app, false);
+                        }
+                    });
+                }
                 // Keep the maximise button icon in sync with OS snaps / double-clicks.
                 let w = app.window.as_weak();
                 let sync = Timer::default();

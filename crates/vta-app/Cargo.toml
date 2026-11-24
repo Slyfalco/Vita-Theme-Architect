@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 vta-core = { path = "../vta-core" }
+vta-online = { path = "../vta-online" }
 slint = { version = "1.19", features = ["unstable-winit-030"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1", features = ["derive"] }
