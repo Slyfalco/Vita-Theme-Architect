@@ -3,6 +3,7 @@
 pub mod build;
 pub mod import;
 pub mod library;
+pub mod migrations;
 pub mod paths;
 pub mod settings;
 pub mod theme;

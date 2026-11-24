@@ -8,6 +8,7 @@ mod app_theme;
 mod audio;
 mod bgm_view;
 mod community_view;
+mod crashlog;
 mod creator_view;
 mod icongen_view;
 mod dialogs;
@@ -153,10 +154,33 @@ fn wire_shell(app: &App, ctx: Rc<settings_view::SettingsCtx>) {
     let w = app.window.as_weak();
     shell.on_about(move || {
         if let Some(app) = w.upgrade() {
-            show_toast(
+            // v2 AboutDialog: name + version, description, author, GitHub link, shortcuts.
+            let text = format!(
+                "A tool to create, manage, and download themes for the PS Vita.\n\nCreated by: SlyFalco\n\n\
+                 Keyboard Shortcuts (Manager)\n\
+                 Ctrl+N    New Theme\n\
+                 Ctrl+I    Import Theme (.zip)\n\
+                 Ctrl+O    Import Theme (Folder)\n\
+                 Ctrl+V    Import from PS Vita\n\
+                 Ctrl+D    Download Themes\n\
+                 Ctrl+E    Edit Selected Theme\n\
+                 Ctrl+P    Play Selected BGM\n\
+                 Ctrl+X    Extract Selected BGM\n\
+                 Ctrl+S    Send Selected to Vita\n\
+                 Delete    Delete Selected Theme"
+            );
+            dialogs::ask(
                 &app,
-                &format!("VitaTheme Architect v{CURRENT_VERSION} ({}) — v3 preview build", edition_name()),
-                false,
+                DialogIcon::Info,
+                &format!("VitaTheme Architect v{CURRENT_VERSION} ({})", edition_name()),
+                &text,
+                "",
+                &[("GitHub Project", dialogs::Kind::Secondary), ("OK", dialogs::Kind::Primary)],
+                |_, i| {
+                    if i == 0 {
+                        platform::open_url("https://github.com/Slyfalco/Vita-Theme-Architect");
+                    }
+                },
             );
         }
     });
@@ -252,6 +276,7 @@ fn dev_preselect(app: &App) {
 fn dev_preselect(_: &App) {}
 
 fn main() -> Result<(), slint::PlatformError> {
+    crashlog::install();
     #[cfg(all(windows, debug_assertions))]
     // SAFETY: plain Win32 call with a constant argument; failure just means no console.
     unsafe {
@@ -286,6 +311,7 @@ fn main() -> Result<(), slint::PlatformError> {
             "Loading settings…",
             Box::new(|slot| {
                 let dirs = paths::resolve(CURRENT_VERSION);
+                vta_core::migrations::run(&dirs.app_support, CURRENT_VERSION);
                 let mut settings = Settings::load(&dirs.settings_file());
                 let root = library_paths(&dirs, &mut settings);
                 let window = AppWindow::new().ok()?;

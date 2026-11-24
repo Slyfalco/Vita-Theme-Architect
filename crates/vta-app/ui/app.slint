@@ -72,6 +72,7 @@ export component AppWindow inherits Window {
                 if (Shell.page == Page.library) {
                     if (event.modifiers.shift && (event.text == "i" || event.text == "I")) { Library.import-multiple(); return accept; }
                     if (event.text == "i" || event.text == "I") { Library.import-zip(); return accept; }
+                    if (event.text == "o" || event.text == "O") { Library.import-folder(); return accept; }
                     if (event.text == "f" || event.text == "F") { library.focus-search(); return accept; }
                     if (event.text == "v" || event.text == "V") { Library.import-from-vita(); return accept; }
                     if (event.text == "d" || event.text == "D") { Shell.navigate(Page.community); return accept; }

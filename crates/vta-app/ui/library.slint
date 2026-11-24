@@ -123,6 +123,7 @@ component ToolbarRow inherits Panel {
                         text: "Import Folder";
                         icon: Icons.drive-folder-upload;
                         has-icon: true;
+                        hotkey: Density.narrow ? "" : "Ctrl+O";
                         kind: ButtonKind.ghost;
                         clicked => { Library.import-folder(); }
                     }
