@@ -17,7 +17,7 @@ on:
     inputs:
       release_tag:
         description: "Release tag to upload to"
-        default: "v2.0"
+        default: "v3.0"
         required: true
       debug:
         description: "Non-release build, visible output, no upload (toolchain/smoke only)"
@@ -55,12 +55,12 @@ jobs:
           import json, sys
           only = sys.argv[1]
           full = [
-            {"tag": "macos-x64",   "pyarch": "x64",   "edition": "ai"},
-            {"tag": "macos-x64",   "pyarch": "x64",   "edition": "standard"},
-            {"tag": "macos-arm64", "pyarch": "arm64", "edition": "ai"},
-            {"tag": "macos-arm64", "pyarch": "arm64", "edition": "standard"},
+            {"tag": "macos-x64",   "arch": "x64",   "target": "x86_64-apple-darwin", "edition": "ai"},
+            {"tag": "macos-x64",   "arch": "x64",   "target": "x86_64-apple-darwin", "edition": "standard"},
+            {"tag": "macos-arm64", "arch": "arm64", "target": "",                    "edition": "ai"},
+            {"tag": "macos-arm64", "arch": "arm64", "target": "",                    "edition": "standard"},
           ]
-          inc = [m for m in full if only in ("both", m["pyarch"])]
+          inc = [m for m in full if only in ("both", m["arch"])]
           print("matrix=" + json.dumps({"include": inc}))
           PY
 
@@ -81,83 +81,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - name: Install Rosetta 2
-        run: softwareupdate --install-rosetta --agree-to-license || true
+      - name: Set up the Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          if [ -n "${{ matrix.target }}" ]; then rustup target add ${{ matrix.target }}; fi
+          rustc --version
 
-      - name: Set up Python 3.12 (${{ matrix.pyarch }})
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+      - name: Cache cargo
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a  # v4.1.2
         with:
-          python-version: "3.12"
-          architecture: ${{ matrix.pyarch }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ matrix.tag }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.tag }}-
 
-      - name: Use a real x86_64 Python (macos-x64)
-        # setup-python gives arm64 on the Apple-Silicon runner and Nuitka can't
-        # cross-compile — fetch a genuine x86_64 CPython 3.12 (runs under Rosetta).
-        if: matrix.tag == 'macos-x64'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download --repo astral-sh/python-build-standalone \
-            --pattern 'cpython-3.12.*-x86_64-apple-darwin-install_only.tar.gz' \
-            --dir pydl --clobber
-          tar -xzf pydl/cpython-3.12.*-x86_64-apple-darwin-install_only.tar.gz   # -> ./python/
-          ln -sf python3 python/bin/python
-          echo "$PWD/python/bin" >> "$GITHUB_PATH"
-          ./python/bin/python3 -c "import platform; print('build python arch:', platform.machine())"
-
-      - name: Normalise requirements.txt to UTF-8
-        shell: bash
-        run: |
-          python - <<'PY'
-          import pathlib
-          p = pathlib.Path("requirements.txt")
-          p.write_text(p.read_text(encoding="utf-16"), encoding="utf-8")
-          PY
-
-      - name: Stage release build inputs
+      - name: Stage the off-git release protection crate (from secret)
         if: ${{ !inputs.debug }}
         shell: bash
         env:
           REL: ${{ secrets.VTA_RELEASE_B64 }}
         run: |
           if [ -z "${REL:-}" ]; then echo "::error::Secret VTA_RELEASE_B64 is not set."; exit 1; fi
-          python - <<'PY'
-          import os, base64, gzip, pathlib
-          pathlib.Path("_relbuild.py").write_bytes(gzip.decompress(base64.b64decode(os.environ["REL"])))
-          PY
-          echo "VTA_RELEASE_SCRIPT=_relbuild.py" >> "$GITHUB_ENV"
+          # gzip+base64 of a tar of `native-release/` and `.dev/theme_api_url`.
+          echo "$REL" | base64 -d | tar -xz
+          test -f native-release/build_online_module.py || { echo "::error::release bundle missing the hook"; exit 1; }
+          echo "VTA_RELEASE_SCRIPT=native-release/build_online_module.py" >> "$GITHUB_ENV"
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-
-      - name: Verify native AT9 codec is committed
-        shell: bash
-        run: |
-          LIB="native/${{ matrix.tag }}/libat9codec.dylib"
-          [ -f "$LIB" ] || { echo "::error::$LIB missing. Run scripts/update_native_libs.py and commit."; exit 1; }
-
-      - name: Build (${{ matrix.edition }})
+      - name: Build + package (${{ matrix.edition }})
         shell: bash
         env:
-          PYTHONUNBUFFERED: "1"
-          PYTHONUTF8: "1"
-          VTA_NUITKA_PROGRESS: "1"
-          VTA_SKIP_PIP: "1"
-          VTA_NONINTERACTIVE: "1"
+          VTA_TAG_OVERRIDE: ${{ matrix.tag }}
+          VTA_BUILD_TARGET: ${{ matrix.target }}
         run: |
-          FLAG=""
-          if [ "${{ matrix.edition }}" = "standard" ]; then FLAG="--no-icon-ai"; fi
           if [ "${{ inputs.debug }}" = "true" ]; then
-            python -u setup_build.py $FLAG          # non-release: visible output
+            cargo run -p xtask --release -- package --edition ${{ matrix.edition }}   # non-release: visible output
           else
-            # PUBLIC-REPO SAFETY: the release build generates secret key material — never
-            # let its output reach the public log. Capture to a file we never surface.
+            # PUBLIC-REPO SAFETY: the release step runs the protection hook (its build.rs
+            # reads the API key). Keep the whole build's output out of the public log.
             set +e
-            python -u setup_build.py $FLAG > build_output.log 2>&1
+            cargo run -p xtask --release -- package --edition ${{ matrix.edition }} > build_output.log 2>&1
             rc=$?
             set -e
             if [ "$rc" -ne 0 ]; then
@@ -169,48 +134,48 @@ jobs:
             echo "release build succeeded (output withheld for public-log safety)."
           fi
 
-      - name: Clean up staged inputs
+      - name: Clean up the staged release crate
         if: always()
         shell: bash
-        run: rm -f _relbuild.py
+        run: rm -rf native-release .dev
 
       - name: Verify package is labelled for this arch
         shell: bash
         run: |
-          PKG=$(ls dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip 2>/dev/null | head -1)
+          PKG=$(ls dist/v3/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip 2>/dev/null | head -1)
           if [ -z "$PKG" ]; then
-            echo "::error::expected dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip not found."
-            ls -la dist || true
+            echo "::error::expected dist/v3/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip not found."
+            ls -la dist/v3 || true
             exit 1
           fi
           echo "OK: $PKG"
 
-      - name: Smoke launch (offscreen, non-gating)
+      - name: Smoke launch (non-gating)
         continue-on-error: true
         run: |
-          APP=$(find dist -maxdepth 3 -name "*.app" -type d | head -1)
+          APP=$(find dist/v3 -maxdepth 3 -name "*.app" -type d | head -1)
           [ -z "$APP" ] && { echo "no .app found"; exit 0; }
           EXENAME=$(plutil -extract CFBundleExecutable raw "$APP/Contents/Info.plist" 2>/dev/null)
           EXE="$APP/Contents/MacOS/$EXENAME"
           [ -x "$EXE" ] && [ -f "$EXE" ] || { echo "bundle executable not found ($EXE)"; exit 0; }
-          echo "launching: $EXENAME (offscreen, 25s)"
-          QT_QPA_PLATFORM=offscreen "$EXE" >smoke.log 2>&1 &
+          echo "launching: $EXENAME (25s)"
+          "$EXE" >smoke.log 2>&1 &
           PID=$!; sleep 25
           if kill -0 "$PID" 2>/dev/null; then echo "smoke OK: still running after 25s"; kill "$PID" 2>/dev/null || true
-          else wait "$PID"; RC=$?; echo "app exited early rc=$RC"; fi
+          else wait "$PID"; RC=$?; echo "app exited early rc=$RC (output withheld)"; fi
           rm -f smoke.log
 
       - name: Build drag-to-Applications .dmg
         shell: bash
         run: |
-          APP=$(find dist -maxdepth 3 -name "*.app" -type d | head -1)
+          APP=$(find dist/v3 -maxdepth 3 -name "*.app" -type d | head -1)
           [ -n "$APP" ] || { echo "::error::no .app to package into a .dmg"; exit 1; }
           staging=$(mktemp -d)
           cp -R "$APP" "$staging/"
           ln -s /Applications "$staging/Applications"
           hdiutil create -volname "VitaTheme Architect" -srcfolder "$staging" -ov -format UDZO \
-            "dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg"
-          echo "built dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg"
+            "dist/v3/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg"
+          echo "built dist/v3/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg"
 
       - name: Upload zip + dmg to the release
         if: ${{ !inputs.debug }}
@@ -219,8 +184,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.release_tag }}
         run: |
-          TAG="${TAG:-v2.0}"
+          TAG="${TAG:-v3.0}"
           gh release upload "$TAG" \
-            "dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip" \
-            "dist/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg" \
+            "dist/v3/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.zip" \
+            "dist/v3/vitaThemeArchitect-${{ matrix.tag }}-${{ matrix.edition }}.dmg" \
             --clobber --repo "$GITHUB_REPOSITORY"

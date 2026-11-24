@@ -21,8 +21,15 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf()
 }
 
-/// `<os>-<arch>` of the build (mirrors the updater's platform tag).
+/// `<os>-<arch>` of the build (mirrors the updater's platform tag). CI can
+/// override it (`VTA_TAG_OVERRIDE`) when cross-building — e.g. the x64 mac
+/// package produced on an arm64 runner via `VTA_BUILD_TARGET`.
 fn build_tag() -> String {
+    if let Ok(tag) = std::env::var("VTA_TAG_OVERRIDE") {
+        if !tag.trim().is_empty() {
+            return tag.trim().to_string();
+        }
+    }
     let os = if cfg!(windows) {
         "windows"
     } else if cfg!(target_os = "macos") {
@@ -139,18 +146,28 @@ fn build_edition(edition: &str) -> Result<PathBuf, String> {
     let ai = edition == "ai";
     let target_dir = root.join(format!("target/package-{edition}"));
     println!("==> Building the {edition} edition");
+    // CI cross-compile: a cargo target triple (e.g. x86_64-apple-darwin on an
+    // arm64 mac runner). It nests the output under target/<triple>/release.
+    let target = std::env::var("VTA_BUILD_TARGET").ok().filter(|t| !t.trim().is_empty());
     let mut cmd = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
     cmd.current_dir(&root)
         .args(["build", "--release", "-p", "vta-app", "--bin", EXE])
         .arg("--target-dir")
         .arg(&target_dir)
         .env("VTA_PACKAGED", "1");
+    if let Some(t) = &target {
+        cmd.arg("--target").arg(t);
+    }
     if !ai {
         cmd.arg("--no-default-features");
     }
     run(&mut cmd)?;
     let exe_name = if cfg!(windows) { format!("{EXE}.exe") } else { EXE.to_string() };
-    let built = target_dir.join("release").join(&exe_name);
+    let release_dir = match &target {
+        Some(t) => target_dir.join(t).join("release"),
+        None => target_dir.join("release"),
+    };
+    let built = release_dir.join(&exe_name);
 
     let tag = build_tag();
     // v3 output lives in its own folder so it never overwrites v2 build artifacts.
