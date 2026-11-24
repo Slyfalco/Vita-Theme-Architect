@@ -1,0 +1,101 @@
+// Data and actions shared between the UI and Rust. Rust fills the properties and
+// handles the callbacks (src/main.rs).
+
+export enum Page { library, creator, community, settings }
+
+export struct ThemeRow {
+    title: string,
+    author: string,
+    version: string,
+    folder: string,
+    summary: string,
+    thumb: image,
+    has-thumb: bool,
+    has-bgm: bool,
+    size: string,
+    pages: int,
+    icons: int,
+}
+
+export struct ThemeDetail {
+    valid: bool,
+    title: string,
+    author: string,
+    version: string,
+    folder: string,
+    target: string,
+    icons-text: string,
+    home: image,
+    lock: image,
+    icons: [image],
+    has-bgm: bool,
+    bgm-name: string,
+    bgm-info: string,
+}
+
+export global Shell {
+    in-out property <Page> page: Page.library;
+    in property <string> version: "v3.0";
+    in property <string> vita-address: "";
+    in property <string> library-path: "";
+    in property <bool> maximized: false;
+    // Set on macOS, which keeps its native window frame + controls.
+    in property <bool> native-frame: false;
+    in property <bool> online-available: false;
+    in property <string> online-unavailable-reason: "";
+    // Transient toast message at the bottom of the window.
+    in-out property <string> toast: "";
+    in-out property <bool> toast-error: false;
+
+    callback start-drag();
+    callback minimize();
+    callback toggle-maximize();
+    callback close();
+    callback start-resize(string);
+    callback navigate(Page);
+    callback new-theme();
+    callback about();
+}
+
+export global Library {
+    in property <[ThemeRow]> themes;
+    in property <int> total: 0;
+    in property <int> with-bgm: 0;
+    in property <int> with-icons: 0;
+    in property <string> total-size: "";
+    in-out property <int> selected: -1;
+    in property <ThemeDetail> detail;
+    in-out property <string> search;
+    in-out property <int> filter: 0;      // 0 all, 1 with BGM, 2 custom icons
+    in-out property <int> sort: 0;        // index into sort-options
+    in property <[string]> sort-options: ["Alphabetical (A-Z)"];
+    in-out property <int> stage-tab: 0;   // 0 home, 1 lock, 2 icons
+    in-out property <bool> stage-fit: true;
+    // BGM player
+    in property <bool> bgm-playing: false;
+    in property <bool> bgm-loop: true;
+    in property <float> bgm-progress: 0.0;
+    in property <string> bgm-time: "00:00";
+    in property <string> bgm-length: "00:00";
+    in property <[float]> bgm-wave;
+
+    callback select(int);
+    callback search-changed(string);
+    callback filter-changed(int);
+    callback sort-changed(int);
+    callback import-zip();
+    callback import-folder();
+    callback import-multiple();
+    callback import-from-vita();
+    callback copy-path();
+    callback open-library-folder();
+    callback edit(int);
+    callback send-to-vita(int);
+    callback extract-bgm(int);
+    callback submit(int);
+    callback delete(int);
+    callback bgm-toggle-play();
+    callback bgm-toggle-loop();
+    callback bgm-seek(float);
+    callback configure-ftp();
+}

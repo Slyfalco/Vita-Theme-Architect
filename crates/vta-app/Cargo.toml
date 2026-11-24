@@ -1,0 +1,27 @@
+[package]
+name = "vta-app"
+description = "VitaTheme Architect"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "VitaThemeArchitect"
+path = "src/main.rs"
+
+[dependencies]
+vta-core = { path = "../vta-core" }
+slint = { version = "1.19", features = ["unstable-winit-030"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+slint-build = "1.19"
+
+[features]
+# The AI icon generator edition (v2 builds it by default; --no-default-features = Standard).
+default = ["icon-ai"]
+icon-ai = []

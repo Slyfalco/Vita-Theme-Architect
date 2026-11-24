@@ -1,0 +1,991 @@
+// Theme Library (design/v3-ui/theme_library_manager).
+
+import { ScrollView } from "std-widgets.slint";
+import { Palette, Type, Density } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind, IconBtn, KeyChip, Tag, Segment, SearchField, Dropdown, Panel, Caption } from "widgets.slint";
+import { Library, ThemeRow, Shell } from "state.slint";
+
+// ---------------------------------------------------------------- toolbar rows
+
+component ToolbarRow inherits Panel {
+    height: Density.compact ? 60px : 76px;
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 12px;
+        spacing: 16px;
+        alignment: stretch;
+        // "Local Vault | Installed Themes (N Themes)"
+        HorizontalLayout {
+            spacing: 10px;
+            Icon {
+                source: Icons.folder-open;
+                size: 22px;
+                tint: Palette.accent;
+            }
+            if !Density.narrow: Text {
+                text: "Local Vault";
+                color: Palette.accent;
+                font-size: Type.body-md;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+        if !Density.narrow: Rectangle {
+            width: 1px;
+            background: Palette.outline;
+        }
+        Text {
+            text: "Installed Themes";
+            color: Palette.text-hi;
+            font-size: Type.body-md;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 28px;
+                width: count.preferred-width + 24px;
+                border-radius: 14px;
+                background: Palette.primary.transparentize(80%);
+                count := Text {
+                    text: Library.total + (Library.total == 1 ? " Theme" : " Themes");
+                    color: Palette.accent;
+                    font-size: Type.body-sm;
+                    font-weight: 600;
+                }
+            }
+        }
+        // Library path box
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 160px;
+            Rectangle {
+                height: 44px;
+                border-radius: Palette.radius-control;
+                background: Palette.inset;
+                border-width: 1px;
+                border-color: Palette.outline;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 4px;
+                    spacing: 10px;
+                    Icon {
+                        source: Icons.storage;
+                        size: 18px;
+                        tint: Palette.text-lo;
+                    }
+                    Text {
+                        text: Shell.library-path;
+                        color: Palette.text-mid;
+                        font-family: Palette.mono-font;
+                        font-size: Type.label-md;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    IconBtn {
+                        icon: Icons.folder-open;
+                        icon-size: 18px;
+                        y: 4px;
+                        clicked => { Library.open-library-folder(); }
+                    }
+                    IconBtn {
+                        icon: Icons.content-copy;
+                        icon-size: 18px;
+                        y: 4px;
+                        clicked => { Library.copy-path(); }
+                    }
+                }
+            }
+        }
+        // Import group
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: Density.compact ? 48px : 56px;
+                border-radius: 12px;
+                background: Palette.surface2;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 4px;
+                    Btn {
+                        text: "Import .zip";
+                        icon: Icons.folder-zip;
+                        has-icon: true;
+                        hotkey: Density.narrow ? "" : "Ctrl+I";
+                        kind: ButtonKind.ghost;
+                        clicked => { Library.import-zip(); }
+                    }
+                    Btn {
+                        text: "Import Folder";
+                        icon: Icons.drive-folder-upload;
+                        has-icon: true;
+                        kind: ButtonKind.ghost;
+                        clicked => { Library.import-folder(); }
+                    }
+                    batch := Btn {
+                        text: "Batch";
+                        icon: Icons.stacks;
+                        has-icon: true;
+                        kind: ButtonKind.ghost;
+                        clicked => { batch-menu.show(); }
+                    }
+                }
+                batch-menu := PopupWindow {
+                    x: parent.width - 300px;
+                    y: parent.height + 6px;
+                    width: 300px;
+                    Rectangle {
+                        background: Palette.surface1;
+                        border-radius: Palette.radius-control;
+                        border-width: 1px;
+                        border-color: #ffffff14;
+                        drop-shadow-blur: 24px;
+                        drop-shadow-color: #00000099;
+                        drop-shadow-offset-y: 10px;
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 2px;
+                            Btn {
+                                text: "Import Multiple Themes";
+                                icon: Icons.stacks;
+                                has-icon: true;
+                                hotkey: "Ctrl+Shift+I";
+                                kind: ButtonKind.ghost;
+                                clicked => { Library.import-multiple(); }
+                            }
+                            Btn {
+                                text: "Import from PS Vita";
+                                icon: Icons.send-to-mobile;
+                                has-icon: true;
+                                hotkey: "Ctrl+V";
+                                kind: ButtonKind.ghost;
+                                clicked => { Library.import-from-vita(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component FilterRow inherits Panel {
+    callback focus-search();
+    focus-search => { search.focus-input(); }
+    height: Density.compact ? 58px : 72px;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 16px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 200px;
+            max-width: 520px;
+            search := SearchField {
+                placeholder: "Search themes by title or author";
+                hotkey: "Ctrl+F";
+                text <=> Library.search;
+                edited(t) => { Library.search-changed(t); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 48px;
+                border-radius: 10px;
+                background: Palette.inset;
+                HorizontalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+                    Segment {
+                        text: "All (" + Library.total + ")";
+                        selected: Library.filter == 0;
+                        clicked => { Library.filter-changed(0); }
+                    }
+                    Segment {
+                        text: "With BGM (" + Library.with-bgm + ")";
+                        selected: Library.filter == 1;
+                        clicked => { Library.filter-changed(1); }
+                    }
+                    Segment {
+                        text: "Custom Icons (" + Library.with-icons + ")";
+                        selected: Library.filter == 2;
+                        clicked => { Library.filter-changed(2); }
+                    }
+                }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: "Sort:";
+            color: Palette.text-mid;
+            font-size: Type.body-sm;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Dropdown {
+                options: Library.sort-options;
+                current-index <=> Library.sort;
+                selected(i) => { Library.sort-changed(i); }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- theme cards
+
+component ThemeCard inherits Rectangle {
+    in property <ThemeRow> theme;
+    in property <int> index;
+    in property <bool> selected;
+    property <bool> hovered: touch.has-hover;
+    height: Density.compact ? 136px : 172px;
+    border-radius: Palette.radius-card;
+    background: root.selected ? Palette.surface3 : root.hovered ? Palette.surface2.brighter(6%) : Palette.surface2;
+    border-width: 1px;
+    border-color: root.selected ? Palette.accent.transparentize(30%) : root.hovered ? Palette.accent.transparentize(55%) : Palette.outline.transparentize(30%);
+    drop-shadow-blur: root.selected ? 24px : root.hovered ? 16px : 0;
+    drop-shadow-color: Palette.primary.transparentize(root.selected ? 70% : 80%);
+    drop-shadow-offset-y: 6px;
+    animate background, border-color, drop-shadow-blur { duration: 150ms; easing: ease-out; }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Library.select(root.index); }
+        double-clicked => { Library.edit(root.index); }
+    }
+    // Selection accent bar
+    if root.selected: Rectangle {
+        x: 0;
+        y: 14px;
+        width: 4px;
+        height: parent.height - 28px;
+        border-radius: 2px;
+        background: Palette.accent;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: Palette.accent;
+    }
+    HorizontalLayout {
+        padding: 14px;
+        padding-left: 18px;
+        spacing: 22px;
+        // 16:9 preview
+        Rectangle {
+            width: (parent.height - 28px) * 16 / 9;
+            border-radius: 10px;
+            background: Palette.inset;
+            border-width: 1px;
+            border-color: Palette.outline;
+            clip: true;
+            if root.theme.has-thumb: Image {
+                source: root.theme.thumb;
+                width: parent.width;
+                height: parent.height;
+                image-fit: cover;
+            }
+            if !root.theme.has-thumb: Icon {
+                source: Icons.image;
+                size: 36px;
+                tint: Palette.text-lo;
+            }
+            if root.theme.has-bgm: Rectangle {
+                x: 10px;
+                y: 10px;
+                width: bgm-row.preferred-width + 16px;
+                height: 24px;
+                border-radius: 6px;
+                background: #000000b3;
+                bgm-row := HorizontalLayout {
+                    padding-left: 8px;
+                    spacing: 4px;
+                    Icon {
+                        source: Icons.music-note;
+                        size: 14px;
+                        tint: Palette.success-text;
+                    }
+                    Text {
+                        text: "BGM";
+                        color: #ffffff;
+                        font-size: Type.label-md;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Rectangle {
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                width: size-text.preferred-width + 12px;
+                height: 22px;
+                border-radius: 5px;
+                background: #000000a0;
+                size-text := Text {
+                    text: root.theme.size;
+                    color: #ffffffb0;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-sm;
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            padding-top: 2px;
+            HorizontalLayout {
+                spacing: 12px;
+                Text {
+                    text: root.theme.title;
+                    color: Palette.text-hi;
+                    font-size: 20px;
+                    font-weight: 600;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        height: 22px;
+                        width: ver.preferred-width + 14px;
+                        border-radius: 5px;
+                        background: root.selected ? Palette.primary.transparentize(70%) : transparent;
+                        ver := Text {
+                            text: "v" + root.theme.version;
+                            color: root.selected ? Palette.accent : Palette.text-lo;
+                            font-family: Palette.mono-font;
+                            font-size: Type.label-md;
+                        }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Text {
+                    text: "Local Storage";
+                    color: Palette.text-lo;
+                    font-size: Type.body-sm;
+                    vertical-alignment: center;
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Icon {
+                    source: Icons.person;
+                    size: 16px;
+                    tint: Palette.accent;
+                }
+                Text {
+                    text: root.theme.author;
+                    color: Palette.accent;
+                    font-size: Type.body-md;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: "•";
+                    color: Palette.text-lo;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Folder: " + root.theme.folder;
+                    color: Palette.text-mid;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-md;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            Text {
+                text: root.theme.summary;
+                color: Palette.text-mid;
+                font-size: Type.body-md;
+                overflow: elide;
+            }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout {
+                spacing: 8px;
+                Tag {
+                    text: root.theme.pages + (root.theme.pages == 1 ? " Home Page" : " Home Pages");
+                }
+                if root.theme.icons > 0: Tag {
+                    text: root.theme.icons + " Custom Icons";
+                }
+                Rectangle { horizontal-stretch: 1; }
+                IconBtn {
+                    icon: Icons.send-to-mobile;
+                    tooltip: "Send to PS Vita";
+                    clicked => { Library.send-to-vita(root.index); }
+                }
+                IconBtn {
+                    icon: Icons.edit;
+                    tooltip: "Edit theme";
+                    clicked => { Library.edit(root.index); }
+                }
+                more := IconBtn {
+                    icon: Icons.more-vert;
+                    tooltip: "More";
+                    clicked => { menu.show(); }
+                }
+            }
+        }
+    }
+    menu := PopupWindow {
+        x: root.width - 260px;
+        y: root.height - 6px;
+        width: 240px;
+        Rectangle {
+            background: Palette.surface1;
+            border-radius: Palette.radius-control;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 10px;
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                Btn {
+                    text: "Extract BGM";
+                    icon: Icons.download;
+                    has-icon: true;
+                    kind: ButtonKind.ghost;
+                    enabled: root.theme.has-bgm;
+                    clicked => { Library.extract-bgm(root.index); }
+                }
+                Btn {
+                    text: "Submit to Repository";
+                    icon: Icons.cloud-upload;
+                    has-icon: true;
+                    kind: ButtonKind.ghost;
+                    enabled: Shell.online-available;
+                    clicked => { Library.submit(root.index); }
+                }
+                Btn {
+                    text: "Delete Theme";
+                    icon: Icons.delete;
+                    has-icon: true;
+                    kind: ButtonKind.danger;
+                    clicked => { Library.delete(root.index); }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- inspector
+
+component MetaTile inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> ok: false;
+    border-radius: 10px;
+    background: Palette.inset;
+    min-height: 64px;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+        Caption {
+            text: root.label;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            if root.ok: Icon {
+                source: Icons.check-circle;
+                size: 16px;
+                tint: Palette.success-text;
+            }
+            Text {
+                text: root.value;
+                color: root.ok ? Palette.success-text : Palette.text-hi;
+                font-family: Palette.mono-font;
+                font-size: Type.label-md;
+                font-weight: 500;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+}
+
+component BgmPlayer inherits Rectangle {
+    VerticalLayout {
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 12px;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: play-touch.has-hover ? Palette.primary.brighter(15%) : Palette.primary;
+                drop-shadow-blur: 12px;
+                drop-shadow-color: Palette.primary.transparentize(50%);
+                Icon {
+                    source: Library.bgm-playing ? Icons.pause : Icons.play-arrow;
+                    size: 24px;
+                    tint: Palette.on-primary;
+                }
+                play-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Library.bgm-toggle-play(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: Library.detail.bgm-name;
+                    color: Palette.text-hi;
+                    font-size: Type.body-md;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: Library.detail.bgm-info;
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    overflow: elide;
+                }
+            }
+            IconBtn {
+                icon: Icons.repeat;
+                active: Library.bgm-loop;
+                tooltip: "Loop";
+                clicked => { Library.bgm-toggle-loop(); }
+            }
+            IconBtn {
+                icon: Icons.download;
+                tooltip: "Extract BGM";
+                clicked => { Library.extract-bgm(Library.selected); }
+            }
+        }
+        // Waveform + time
+        Rectangle {
+            height: 40px;
+            border-radius: 8px;
+            background: Palette.inset;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 10px;
+                wave := Rectangle {
+                    horizontal-stretch: 1;
+                    for level[i] in Library.bgm-wave: Rectangle {
+                        property <float> pos: i / max(1, Library.bgm-wave.length);
+                        x: wave.width * root.pos-of(i);
+                        width: max(2px, wave.width / max(1, Library.bgm-wave.length) - 2px);
+                        height: max(3px, wave.height * 0.8 * level);
+                        y: (wave.height - self.height) / 2;
+                        border-radius: 1px;
+                        background: self.pos <= Library.bgm-progress ? Palette.accent : Palette.text-lo.transparentize(40%);
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { Library.bgm-seek(self.mouse-x / self.width); }
+                    }
+                }
+                Text {
+                    text: Library.bgm-time + " / " + Library.bgm-length;
+                    color: Palette.text-mid;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-md;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    pure function pos-of(i: int) -> float {
+        i / max(1, Library.bgm-wave.length)
+    }
+}
+
+component Inspector inherits Panel {
+    property <bool> has: Library.selected >= 0 && Library.detail.valid;
+    width: Density.narrow ? 340px : 420px;
+    if !root.has: VerticalLayout {
+        alignment: center;
+        padding: 32px;
+        spacing: 12px;
+        Icon {
+            source: Icons.visibility;
+            size: 40px;
+            tint: Palette.text-lo;
+        }
+        Text {
+            text: "Select a theme to inspect it";
+            color: Palette.text-mid;
+            font-size: Type.body-md;
+            horizontal-alignment: center;
+        }
+    }
+    if root.has: ScrollView {
+        viewport-width: self.visible-width;
+        VerticalLayout {
+            padding: Density.narrow ? 14px : 20px;
+            spacing: 16px;
+            // Stage header
+            HorizontalLayout {
+                spacing: 10px;
+                Icon {
+                    source: Icons.visibility;
+                    size: 22px;
+                    tint: Palette.accent;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: "LiveArea Stage";
+                        color: Palette.text-hi;
+                        font-size: Type.body-md;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "960×544";
+                        color: Palette.text-lo;
+                        font-family: Palette.mono-font;
+                        font-size: Type.label-sm;
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Rectangle {
+                    height: 36px;
+                    border-radius: 8px;
+                    background: Palette.inset;
+                    HorizontalLayout {
+                        padding: 3px;
+                        spacing: 2px;
+                        Segment {
+                            text: "Home";
+                            min-width: Density.narrow ? 44px : 52px;
+                            selected: Library.stage-tab == 0;
+                            clicked => { Library.stage-tab = 0; }
+                        }
+                        Segment {
+                            text: "Lock";
+                            min-width: Density.narrow ? 44px : 52px;
+                            selected: Library.stage-tab == 1;
+                            clicked => { Library.stage-tab = 1; }
+                        }
+                        Segment {
+                            text: "Icons";
+                            min-width: Density.narrow ? 44px : 52px;
+                            selected: Library.stage-tab == 2;
+                            clicked => { Library.stage-tab = 2; }
+                        }
+                    }
+                }
+            }
+            // Stage
+            stage := Rectangle {
+                height: self.width * 544 / 960;
+                border-radius: 12px;
+                background: #05070a;
+                border-width: 1px;
+                border-color: Palette.outline;
+                clip: true;
+                if Library.stage-tab == 0: Image {
+                    source: Library.detail.home;
+                    width: Library.stage-fit ? parent.width : min(parent.width, self.source.width * 1px);
+                    height: Library.stage-fit ? parent.height : min(parent.height, self.source.height * 1px);
+                    image-fit: Library.stage-fit ? cover : contain;
+                }
+                if Library.stage-tab == 1: Image {
+                    source: Library.detail.lock;
+                    width: Library.stage-fit ? parent.width : min(parent.width, self.source.width * 1px);
+                    height: Library.stage-fit ? parent.height : min(parent.height, self.source.height * 1px);
+                    image-fit: Library.stage-fit ? cover : contain;
+                }
+                // FIT / 1:1 toggle, overlaid on the preview's corner
+                if Library.stage-tab != 2: Rectangle {
+                    x: parent.width - self.width - 8px;
+                    y: parent.height - self.height - 8px;
+                    width: fit-row.preferred-width;
+                    height: 30px;
+                    border-radius: 7px;
+                    background: #000000b0;
+                    fit-row := HorizontalLayout {
+                        padding: 3px;
+                        spacing: 2px;
+                        Segment {
+                            text: "FIT";
+                            min-width: 36px;
+                            selected: Library.stage-fit;
+                            clicked => { Library.stage-fit = true; }
+                        }
+                        Segment {
+                            text: "1:1";
+                            min-width: 36px;
+                            selected: !Library.stage-fit;
+                            clicked => { Library.stage-fit = false; }
+                        }
+                    }
+                }
+                if Library.stage-tab == 2 && Library.detail.icons.length == 0: Text {
+                    text: "This theme uses the default system icons";
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                }
+                if Library.stage-tab == 2: Rectangle {
+                    property <int> cols: 6;
+                    property <length> cell: (parent.width - 24px) / self.cols;
+                    for icon[i] in Library.detail.icons: Image {
+                        source: icon;
+                        x: 12px + mod(i, parent.cols) * parent.cell + (parent.cell - self.width) / 2;
+                        y: 12px + floor(i / parent.cols) * parent.cell + (parent.cell - self.height) / 2;
+                        width: parent.cell * 0.82;
+                        height: self.width;
+                        image-fit: contain;
+                    }
+                }
+            }
+            if Library.detail.has-bgm: BgmPlayer { }
+            // Title block
+            VerticalLayout {
+                spacing: 6px;
+                Text {
+                    text: Library.detail.title;
+                    color: Palette.text-hi;
+                    font-size: Type.headline-lg + 2px;
+                    font-weight: 700;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: "Author:";
+                        color: Palette.text-lo;
+                        font-size: Type.body-md;
+                    }
+                    Text {
+                        text: Library.detail.author;
+                        color: Palette.text-hi;
+                        font-size: Type.body-md;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: "•  Version " + Library.detail.version;
+                        color: Palette.text-lo;
+                        font-size: Type.body-md;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+            }
+            // Meta grid
+            GridLayout {
+                spacing: 10px;
+                Row {
+                    MetaTile {
+                        label: "FORMAT STANDARD";
+                        value: "Official SCE Theme";
+                    }
+                    MetaTile {
+                        label: "PACKAGE TARGET";
+                        value: Library.detail.target;
+                    }
+                }
+                Row {
+                    MetaTile {
+                        label: "SYSTEM ICONS";
+                        value: Library.detail.icons-text;
+                        ok: Library.detail.icons.length > 0;
+                    }
+                    MetaTile {
+                        label: "THEME XML";
+                        value: "theme.xml (Valid)";
+                        ok: true;
+                    }
+                }
+            }
+            Btn {
+                text: "Send to PS Vita";
+                icon: Icons.send-to-mobile;
+                has-icon: true;
+                hotkey: "Ctrl+S";
+                trailing-arrow: true;
+                kind: ButtonKind.primary;
+                min-height: 50px;
+                font-size: Type.body-lg;
+                clicked => { Library.send-to-vita(Library.selected); }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Btn {
+                    text: "Edit Theme";
+                    icon: Icons.edit;
+                    has-icon: true;
+                    hotkey: "Ctrl+E";
+                    horizontal-stretch: 1;
+                    clicked => { Library.edit(Library.selected); }
+                }
+                Btn {
+                    text: "Extract BGM";
+                    icon: Icons.download;
+                    has-icon: true;
+                    hotkey: "Ctrl+X";
+                    horizontal-stretch: 1;
+                    enabled: Library.detail.has-bgm;
+                    clicked => { Library.extract-bgm(Library.selected); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Btn {
+                    text: "Submit to Repository";
+                    icon: Icons.cloud-upload;
+                    has-icon: true;
+                    kind: ButtonKind.ghost;
+                    enabled: Shell.online-available;
+                    horizontal-stretch: 1;
+                    clicked => { Library.submit(Library.selected); }
+                }
+                Btn {
+                    text: "Delete Theme";
+                    icon: Icons.delete;
+                    has-icon: true;
+                    hotkey: "Del";
+                    kind: ButtonKind.danger;
+                    clicked => { Library.delete(Library.selected); }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- status bar
+
+component StatusBar inherits Panel {
+    height: Density.compact ? 52px : 64px;
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 12px;
+        spacing: 16px;
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 10px;
+            background: Palette.inset;
+            Icon {
+                source: Icons.memory;
+                size: 22px;
+                tint: Palette.accent;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: "Theme Library";
+                color: Palette.text-hi;
+                font-size: Type.body-md;
+                font-weight: 600;
+            }
+            Text {
+                text: Library.total + " themes  •  " + Library.with-bgm + " with BGM  •  " + Library.total-size + " on disk";
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+                overflow: elide;
+            }
+        }
+        Rectangle {
+            width: 1px;
+            background: Palette.outline;
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                width: 10px;
+                height: 10px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 5px;
+                background: Shell.vita-address != "" ? Palette.accent : Palette.text-lo;
+            }
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "Vita FTP";
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                }
+                Text {
+                    text: Shell.vita-address != "" ? Shell.vita-address : "Not configured";
+                    color: Palette.text-hi;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-md;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                text: "Configure FTP";
+                icon: Icons.code;
+                has-icon: true;
+                clicked => { Library.configure-ftp(); }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- page
+
+export component LibraryPage inherits Rectangle {
+    public function focus-search() { filter-row.focus-search(); }
+    VerticalLayout {
+        padding-left: 28px;
+        padding-right: 28px;
+        padding-bottom: 20px;
+        spacing: 16px;
+        ToolbarRow { }
+        filter-row := FilterRow { }
+        HorizontalLayout {
+            spacing: 20px;
+            vertical-stretch: 1;
+            Rectangle {
+                horizontal-stretch: 1;
+                if Library.themes.length == 0: VerticalLayout {
+                    alignment: center;
+                    spacing: 14px;
+                    Icon {
+                        source: Icons.wallpaper;
+                        size: 48px;
+                        tint: Palette.text-lo;
+                    }
+                    Text {
+                        text: Library.total == 0 ? "Your theme library is empty" : "No themes match your search";
+                        color: Palette.text-hi;
+                        font-size: Type.headline-md;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: Library.total == 0 ? "Create a new theme, import a .zip or folder, or download one from the Community Browser." : "Try a different search or filter.";
+                        color: Palette.text-mid;
+                        font-size: Type.body-md;
+                        horizontal-alignment: center;
+                    }
+                }
+                ScrollView {
+                    viewport-width: self.visible-width;
+                    VerticalLayout {
+                        padding-right: 12px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        spacing: 14px;
+                        for row[i] in Library.themes: ThemeCard {
+                            theme: row;
+                            index: i;
+                            selected: i == Library.selected;
+                        }
+                    }
+                }
+            }
+            Inspector { }
+        }
+        StatusBar { }
+    }
+}

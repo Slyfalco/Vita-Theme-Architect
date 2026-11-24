@@ -1,0 +1,254 @@
+// The "Studio Shell": custom window chrome, navigation rail and breadcrumb bar.
+
+import { Palette, Type, Density } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind, StatusPill, Caption, KeyChip } from "widgets.slint";
+import { Shell, Page } from "state.slint";
+
+component WindowControl inherits Rectangle {
+    in property <image> icon;
+    in property <bool> danger: false;
+    callback clicked();
+    width: 46px;
+    background: touch.has-hover ? (root.danger ? #c42b1c : Palette.surface2) : transparent;
+    Icon {
+        source: root.icon;
+        size: 18px;
+        tint: touch.has-hover ? Palette.text-hi : Palette.text-mid;
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component TitleBar inherits Rectangle {
+    height: Density.compact ? 40px : 48px;
+    background: Palette.chrome;
+    // Drag region (behind the content).
+    TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                Shell.start-drag();
+            }
+        }
+        double-clicked => { Shell.toggle-maximize(); }
+    }
+    HorizontalLayout {
+        padding-left: 16px;
+        spacing: 12px;
+        // Logo mark (the app icon)
+        Image {
+            source: @image-url("../../../Assets/app_icon.png");
+            width: 28px;
+            height: 28px;
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: "VITATHEME ARCHITECT";
+            color: Palette.text-hi;
+            font-weight: 700;
+            font-size: Type.body-md;
+            letter-spacing: 1.2px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: Shell.version;
+            color: Palette.text-lo;
+            font-family: Palette.mono-font;
+            font-size: Type.label-sm;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if Shell.vita-address != "": VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            StatusPill {
+                text: "Vita FTP • " + Shell.vita-address;
+                dot: Palette.accent;
+                fg: Palette.accent;
+                glow: false;
+            }
+        }
+        Rectangle { width: 8px; }
+        if !Shell.native-frame: HorizontalLayout {
+            WindowControl {
+                icon: Icons.minimize;
+                clicked => { Shell.minimize(); }
+            }
+            WindowControl {
+                icon: Shell.maximized ? Icons.filter-none : Icons.crop-square;
+                clicked => { Shell.toggle-maximize(); }
+            }
+            WindowControl {
+                icon: Icons.close;
+                danger: true;
+                clicked => { Shell.close(); }
+            }
+        }
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> active;
+    callback clicked();
+    height: Density.compact ? 42px : 48px;
+    border-radius: 10px;
+    background: root.active ? @linear-gradient(90deg, Palette.primary 0%, Palette.primary-dark 100%)
+        : touch.has-hover ? Palette.surface2 : transparent;
+    drop-shadow-blur: root.active ? 14px : 0;
+    drop-shadow-color: Palette.primary.transparentize(55%);
+    animate background { duration: 150ms; }
+    HorizontalLayout {
+        padding-left: 16px;
+        spacing: 14px;
+        Icon {
+            source: root.icon;
+            size: 22px;
+            tint: root.active ? Palette.on-primary : Palette.text-mid;
+        }
+        Text {
+            text: root.text;
+            color: root.active ? Palette.on-primary : Palette.text-hi;
+            font-size: Type.body-lg;
+            font-weight: root.active ? 600 : 500;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component NavRail inherits Rectangle {
+    width: Density.narrow ? 232px : 280px;
+    background: Palette.surface1;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Palette.outline.transparentize(50%);
+    }
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 24px;
+        spacing: 6px;
+        Caption {
+            text: "NAVIGATION";
+        }
+        Rectangle { height: 8px; }
+        NavItem {
+            text: "Theme Library";
+            icon: Icons.grid-view;
+            active: Shell.page == Page.library;
+            clicked => { Shell.navigate(Page.library); }
+        }
+        NavItem {
+            text: "Theme Creator";
+            icon: Icons.palette;
+            active: Shell.page == Page.creator;
+            clicked => { Shell.navigate(Page.creator); }
+        }
+        NavItem {
+            text: "Community Browser";
+            icon: Icons.public;
+            active: Shell.page == Page.community;
+            clicked => { Shell.navigate(Page.community); }
+        }
+        Rectangle { vertical-stretch: 1; }
+        Caption {
+            text: "SYSTEM";
+        }
+        Rectangle { height: 4px; }
+        NavItem {
+            text: "Settings";
+            icon: Icons.settings;
+            active: Shell.page == Page.settings;
+            clicked => { Shell.navigate(Page.settings); }
+        }
+        Rectangle {
+            height: 1px;
+            background: Palette.outline.transparentize(40%);
+        }
+        // Footer: library location + version (click for About).
+        HorizontalLayout {
+            padding-top: 10px;
+            spacing: 8px;
+            Icon {
+                source: Icons.folder-open;
+                size: 16px;
+                tint: Palette.text-lo;
+            }
+            Caption {
+                text: "LOCAL LIBRARY";
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Rectangle {
+                width: ver.preferred-width + 14px;
+                height: 22px;
+                border-radius: 4px;
+                background: about-touch.has-hover ? Palette.surface3 : Palette.surface2;
+                ver := Text {
+                    text: Shell.version;
+                    color: Palette.text-mid;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-sm;
+                }
+                about-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Shell.about(); }
+                }
+            }
+        }
+        Text {
+            text: Shell.library-path;
+            color: Palette.text-mid;
+            font-family: Palette.mono-font;
+            font-size: Type.label-md;
+            overflow: elide;
+        }
+    }
+}
+
+export component Breadcrumb inherits Rectangle {
+    in property <string> current;
+    height: Density.compact ? 56px : 72px;
+    HorizontalLayout {
+        padding-left: 28px;
+        padding-right: 28px;
+        spacing: 10px;
+        Text {
+            text: "VitaTheme Architect";
+            color: Palette.text-mid;
+            font-size: Type.body-md;
+            vertical-alignment: center;
+        }
+        Icon {
+            source: Icons.chevron-right;
+            size: 16px;
+            tint: Palette.text-lo;
+        }
+        Text {
+            text: root.current;
+            color: Palette.text-hi;
+            font-size: Type.body-md;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                text: "New Theme";
+                icon: Icons.add;
+                has-icon: true;
+                hotkey: "Ctrl+N";
+                kind: ButtonKind.primary;
+                clicked => { Shell.new-theme(); }
+            }
+        }
+    }
+}

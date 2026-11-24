@@ -1,0 +1,56 @@
+// Design tokens of the current APP THEME (the desktop app's own look, not the Vita
+// theme being edited). Every value here is set from Rust at startup / when the user
+// picks another app theme in Settings (see src/app_theme.rs); the defaults below are
+// the built-in "Obsidian Vita Deck" theme so the UI previews correctly in tools.
+
+export global Palette {
+    // Surfaces (tonal elevation tiers)
+    in-out property <color> canvas: #0d1117;
+    in-out property <color> chrome: #0a0e14;
+    in-out property <color> surface1: #161b26;
+    in-out property <color> surface2: #1e2638;
+    in-out property <color> surface3: #28334a;
+    in-out property <color> inset: #10141a;
+    in-out property <color> outline: #2d3748;
+    // Accents
+    in-out property <color> primary: #0070d1;
+    in-out property <color> primary-dark: #005bb5;
+    in-out property <color> accent: #38bdf8;
+    in-out property <color> success: #10b981;
+    in-out property <color> success-text: #4edea3;
+    in-out property <color> warning: #f59e0b;
+    in-out property <color> danger: #ef4444;
+    // Text
+    in-out property <color> text-hi: #f1f5f9;
+    in-out property <color> text-mid: #94a3b8;
+    in-out property <color> text-lo: #64748b;
+    in-out property <color> on-primary: #ffffff;
+    // Optional backdrop image behind the panels (empty = none)
+    in-out property <image> backdrop;
+    in-out property <float> backdrop-opacity: 0.0;
+    // Shape
+    in-out property <length> radius-control: 8px;
+    in-out property <length> radius-card: 16px;
+    // Typography
+    in-out property <string> ui-font: "Inter";
+    in-out property <string> mono-font: "JetBrains Mono";
+}
+
+// Type scale from DESIGN.md (px at 1x).
+export global Type {
+    out property <length> headline-xl: 28px;
+    out property <length> headline-lg: 22px;
+    out property <length> headline-md: 18px;
+    out property <length> body-lg: 16px;
+    out property <length> body-md: 14px;
+    out property <length> body-sm: 13px;
+    out property <length> label-md: 12px;
+    out property <length> label-sm: 11px;
+}
+
+// Responsive density, set by the main window from its size. "compact" = short
+// screens (e.g. 4K at 300% = 1280x720 logical), "narrow" = little width.
+export global Density {
+    in-out property <bool> compact: false;
+    in-out property <bool> narrow: false;
+}

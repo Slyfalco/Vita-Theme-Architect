@@ -1,0 +1,395 @@
+// Reusable "Obsidian Vita Deck" controls. Colours/shape always come from the
+// Palette global so app themes can restyle everything.
+
+import { Palette, Type, Density } from "palette.slint";
+import { Icons } from "icons.slint";
+
+// A tinted SVG icon. The box takes the icon width and centres the glyph vertically,
+// so it lines up with text when placed in a layout row.
+export component Icon inherits Rectangle {
+    in property <image> source;
+    in property <color> tint: Palette.text-mid;
+    in property <length> size: 20px;
+    width: root.size;
+    min-height: root.size;
+    preferred-height: root.size;
+    Image {
+        source: root.source;
+        width: root.size;
+        height: root.size;
+        colorize: root.tint;
+        image-fit: contain;
+    }
+}
+
+// Small monospace key/spec chip ("Ctrl+N", "960x512").
+export component KeyChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on-primary: false;
+    in property <color> fg: root.on-primary ? #ffffffd0 : Palette.text-mid;
+    height: 22px;
+    border-radius: 4px;
+    background: root.on-primary ? #ffffff26 : Palette.inset;
+    border-width: root.on-primary ? 0 : 1px;
+    border-color: Palette.outline;
+    HorizontalLayout {
+        padding-left: 7px;
+        padding-right: 7px;
+        Text {
+            text: root.text;
+            color: root.fg;
+            font-family: Palette.mono-font;
+            font-size: Type.label-sm;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export enum ButtonKind { primary, secondary, ghost, danger, success }
+
+// Main button: optional leading icon, label, optional trailing hotkey chip.
+export component Btn inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <string> hotkey;
+    in property <ButtonKind> kind: ButtonKind.secondary;
+    in property <bool> enabled: true;
+    in property <bool> compact: false;
+    in property <bool> trailing-arrow: false;
+    in property <length> font-size: Type.body-md;
+    callback clicked();
+
+    property <bool> hovered: touch.has-hover && root.enabled;
+    property <color> fg: !root.enabled ? Palette.text-lo
+        : root.kind == ButtonKind.primary || root.kind == ButtonKind.success ? Palette.on-primary
+        : root.kind == ButtonKind.danger ? Palette.danger
+        : Palette.text-hi;
+
+    min-height: root.compact || Density.compact ? 34px : 40px;
+    border-radius: Palette.radius-control;
+    opacity: root.enabled ? 1 : 0.55;
+    background: root.kind == ButtonKind.primary
+            ? (root.hovered ? @linear-gradient(180deg, Palette.primary.brighter(15%) 0%, Palette.primary 100%)
+                            : @linear-gradient(180deg, Palette.primary 0%, Palette.primary-dark 100%))
+        : root.kind == ButtonKind.success
+            ? (root.hovered ? Palette.success.brighter(12%) : Palette.success.darker(8%))
+        : root.kind == ButtonKind.danger ? (root.hovered ? Palette.danger.transparentize(88%) : transparent)
+        : root.kind == ButtonKind.ghost ? (root.hovered ? Palette.surface3 : transparent)
+        : (root.hovered ? Palette.surface3 : Palette.surface2);
+    border-width: root.kind == ButtonKind.secondary || root.kind == ButtonKind.danger ? 1px : 0;
+    border-color: root.kind == ButtonKind.danger ? Palette.danger.transparentize(70%)
+        : root.hovered ? Palette.accent : Palette.outline;
+    drop-shadow-blur: root.kind == ButtonKind.primary && root.enabled ? (root.hovered ? 18px : 12px) : 0;
+    drop-shadow-color: root.kind == ButtonKind.primary ? Palette.primary.transparentize(55%) : transparent;
+    drop-shadow-offset-y: 2px;
+    animate background, border-color, drop-shadow-blur { duration: 150ms; easing: ease-out; }
+
+    HorizontalLayout {
+        padding-left: root.compact ? 10px : 14px;
+        padding-right: root.compact ? 10px : 14px;
+        spacing: 8px;
+        alignment: center;
+        if root.has-icon: Icon {
+            source: root.icon;
+            tint: root.fg;
+            size: 18px;
+        }
+        Text {
+            text: root.text;
+            color: root.fg;
+            font-size: root.font-size;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        if root.hotkey != "": KeyChip {
+            text: root.hotkey;
+            on-primary: root.kind == ButtonKind.primary || root.kind == ButtonKind.success;
+            y: (parent.height - self.height) / 2;
+        }
+        if root.trailing-arrow: Icon {
+            source: Icons.arrow-forward;
+            tint: root.fg;
+            size: 18px;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Square icon-only button (card quick actions, window controls, view toggles).
+export component IconBtn inherits Rectangle {
+    in property <image> icon;
+    in property <string> tooltip;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    in property <color> tint: Palette.text-mid;
+    in property <color> hover-bg: Palette.surface3;
+    in property <length> icon-size: 20px;
+    callback clicked();
+    width: 36px;
+    height: 36px;
+    border-radius: Palette.radius-control;
+    background: root.active ? Palette.primary : touch.has-hover && root.enabled ? root.hover-bg : transparent;
+    opacity: root.enabled ? 1 : 0.4;
+    animate background { duration: 120ms; }
+    Icon {
+        source: root.icon;
+        size: root.icon-size;
+        tint: root.active ? Palette.on-primary : touch.has-hover && root.enabled ? Palette.text-hi : root.tint;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Rounded status pill with a coloured dot ("● FTP 192.168.0.2:1337").
+export component StatusPill inherits Rectangle {
+    horizontal-stretch: 0;
+    width: pill-row.preferred-width;
+    in property <string> text;
+    in property <color> dot: Palette.success;
+    in property <color> fg: Palette.success-text;
+    in property <bool> glow: true;
+    height: 28px;
+    border-radius: self.height / 2;
+    background: root.dot.transparentize(88%);
+    border-width: 1px;
+    border-color: root.dot.transparentize(70%);
+    pill-row := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 14px;
+        spacing: 8px;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 4px;
+            background: root.dot;
+            drop-shadow-blur: root.glow ? 6px : 0;
+            drop-shadow-color: root.dot;
+        }
+        Text {
+            text: root.text;
+            color: root.fg;
+            font-family: Palette.mono-font;
+            font-size: Type.label-md;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Small rounded tag ("System 3.60+", "4 Pages").
+export component Tag inherits Rectangle {
+    in property <string> text;
+    in property <color> fg: Palette.text-hi;
+    in property <color> bg: Palette.inset;
+    in property <bool> mono: false;
+    height: 26px;
+    border-radius: 6px;
+    background: root.bg;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        Text {
+            text: root.text;
+            color: root.fg;
+            font-size: Type.body-sm;
+            font-family: root.mono ? Palette.mono-font : Palette.ui-font;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// One option of a segmented control.
+export component Segment inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    min-width: 64px;
+    border-radius: 6px;
+    background: root.selected ? Palette.primary : touch.has-hover ? Palette.surface3 : transparent;
+    drop-shadow-blur: root.selected ? 10px : 0;
+    drop-shadow-color: Palette.primary.transparentize(60%);
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            color: root.selected ? Palette.on-primary : Palette.text-mid;
+            font-size: Type.body-sm;
+            font-weight: root.selected ? 600 : 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Search field with an embedded icon and a shortcut hint.
+export component SearchField inherits Rectangle {
+    in property <string> placeholder: "Search";
+    in property <string> hotkey;
+    in-out property <string> text;
+    callback edited(string);
+    public function focus-input() { input.focus(); }
+    height: Density.compact ? 38px : 44px;
+    border-radius: Palette.radius-control;
+    background: Palette.inset;
+    border-width: 1px;
+    border-color: input.has-focus ? Palette.accent : Palette.outline;
+    animate border-color { duration: 120ms; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 10px;
+        Icon {
+            source: Icons.search;
+            size: 20px;
+            y: (parent.height - self.height) / 2;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            input := TextInput {
+                text <=> root.text;
+                color: Palette.text-hi;
+                font-size: Type.body-md;
+                vertical-alignment: center;
+                single-line: true;
+                edited => { root.edited(self.text); }
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        self.text = "";
+                        root.edited("");
+                        return accept;
+                    }
+                    reject
+                }
+            }
+            if root.text == "": Text {
+                text: root.placeholder;
+                color: Palette.text-lo;
+                font-size: Type.body-md;
+                vertical-alignment: center;
+                x: 0;
+                width: parent.width;
+                overflow: elide;
+            }
+        }
+        if root.hotkey != "" && !input.has-focus: KeyChip {
+            text: root.hotkey;
+            y: (parent.height - self.height) / 2;
+        }
+        if root.text != "": IconBtn {
+            icon: Icons.close;
+            icon-size: 16px;
+            width: 28px;
+            height: 28px;
+            y: (parent.height - self.height) / 2;
+            clicked => {
+                root.text = "";
+                root.edited("");
+            }
+        }
+    }
+}
+
+// A compact dropdown ("Sort: Alphabetical (A - Z) v").
+export component Dropdown inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> current-index: 0;
+    callback selected(int);
+    height: Density.compact ? 36px : 40px;
+    min-width: Density.narrow ? 180px : 220px;
+    max-width: 260px;
+    border-radius: Palette.radius-control;
+    background: touch.has-hover ? Palette.surface3 : Palette.surface2;
+    border-width: 1px;
+    border-color: touch.has-hover ? Palette.accent : Palette.outline;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 8px;
+        Text {
+            text: root.options[root.current-index];
+            color: Palette.text-hi;
+            font-size: Type.body-md;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Icon {
+            source: Icons.expand-more;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { popup.show(); }
+    }
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: root.width;
+        Rectangle {
+            background: Palette.surface1;
+            border-radius: Palette.radius-control;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 10px;
+            VerticalLayout {
+                padding: 4px;
+                for option[i] in root.options: Rectangle {
+                    height: 36px;
+                    border-radius: 6px;
+                    background: i == root.current-index ? Palette.primary.transparentize(75%)
+                        : item-touch.has-hover ? Palette.surface3 : transparent;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        Text {
+                            text: option;
+                            color: i == root.current-index ? Palette.accent : Palette.text-hi;
+                            font-size: Type.body-md;
+                            vertical-alignment: center;
+                        }
+                    }
+                    item-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.current-index = i;
+                            root.selected(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A tier-1/tier-2 panel container.
+export component Panel inherits Rectangle {
+    in property <bool> raised: false;
+    border-radius: Palette.radius-card;
+    background: root.raised ? Palette.surface2 : Palette.surface1;
+    border-width: 1px;
+    border-color: Palette.outline.transparentize(40%);
+}
+
+// Small uppercase caption ("FORMAT STANDARD").
+export component Caption inherits Text {
+    color: Palette.text-lo;
+    font-size: Type.label-sm;
+    font-weight: 600;
+    letter-spacing: 1px;
+}

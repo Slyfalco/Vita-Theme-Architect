@@ -1,0 +1,30 @@
+{
+    "id": "obsidian-vita-deck",
+    "name": "Obsidian Vita Deck",
+    "colors": {
+        "canvas": "#0d1117",
+        "chrome": "#0a0e14",
+        "surface1": "#161b26",
+        "surface2": "#1e2638",
+        "surface3": "#28334a",
+        "inset": "#10141a",
+        "outline": "#2d3748",
+        "primary": "#0070d1",
+        "primary-dark": "#005bb5",
+        "accent": "#38bdf8",
+        "success": "#10b981",
+        "success-text": "#4edea3",
+        "warning": "#f59e0b",
+        "danger": "#ef4444",
+        "text-hi": "#f1f5f9",
+        "text-mid": "#94a3b8",
+        "text-lo": "#64748b",
+        "on-primary": "#ffffff"
+    },
+    "radius-control": 8,
+    "radius-card": 16,
+    "ui-font": "Inter",
+    "mono-font": "JetBrains Mono",
+    "backdrop": null,
+    "backdrop-opacity": 0.0
+}

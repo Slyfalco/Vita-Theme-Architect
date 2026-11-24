@@ -1,0 +1,164 @@
+// Startup splash (not in the mockups; designed to match Obsidian Vita Deck).
+
+import { Palette, Type } from "palette.slint";
+
+export component Splash inherits Window {
+    in property <string> version: "v3.0";
+    in property <string> edition: "Standard";
+    in property <string> status: "Starting…";
+    // 0..1; negative = indeterminate
+    in property <float> progress: -1;
+
+    no-frame: true;
+    always-on-top: true;
+    width: 640px;
+    height: 380px;
+    title: "VitaTheme Architect";
+    background: transparent;
+    default-font-family: Palette.ui-font;
+
+    // Indeterminate sweep animation clock
+    property <float> sweep: mod(animation-tick() / 1400ms, 1);
+    property <float> pulse: (sin(animation-tick() / 900ms * 360deg) + 1) / 2;
+
+    card := Rectangle {
+        border-radius: 20px;
+        clip: true;
+        background: @radial-gradient(circle, #10233d 0%, Palette.canvas 70%);
+        border-width: 1px;
+        border-color: Palette.accent.transparentize(75%);
+
+        // Soft glows in the corners
+        Rectangle {
+            x: -120px;
+            y: -160px;
+            width: 420px;
+            height: 420px;
+            border-radius: 210px;
+            background: @radial-gradient(circle, Palette.primary.transparentize(70%) 0%, transparent 70%);
+        }
+        Rectangle {
+            x: parent.width - 260px;
+            y: parent.height - 220px;
+            width: 380px;
+            height: 380px;
+            border-radius: 190px;
+            background: @radial-gradient(circle, Palette.accent.transparentize(85%) 0%, transparent 70%);
+        }
+        // Faint grid lines (deck / circuit feel)
+        for i in 12: Rectangle {
+            x: i * parent.width / 12;
+            width: 1px;
+            background: #ffffff05;
+        }
+        for i in 7: Rectangle {
+            y: i * parent.height / 7;
+            height: 1px;
+            background: #ffffff05;
+        }
+
+        VerticalLayout {
+            padding: 40px;
+            padding-bottom: 28px;
+            spacing: 0px;
+            HorizontalLayout {
+                spacing: 18px;
+                alignment: start;
+                // Logo with a breathing glow behind it
+                Rectangle {
+                    width: 72px;
+                    height: 72px;
+                    border-radius: 18px;
+                    background: Palette.primary.transparentize(70%);
+                    drop-shadow-blur: 18px + 16px * root.pulse;
+                    drop-shadow-color: Palette.primary.transparentize(40%);
+                    Image {
+                        source: @image-url("../../../Assets/app_icon.png");
+                        width: parent.width;
+                        height: parent.height;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    Text {
+                        text: "VITATHEME ARCHITECT";
+                        color: Palette.text-hi;
+                        font-size: 26px;
+                        font-weight: 800;
+                        letter-spacing: 2px;
+                    }
+                    Text {
+                        text: "PS Vita Theme Studio";
+                        color: Palette.accent;
+                        font-size: Type.body-md;
+                        font-weight: 500;
+                        letter-spacing: 0.5px;
+                    }
+                }
+            }
+            Rectangle { vertical-stretch: 1; }
+            Text {
+                text: "Design, preview and deploy custom themes to your PS Vita.";
+                color: Palette.text-mid;
+                font-size: Type.body-md;
+            }
+            Rectangle { height: 28px; }
+            // Progress track
+            track := Rectangle {
+                height: 6px;
+                border-radius: 3px;
+                background: Palette.surface2;
+                clip: true;
+                if root.progress >= 0: Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(root.progress, 0, 1);
+                    border-radius: 3px;
+                    background: @linear-gradient(90deg, Palette.primary 0%, Palette.accent 100%);
+                    animate width { duration: 250ms; easing: ease-out; }
+                }
+                if root.progress < 0: Rectangle {
+                    width: parent.width * 0.3;
+                    x: (parent.width * 1.3) * root.sweep - self.width;
+                    border-radius: 3px;
+                    background: @linear-gradient(90deg, transparent 0%, Palette.accent 50%, transparent 100%);
+                }
+            }
+            Rectangle { height: 12px; }
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    background: Palette.success;
+                    drop-shadow-blur: 4px + 6px * root.pulse;
+                    drop-shadow-color: Palette.success;
+                }
+                Text {
+                    text: root.status;
+                    color: Palette.text-mid;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-md;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Rectangle {
+                    height: 22px;
+                    width: chip.preferred-width + 16px;
+                    border-radius: 11px;
+                    background: Palette.primary.transparentize(80%);
+                    border-width: 1px;
+                    border-color: Palette.accent.transparentize(70%);
+                    chip := Text {
+                        text: root.version + "  •  " + root.edition;
+                        color: Palette.accent;
+                        font-family: Palette.mono-font;
+                        font-size: Type.label-sm;
+                    }
+                }
+            }
+        }
+    }
+}
