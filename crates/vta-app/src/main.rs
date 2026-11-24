@@ -11,6 +11,7 @@ mod community_view;
 mod crashlog;
 mod creator_view;
 mod icongen_view;
+mod ai_storage_view;
 mod dialogs;
 mod library_actions;
 mod library_view;
@@ -412,6 +413,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 submit_view::wire(&app.window, &app.library);
                 DATA_DIRS.with(|d| *d.borrow_mut() = Some(app.dirs.clone()));
                 icongen_view::wire(&app.window);
+                ai_storage_view::wire(&app.window, &app.dirs);
                 library_view::rescan(&app.window, &app.library);
                 let problems = app.library.borrow().problems.len();
                 (problems > 0).then(|| format!("{problems} theme folder(s) skipped (invalid theme.xml or missing files)"))

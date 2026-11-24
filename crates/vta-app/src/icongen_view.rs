@@ -82,7 +82,7 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 
 /// The folder holding `Assets/` and `icon_ai_worker.py`: next to the exe in a
 /// packaged build, the repository in development.
-fn app_dir() -> PathBuf {
+pub(crate) fn app_dir() -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     if vta_core::paths::is_dev_build(&exe) {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")

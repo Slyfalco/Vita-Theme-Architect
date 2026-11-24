@@ -36,6 +36,7 @@ pub fn load(app: &AppWindow, ctx: &SettingsCtx) {
     let s = ctx.settings.borrow();
     let st = app.global::<SettingsState>();
     st.set_ai_edition(cfg!(feature = "icon-ai"));
+    crate::ai_storage_view::refresh(app);
     st.set_official_build(official_build());
     st.set_version_line(
         format!(

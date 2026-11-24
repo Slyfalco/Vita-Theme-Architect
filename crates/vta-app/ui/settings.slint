@@ -6,6 +6,14 @@ import { Icons } from "icons.slint";
 import { Icon, Btn, ButtonKind, IconBtn, KeyChip, Segment, Panel, Caption, StatusPill, Dropdown, Field, Toggle, CheckRow, FormRow } from "widgets.slint";
 import { Shell } from "state.slint";
 
+export struct StorageRow {
+    name: string,
+    note: string,
+    size: string,
+    removable: bool,
+    remove-enabled: bool,
+}
+
 export global SettingsState {
     in-out property <int> tab: 0;               // 0 general, 1 connection, 2 AI icons
     in property <bool> ai-edition: false;
@@ -39,6 +47,17 @@ export global SettingsState {
     in-out property <bool> show-token: false;
     // Footer
     in property <string> footer-status;
+    // AI storage (v2 settings "AI storage" box)
+    in property <int> storage-state: 0;          // 0 measuring, 1 failed, 2 empty, 3 table
+    in property <string> storage-total;
+    in property <string> storage-shared-note;
+    in property <[StorageRow]> storage-rows;
+    in property <string> calibration-note;
+    in property <bool> can-share-calibration: false;
+    callback refresh-storage();
+    callback remove-storage-row(int);
+    callback remove-all-ai();
+    callback share-calibration();
 
     callback browse-theme-library();
     callback browse-extras-library();
@@ -489,6 +508,81 @@ component AiTab inherits VerticalLayout {
                     checked <=> SettingsState.ai-min-memory;
                     text: "Minimal VRAM mode (offloads to system RAM to lower GPU memory; slower)";
                     hint: "Keeps every local model using as little GPU memory as possible by offloading layers to system RAM and decoding in tiles. Uses more RAM and is slower per icon, but frees the GPU for other apps.";
+                }
+            }
+        }
+    }
+    Card {
+        title: "AI Storage";
+        subtitle: "What the AI icon generator keeps on disk. Remove a model to free space; it downloads again when needed.";
+        icon: Icons.storage;
+        if SettingsState.storage-state == 0: Text { text: "Measuring the AI parts on disk..."; color: Palette.text-mid; font-size: Type.body-md; }
+        if SettingsState.storage-state == 1: Text { text: "The AI storage could not be measured."; color: Palette.text-mid; font-size: Type.body-md; }
+        if SettingsState.storage-state == 2: Text { text: "No AI components are installed."; color: Palette.text-mid; font-size: Type.body-md; }
+        if SettingsState.storage-state == 3: VerticalLayout {
+            spacing: 10px;
+            Text { text: SettingsState.storage-total; color: Palette.text-hi; font-size: Type.body-md; wrap: word-wrap; }
+            if SettingsState.storage-shared-note != "": Text {
+                text: SettingsState.storage-shared-note;
+                color: Palette.text-lo;
+                font-size: Type.label-md;
+                wrap: word-wrap;
+            }
+            for row[i] in SettingsState.storage-rows: HorizontalLayout {
+                spacing: 18px;
+                min-height: row.note != "" ? 44px : 34px;
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text { text: row.name; color: Palette.text-hi; font-size: Type.body-sm; wrap: word-wrap; }
+                    if row.note != "": Text { text: row.note; color: Palette.text-lo; font-size: Type.label-md; wrap: word-wrap; }
+                }
+                Text {
+                    text: row.size;
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    min-width: 90px;
+                }
+                if row.removable: VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        text: "Remove";
+                        compact: true;
+                        kind: ButtonKind.ghost;
+                        enabled: row.remove-enabled;
+                        clicked => { SettingsState.remove-storage-row(i); }
+                    }
+                }
+                if !row.removable: Rectangle { width: 0px; }
+            }
+            HorizontalLayout {
+                Btn {
+                    text: "Remove Everything";
+                    kind: ButtonKind.danger;
+                    clicked => { SettingsState.remove-all-ai(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            if SettingsState.calibration-note != "": HorizontalLayout {
+                spacing: 12px;
+                Text {
+                    text: SettingsState.calibration-note;
+                    color: Palette.text-lo;
+                    font-size: Type.label-md;
+                    wrap: word-wrap;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                if SettingsState.can-share-calibration: VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        text: "Share with creator…";
+                        compact: true;
+                        clicked => { SettingsState.share-calibration(); }
+                    }
                 }
             }
         }
