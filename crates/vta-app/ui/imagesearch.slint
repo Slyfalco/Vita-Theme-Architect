@@ -1,0 +1,170 @@
+// "Find Character Artwork" (v2 ImageSearchDialog): search, tick, add.
+
+import { ScrollView } from "std-widgets.slint";
+import { Palette, Type } from "palette.slint";
+import { Btn, ButtonKind, Dropdown, Field, CheckRow } from "widgets.slint";
+
+export struct SearchItem {
+    thumb: image,
+    has-thumb: bool,
+    checked: bool,
+    tip: string,
+}
+
+export global ImageSearch {
+    in-out property <bool> open: false;
+    in-out property <string> query;
+    in property <[string]> sources: ["Anime art (Safebooru)", "Web (Bing images)"];
+    in-out property <int> source: 0;
+    in-out property <bool> solo: true;
+    in-out property <bool> plain: true;
+    in property <[SearchItem]> results;
+    in property <[string]> suggestions;
+    in property <string> status;
+    in property <bool> more-enabled: false;
+    in property <bool> adding: false;
+    callback new-search();
+    callback more();
+    callback toggle(int);
+    callback add-ticked();
+    callback cancel();
+    callback query-edited(string);
+    callback pick-suggestion(string);
+}
+
+export component ImageSearchLayer inherits Rectangle {
+    if ImageSearch.open: Rectangle {
+        background: #000000a8;
+        TouchArea { }
+        Rectangle {
+            width: min(900px, root.width - 48px);
+            height: min(760px, root.height - 48px);
+            border-radius: Palette.radius-card;
+            background: Palette.surface1;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 22px;
+                spacing: 10px;
+                Text { text: "Find Character Artwork"; color: Palette.text-hi; font-size: Type.headline-md; font-weight: 600; }
+                Text {
+                    text: "Search for the theme's characters (e.g. a character or series name). Tick the pictures to use, or search again with different words.";
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Field {
+                        horizontal-stretch: 1;
+                        text <=> ImageSearch.query;
+                        placeholder: "e.g. lucy (elfen lied), or elfen lied";
+                        edited(t) => { ImageSearch.query-edited(t); }
+                    }
+                    Btn {
+                        text: "Search";
+                        kind: ButtonKind.primary;
+                        clicked => { ImageSearch.new-search(); }
+                    }
+                }
+                if ImageSearch.suggestions.length > 0: HorizontalLayout {
+                    spacing: 6px;
+                    for s in ImageSearch.suggestions: Rectangle {
+                        height: 26px;
+                        width: sug-text.preferred-width + 16px;
+                        border-radius: 13px;
+                        background: sug-touch.has-hover ? Palette.surface3 : Palette.inset;
+                        sug-text := Text { text: s; color: Palette.accent; font-size: Type.body-sm; }
+                        sug-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { ImageSearch.pick-suggestion(s); }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 16px;
+                    Dropdown {
+                        options: ImageSearch.sources;
+                        current-index <=> ImageSearch.source;
+                        selected(i) => {
+                            if (ImageSearch.query != "") {
+                                ImageSearch.new-search();
+                            }
+                        }
+                    }
+                    CheckRow { checked <=> ImageSearch.solo; text: "Single character"; }
+                    CheckRow { checked <=> ImageSearch.plain; text: "Plain background (best for cut-outs)"; }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: 10px;
+                    background: Palette.inset;
+                    ScrollView {
+                        content-width: self.visible-width;
+                        grid := Rectangle {
+                            property <int> cols: max(1, floor((self.width - 16px) / 160px));
+                            height: ceil(ImageSearch.results.length / self.cols) * 175px + 16px;
+                            for r[i] in ImageSearch.results: Rectangle {
+                                x: 8px + mod(i, grid.cols) * 160px;
+                                y: 8px + floor(i / grid.cols) * 175px;
+                                width: 152px;
+                                height: 168px;
+                                border-radius: 10px;
+                                background: r.checked ? Palette.primary.transparentize(75%) : cell.has-hover ? Palette.surface2 : transparent;
+                                border-width: r.checked ? 2px : 0;
+                                border-color: Palette.accent;
+                                Rectangle {
+                                    y: 6px;
+                                    width: 140px;
+                                    height: 140px;
+                                    clip: true;
+                                    border-radius: 8px;
+                                    background: Palette.surface2;
+                                    if r.has-thumb: Image {
+                                        source: r.thumb;
+                                        width: 140px;
+                                        height: 140px;
+                                        image-fit: contain;
+                                    }
+                                }
+                                Rectangle {
+                                    x: 8px;
+                                    y: 148px;
+                                    width: 16px;
+                                    height: 16px;
+                                    border-radius: 4px;
+                                    border-width: r.checked ? 0 : 1.5px;
+                                    border-color: Palette.text-lo;
+                                    background: r.checked ? Palette.primary : transparent;
+                                    if r.checked: Text { text: "✓"; color: Palette.on-primary; font-size: 11px; font-weight: 700; }
+                                }
+                                cell := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { ImageSearch.toggle(i); }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text { text: ImageSearch.status; color: Palette.text-mid; font-size: Type.body-sm; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Btn { text: "More Results"; enabled: ImageSearch.more-enabled; clicked => { ImageSearch.more(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn { text: "Add Ticked Images"; kind: ButtonKind.success; enabled: !ImageSearch.adding; clicked => { ImageSearch.add-ticked(); } }
+                    Btn { text: "Cancel"; clicked => { ImageSearch.cancel(); } }
+                }
+                Text {
+                    text: "Images come from safebooru.org (fan and official art). Use them for your own theme and respect the artists.";
+                    color: Palette.text-lo;
+                    font-size: Type.label-md;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

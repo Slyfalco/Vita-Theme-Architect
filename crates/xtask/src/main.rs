@@ -153,7 +153,8 @@ fn build_edition(edition: &str) -> Result<PathBuf, String> {
     let built = target_dir.join("release").join(&exe_name);
 
     let tag = build_tag();
-    let dist = root.join("dist");
+    // v3 output lives in its own folder so it never overwrites v2 build artifacts.
+    let dist = root.join("dist").join("v3");
     let folder = dist.join(format!("{APP_FOLDER}-{tag}"));
     let _ = std::fs::remove_dir_all(&folder);
     let (app_root, exe_dir) = if cfg!(target_os = "macos") {
