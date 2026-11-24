@@ -29,3 +29,6 @@ slint-build = "1.19"
 # The AI icon generator edition (v2 builds it by default; --no-default-features = Standard).
 default = ["icon-ai"]
 icon-ai = []
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

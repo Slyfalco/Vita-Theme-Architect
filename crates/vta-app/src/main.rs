@@ -1,11 +1,14 @@
-// Release builds are GUI apps: no console window on Windows.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// A GUI app on Windows in every build: no console window. Debug builds attach to
+// the terminal they were started from (if any) so log output still shows.
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
 mod app_theme;
 mod audio;
 mod bgm_view;
+mod dialogs;
+mod library_actions;
 mod library_view;
 mod platform;
 
@@ -203,6 +206,11 @@ fn dev_preselect(app: &App) {
 fn dev_preselect(_: &App) {}
 
 fn main() -> Result<(), slint::PlatformError> {
+    #[cfg(all(windows, debug_assertions))]
+    // SAFETY: plain Win32 call with a constant argument; failure just means no console.
+    unsafe {
+        windows_sys::Win32::System::Console::AttachConsole(windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS);
+    }
     let splash = Splash::new()?;
     splash.set_version(format!("v{CURRENT_VERSION}").into());
     splash.set_edition(edition_name().into());
@@ -254,6 +262,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 apply_settings(app);
                 library_view::wire(&app.window, &app.library);
                 bgm_view::wire(&app.window, &app.library);
+                dialogs::wire(&app.window);
+                library_actions::wire(&app.window, &app.library, &app.settings);
                 library_view::rescan(&app.window, &app.library);
                 let problems = app.library.borrow().problems.len();
                 (problems > 0).then(|| format!("{problems} theme folder(s) skipped (invalid theme.xml or missing files)"))

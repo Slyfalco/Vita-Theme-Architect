@@ -1,0 +1,294 @@
+// In-window dialogs (Tier-4 floating panels over a scrim): message/confirm,
+// progress with cancel, and a multi-select picker. Driven from Rust (src/dialogs.rs).
+
+import { ScrollView } from "std-widgets.slint";
+import { Palette, Type } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind } from "widgets.slint";
+
+export enum DialogIcon { info, warning, error, question, success }
+
+export struct DialogButton {
+    text: string,
+    kind: ButtonKind,
+}
+
+export struct PickItem {
+    text: string,
+    checked: bool,
+}
+
+export global Dialog {
+    // Message / confirm
+    in-out property <bool> open: false;
+    in property <DialogIcon> icon: DialogIcon.info;
+    in property <string> title;
+    in property <string> message;
+    in property <string> details;
+    in property <[DialogButton]> buttons;
+    callback answer(int);
+    // Progress
+    in-out property <bool> progress-open: false;
+    in property <string> progress-title;
+    in property <string> progress-label;
+    in property <float> progress-value: -1;   // < 0 = indeterminate
+    in property <bool> progress-cancelable: true;
+    in-out property <bool> progress-cancelling: false;
+    callback progress-cancel();
+    // Picker
+    in-out property <bool> picker-open: false;
+    in property <string> picker-title;
+    in property <string> picker-message;
+    in property <string> picker-confirm: "OK";
+    in-out property <[PickItem]> picker-items;
+    callback picker-toggle(int);
+    callback picker-answer(bool);
+}
+
+component Scrim inherits Rectangle {
+    background: #000000a8;
+    // Swallow clicks so nothing behind the dialog reacts.
+    TouchArea { }
+}
+
+component Card inherits Rectangle {
+    in property <length> card-width: 520px;
+    width: root.card-width;
+    border-radius: Palette.radius-card;
+    background: Palette.surface1.transparentize(4%);
+    border-width: 1px;
+    border-color: #ffffff14;
+    drop-shadow-blur: 40px;
+    drop-shadow-color: #000000a0;
+    drop-shadow-offset-y: 20px;
+}
+
+component DialogHeader inherits HorizontalLayout {
+    in property <DialogIcon> icon;
+    in property <string> title;
+    spacing: 12px;
+    property <color> tint: root.icon == DialogIcon.error ? Palette.danger
+        : root.icon == DialogIcon.warning ? Palette.warning
+        : root.icon == DialogIcon.success ? Palette.success-text : Palette.accent;
+    Rectangle {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: root.tint.transparentize(85%);
+        Icon {
+            size: 22px;
+            tint: root.tint;
+            source: root.icon == DialogIcon.error ? Icons.error
+                : root.icon == DialogIcon.warning ? Icons.warning
+                : root.icon == DialogIcon.success ? Icons.check-circle
+                : root.icon == DialogIcon.question ? Icons.info : Icons.info;
+        }
+    }
+    Text {
+        text: root.title;
+        color: Palette.text-hi;
+        font-size: Type.headline-md;
+        font-weight: 600;
+        vertical-alignment: center;
+        wrap: word-wrap;
+        horizontal-stretch: 1;
+    }
+}
+
+export component DialogLayer inherits Rectangle {
+    property <bool> show-details: false;
+
+    if Dialog.open: Scrim {
+        Card {
+            card-width: min(540px, root.width - 48px);
+            VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+                DialogHeader {
+                    icon: Dialog.icon;
+                    title: Dialog.title;
+                }
+                Text {
+                    text: Dialog.message;
+                    color: Palette.text-mid;
+                    font-size: Type.body-md;
+                    wrap: word-wrap;
+                }
+                if Dialog.details != "": VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.show-details ? "Hide details" : "Show details";
+                        color: Palette.accent;
+                        font-size: Type.body-sm;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.show-details = !root.show-details; }
+                        }
+                    }
+                    if root.show-details: Rectangle {
+                        height: min(details-text.preferred-height + 20px, 220px);
+                        border-radius: 8px;
+                        background: Palette.inset;
+                        ScrollView {
+                            details-text := Text {
+                                x: 10px;
+                                y: 10px;
+                                width: parent.width - 20px;
+                                text: Dialog.details;
+                                color: Palette.text-mid;
+                                font-family: Palette.mono-font;
+                                font-size: Type.label-md;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    for b[i] in Dialog.buttons: Btn {
+                        text: b.text;
+                        kind: b.kind;
+                        clicked => {
+                            root.show-details = false;
+                            Dialog.answer(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if Dialog.progress-open: Scrim {
+        Card {
+            card-width: min(480px, root.width - 48px);
+            VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+                Text {
+                    text: Dialog.progress-title;
+                    color: Palette.text-hi;
+                    font-size: Type.headline-md;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: Dialog.progress-label;
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    overflow: elide;
+                }
+                Rectangle {
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Palette.surface2;
+                    clip: true;
+                    property <float> sweep: mod(animation-tick() / 1300ms, 1);
+                    if Dialog.progress-value >= 0: Rectangle {
+                        x: 0;
+                        width: parent.width * clamp(Dialog.progress-value, 0, 1);
+                        border-radius: 3px;
+                        background: @linear-gradient(90deg, Palette.primary 0%, Palette.accent 100%);
+                        animate width { duration: 200ms; }
+                    }
+                    if Dialog.progress-value < 0: Rectangle {
+                        width: parent.width * 0.3;
+                        x: parent.width * 1.3 * parent.sweep - self.width;
+                        border-radius: 3px;
+                        background: @linear-gradient(90deg, transparent 0%, Palette.accent 50%, transparent 100%);
+                    }
+                }
+                if Dialog.progress-cancelable: HorizontalLayout {
+                    alignment: end;
+                    Btn {
+                        text: Dialog.progress-cancelling ? "Cancelling…" : "Cancel";
+                        enabled: !Dialog.progress-cancelling;
+                        clicked => {
+                            Dialog.progress-cancelling = true;
+                            Dialog.progress-cancel();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if Dialog.picker-open: Scrim {
+        Card {
+            card-width: min(520px, root.width - 48px);
+            VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+                DialogHeader {
+                    icon: DialogIcon.info;
+                    title: Dialog.picker-title;
+                }
+                Text {
+                    text: Dialog.picker-message;
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    wrap: word-wrap;
+                }
+                Rectangle {
+                    height: min(Dialog.picker-items.length * 42px + 12px, 360px);
+                    border-radius: 10px;
+                    background: Palette.inset;
+                    ScrollView {
+                        VerticalLayout {
+                            padding: 6px;
+                            spacing: 2px;
+                            for item[i] in Dialog.picker-items: Rectangle {
+                                height: 40px;
+                                border-radius: 8px;
+                                background: item.checked ? Palette.primary.transparentize(78%) : pick-touch.has-hover ? Palette.surface2 : transparent;
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    spacing: 12px;
+                                    Rectangle {
+                                        width: 20px;
+                                        height: 20px;
+                                        border-radius: 5px;
+                                        border-width: item.checked ? 0 : 1.5px;
+                                        border-color: Palette.text-lo;
+                                        background: item.checked ? Palette.primary : transparent;
+                                        if item.checked: Text {
+                                            text: "✓";
+                                            color: Palette.on-primary;
+                                            font-size: 13px;
+                                            font-weight: 700;
+                                        }
+                                    }
+                                    Text {
+                                        text: item.text;
+                                        color: Palette.text-hi;
+                                        font-family: Palette.mono-font;
+                                        font-size: Type.label-md;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                pick-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { Dialog.picker-toggle(i); }
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Btn {
+                        text: "Cancel";
+                        clicked => { Dialog.picker-answer(false); }
+                    }
+                    Btn {
+                        text: Dialog.picker-confirm;
+                        kind: ButtonKind.primary;
+                        clicked => { Dialog.picker-answer(true); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -7,8 +7,10 @@ import { Shell, Library, Page, ThemeRow, ThemeDetail } from "state.slint";
 import { TitleBar, NavRail, Breadcrumb } from "shell.slint";
 import { LibraryPage } from "library.slint";
 import { Splash } from "splash.slint";
+import { DialogLayer, Dialog, DialogButton, DialogIcon, PickItem } from "dialogs.slint";
+import { ButtonKind } from "widgets.slint";
 
-export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash }
+export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind }
 
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-Medium.ttf";
@@ -78,6 +80,7 @@ export component AppWindow inherits Window {
 
     keys := FocusScope {
         key-pressed(event) => {
+            if (Dialog.open || Dialog.progress-open || Dialog.picker-open) { return accept; }
             if (event.modifiers.control) {
                 if (event.text == "n" || event.text == "N") { Shell.new-theme(); return accept; }
                 if (Shell.page == Page.library) {
@@ -167,6 +170,11 @@ export component AppWindow inherits Window {
             TouchArea {
                 clicked => { Shell.toast = ""; }
             }
+        }
+
+        DialogLayer {
+            width: parent.width;
+            height: parent.height;
         }
 
         // Edge resize handles (frameless windows only)
