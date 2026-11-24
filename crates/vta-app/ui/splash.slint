@@ -8,6 +8,8 @@ export component Splash inherits Window {
     in property <string> status: "Starting…";
     // 0..1; negative = indeterminate
     in property <float> progress: -1;
+    // Becomes true once the window has been centred; the card fades in then.
+    in property <bool> revealed: false;
 
     no-frame: true;
     always-on-top: true;
@@ -22,6 +24,8 @@ export component Splash inherits Window {
     property <float> pulse: (sin(animation-tick() / 900ms * 360deg) + 1) / 2;
 
     card := Rectangle {
+        opacity: root.revealed ? 1 : 0;
+        animate opacity { duration: 220ms; easing: ease-out; }
         border-radius: 20px;
         clip: true;
         background: @radial-gradient(circle, #10233d 0%, Palette.canvas 70%);

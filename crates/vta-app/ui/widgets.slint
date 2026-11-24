@@ -255,7 +255,6 @@ export component SearchField inherits Rectangle {
         Icon {
             source: Icons.search;
             size: 20px;
-            y: (parent.height - self.height) / 2;
         }
         Rectangle {
             horizontal-stretch: 1;
@@ -329,7 +328,6 @@ export component Dropdown inherits Rectangle {
         }
         Icon {
             source: Icons.expand-more;
-            y: (parent.height - self.height) / 2;
         }
     }
     touch := TouchArea {

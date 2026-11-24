@@ -623,7 +623,7 @@ component Inspector inherits Panel {
         }
     }
     if root.has: ScrollView {
-        viewport-width: self.visible-width;
+        content-width: self.visible-width;
         VerticalLayout {
             padding: Density.narrow ? 14px : 20px;
             spacing: 16px;
@@ -679,9 +679,14 @@ component Inspector inherits Panel {
                     }
                 }
             }
-            // Stage
+            // Stage: 960x544 aspect, scaled to the panel width but never taller than
+            // ~45% of the panel, so it always fits the window.
+            stage-box := Rectangle {
+                property <length> h: min(self.width * 544 / 960, max(150px, root.height * 0.45));
+                height: self.h;
             stage := Rectangle {
-                height: self.width * 544 / 960;
+                width: parent.h * 960 / 544;
+                height: parent.h;
                 border-radius: 12px;
                 background: #05070a;
                 border-width: 1px;
@@ -689,15 +694,16 @@ component Inspector inherits Panel {
                 clip: true;
                 if Library.stage-tab == 0: Image {
                     source: Library.detail.home;
-                    width: Library.stage-fit ? parent.width : min(parent.width, self.source.width * 1px);
-                    height: Library.stage-fit ? parent.height : min(parent.height, self.source.height * 1px);
-                    image-fit: Library.stage-fit ? cover : contain;
+                    // FIT: whole image, letterboxed. 1:1: real pixels, centred.
+                    width: Library.stage-fit ? parent.width : self.source.width * 1phx;
+                    height: Library.stage-fit ? parent.height : self.source.height * 1phx;
+                    image-fit: contain;
                 }
                 if Library.stage-tab == 1: Image {
                     source: Library.detail.lock;
-                    width: Library.stage-fit ? parent.width : min(parent.width, self.source.width * 1px);
-                    height: Library.stage-fit ? parent.height : min(parent.height, self.source.height * 1px);
-                    image-fit: Library.stage-fit ? cover : contain;
+                    width: Library.stage-fit ? parent.width : self.source.width * 1phx;
+                    height: Library.stage-fit ? parent.height : self.source.height * 1phx;
+                    image-fit: contain;
                 }
                 // FIT / 1:1 toggle, overlaid on the preview's corner
                 if Library.stage-tab != 2: Rectangle {
@@ -731,16 +737,17 @@ component Inspector inherits Panel {
                 }
                 if Library.stage-tab == 2: Rectangle {
                     property <int> cols: 6;
-                    property <length> cell: (parent.width - 24px) / self.cols;
+                    property <length> cell: min((parent.width - 24px) / self.cols, (parent.height - 24px) / 3);
                     for icon[i] in Library.detail.icons: Image {
                         source: icon;
-                        x: 12px + mod(i, parent.cols) * parent.cell + (parent.cell - self.width) / 2;
-                        y: 12px + floor(i / parent.cols) * parent.cell + (parent.cell - self.height) / 2;
+                        x: (parent.width - parent.cols * parent.cell) / 2 + mod(i, parent.cols) * parent.cell + (parent.cell - self.width) / 2;
+                        y: (parent.height - 3 * parent.cell) / 2 + floor(i / parent.cols) * parent.cell + (parent.cell - self.height) / 2;
                         width: parent.cell * 0.82;
                         height: self.width;
                         image-fit: contain;
                     }
                 }
+            }
             }
             if Library.detail.has-bgm: BgmPlayer { }
             // Title block
@@ -970,7 +977,7 @@ export component LibraryPage inherits Rectangle {
                     }
                 }
                 ScrollView {
-                    viewport-width: self.visible-width;
+                    content-width: self.visible-width;
                     VerticalLayout {
                         padding-right: 12px;
                         padding-top: 4px;

@@ -4,6 +4,8 @@
 slint::include_modules!();
 
 mod app_theme;
+mod audio;
+mod bgm_view;
 mod library_view;
 mod platform;
 
@@ -36,7 +38,7 @@ struct App {
     library: SharedLibrary,
 }
 
-fn show_toast(app: &AppWindow, text: &str, error: bool) {
+pub(crate) fn show_toast(app: &AppWindow, text: &str, error: bool) {
     let shell = app.global::<Shell>();
     shell.set_toast(text.into());
     shell.set_toast_error(error);
@@ -153,6 +155,28 @@ fn library_paths(dirs: &DataDirs, settings: &mut Settings) -> std::path::PathBuf
     themes
 }
 
+/// Centre a window on the monitor it opened on (falls back to the primary one).
+/// Returns false while the native window doesn't exist yet.
+fn center_on_screen(window: &slint::Window) -> bool {
+    let target = window.with_winit_window(|win| {
+        let monitor = win.current_monitor().or_else(|| win.primary_monitor())?;
+        let (pos, size) = (monitor.position(), monitor.size());
+        let outer = win.outer_size();
+        let x = pos.x + (size.width as i32 - outer.width as i32) / 2;
+        let y = pos.y + (size.height as i32 - outer.height as i32) / 2;
+        Some((x, y))
+    });
+    match target {
+        Some(Some((x, y))) => {
+            window.set_position(slint::PhysicalPosition::new(x, y));
+            true
+        }
+        // Window exists but no monitor info: nothing to centre on.
+        Some(None) => true,
+        None => false,
+    }
+}
+
 /// Debug builds only: put the UI in a given state for screenshots
 /// (`VTA_DEV_PAGE=library|creator|community|settings`, `VTA_DEV_SELECT=<index>`,
 /// `VTA_DEV_STAGE=0|1|2`).
@@ -183,6 +207,21 @@ fn main() -> Result<(), slint::PlatformError> {
     splash.set_version(format!("v{CURRENT_VERSION}").into());
     splash.set_edition(edition_name().into());
     splash.show()?;
+    // The native window only exists once the event loop runs, so centre it then.
+    // Poll until the native window exists, centre it, then fade the (still
+    // transparent) splash in, so it never visibly jumps.
+    let sw = splash.as_weak();
+    let reveal = Rc::new(Timer::default());
+    let reveal2 = reveal.clone();
+    let tries = std::cell::Cell::new(0);
+    reveal.start(TimerMode::Repeated, Duration::from_millis(10), move || {
+        let Some(s) = sw.upgrade() else { return };
+        tries.set(tries.get() + 1);
+        if center_on_screen(s.window()) || tries.get() > 50 {
+            s.set_revealed(true);
+            reveal2.stop();
+        }
+    });
     let started = Instant::now();
 
     // Startup work runs step by step on timers so the splash keeps animating.
@@ -214,6 +253,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 wire_shell(app);
                 apply_settings(app);
                 library_view::wire(&app.window, &app.library);
+                bgm_view::wire(&app.window, &app.library);
                 library_view::rescan(&app.window, &app.library);
                 let problems = app.library.borrow().problems.len();
                 (problems > 0).then(|| format!("{problems} theme folder(s) skipped (invalid theme.xml or missing files)"))
@@ -276,6 +316,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 } else if small {
                     app.window.window().set_maximized(true);
                     app.window.global::<Shell>().set_maximized(true);
+                } else {
+                    center_on_screen(app.window.window());
                 }
                 let _ = splash.hide();
                 for n in notices.borrow().iter() {

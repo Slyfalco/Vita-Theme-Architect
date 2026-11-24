@@ -166,16 +166,17 @@ pub fn select(app: &AppWindow, state: &SharedLibrary, index: i32) {
     let lib = app.global::<Library>();
     let theme = theme_at(state, index);
     state.borrow_mut().selected_path = theme.as_ref().map(|t| t.path.clone());
-    match theme {
+    match &theme {
         Some(t) => {
             lib.set_selected(index);
-            lib.set_detail(detail_for(&t));
+            lib.set_detail(detail_for(t));
         }
         None => {
             lib.set_selected(-1);
             lib.set_detail(ThemeDetail::default());
         }
     }
+    crate::bgm_view::load(app, theme.as_ref());
 }
 
 pub fn wire(app: &AppWindow, state: &SharedLibrary) {
