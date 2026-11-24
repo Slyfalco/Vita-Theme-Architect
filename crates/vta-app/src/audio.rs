@@ -232,3 +232,52 @@ pub fn format_time(secs: f64) -> String {
     let s = secs.max(0.0).round() as u64;
     format!("{:02}:{:02}", s / 60, s % 60)
 }
+
+// ---------------------------------------------------------------- done chime
+
+/// Parse a 16-bit PCM WAV (the bundled chime).
+fn parse_wav16(bytes: &[u8]) -> Option<Track> {
+    if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return None;
+    }
+    let (mut pos, mut channels, mut rate, mut data) = (12usize, 0u16, 0u32, None);
+    while pos + 8 <= bytes.len() {
+        let id = &bytes[pos..pos + 4];
+        let len = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
+        let body = bytes.get(pos + 8..pos + 8 + len)?;
+        if id == b"fmt " && body.len() >= 16 {
+            channels = u16::from_le_bytes([body[2], body[3]]);
+            rate = u32::from_le_bytes(body[4..8].try_into().ok()?);
+        } else if id == b"data" {
+            data = Some(body);
+        }
+        pos += 8 + len + (len & 1);
+    }
+    let samples = data?.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect();
+    Some(Track { channels, sample_rate: rate, samples, loop_region: None, bitrate_kbps: 0 })
+}
+
+thread_local! {
+    static CHIME: std::cell::RefCell<Option<Player>> = const { std::cell::RefCell::new(None) };
+}
+
+/// v2 `play_done_sound`: a short chime when a long task finishes.
+pub fn play_done_sound() {
+    static WAV: &[u8] = include_bytes!("../../../Assets/Sounds/done.wav");
+    let Some(track) = parse_wav16(WAV) else { return };
+    if let Ok(player) = Player::new(Arc::new(track), false) {
+        player.play();
+        // Keep the stream alive until it has played (replaced by the next chime).
+        CHIME.with(|c| *c.borrow_mut() = Some(player));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn chime_parses() {
+        let t = super::parse_wav16(include_bytes!("../../../Assets/Sounds/done.wav")).unwrap();
+        assert_eq!((t.channels, t.sample_rate), (1, 22_050));
+        assert!(t.frames() > 1000);
+    }
+}

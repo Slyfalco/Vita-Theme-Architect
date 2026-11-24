@@ -216,6 +216,17 @@ fn library_paths(dirs: &DataDirs, settings: &mut Settings) -> std::path::PathBuf
     themes
 }
 
+/// v2 `play_done_sound`: chime, and flash the taskbar/dock icon when the app
+/// isn't in front, after a long task (saving a theme, generating icons).
+pub(crate) fn notify_done(app: &AppWindow) {
+    audio::play_done_sound();
+    app.window().with_winit_window(|w| {
+        if !w.has_focus() {
+            w.request_user_attention(Some(slint::winit_030::winit::window::UserAttentionType::Informational));
+        }
+    });
+}
+
 /// True for builds made by the packaging tool (it sets VTA_PACKAGED=1 at compile
 /// time and embeds the integrity manifest). Plain `cargo` builds are development
 /// builds, like v2's runs from source.

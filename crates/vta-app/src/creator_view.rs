@@ -440,6 +440,7 @@ fn build(app: &AppWindow, library: &SharedLibrary) {
                     if !warnings.is_empty() {
                         text.push_str(&format!("\n\n{}", warnings.join("\n\n")));
                     }
+                    crate::notify_done(&app);
                     let icon = if warnings.is_empty() { DialogIcon::Success } else { DialogIcon::Warning };
                     dialogs::message(&app, icon, "Success", &text);
                 }
