@@ -1,0 +1,1178 @@
+// Theme Creator (design/v3-ui/theme_creator_*): Main, Home Pages (2-10), System
+// Icons, Colors & UI Images. One consistent header + tab bar on every tab; the
+// right column (live preview + validation) is shared.
+
+import { ScrollView, Slider } from "std-widgets.slint";
+import { Palette, Type, Density } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind, IconBtn, KeyChip, Tag, Segment, Panel, Caption, Field, CheckRow, FormRow, SearchField, Dropdown } from "widgets.slint";
+
+export struct AssetSlot {
+    id: string,
+    label: string,
+    spec: string,
+    required: bool,
+    file: string,
+    info: string,
+    thumb: image,
+    has-thumb: bool,
+    group: string,
+}
+
+export struct PageSlot {
+    page: int,
+    file: string,
+    info: string,
+    thumb: image,
+    has-thumb: bool,
+    wave: int,
+    color: string,
+    color-value: color,
+}
+
+export struct IconGroup {
+    name: string,
+    items: [AssetSlot],
+}
+
+export struct ColorSlot {
+    id: string,
+    label: string,
+    group: string,
+    hex: string,
+    value: color,
+}
+
+export global Creator {
+    in-out property <int> tab: 0;
+    in-out property <string> title;
+    in-out property <string> author;
+    in-out property <string> version: "01.00";
+    in property <bool> editing: false;
+    in property <bool> dirty: false;
+    in property <string> target;
+    in property <[AssetSlot]> main-slots;
+    in property <[PageSlot]> pages;
+    in property <[AssetSlot]> icons;
+    in property <[IconGroup]> icon-groups;
+    in property <[AssetSlot]> ui-slots;
+    in property <[ColorSlot]> colors;      // start screen
+    in property <[ColorSlot]> bar-colors;  // info bar
+    in-out property <bool> use-global-font: true;
+    in property <string> font-color: "ffffffff";
+    in property <color> font-color-value: white;
+    in property <int> icons-custom: 0;
+    // BGM
+    in property <bool> has-bgm: false;
+    in property <string> bgm-name;
+    in property <string> bgm-info;
+    in property <bool> bgm-encodes: false;
+    in-out property <string> loop-start: "0";
+    // Preview + validation
+    in-out property <int> preview-tab: 0;   // 0 LiveArea, 1 Lock Screen, 2 Icon Grid, 3 Thumbnail
+    in property <image> prev-livearea;
+    in property <image> prev-lock;
+    in property <image> prev-thumb;
+    in property <[image]> prev-icons;
+    in property <int> required-ready: 0;
+    in-out property <int> selected-page: -1;
+    in property <image> selected-page-image;
+    in property <bool> ai-available: false;
+    in-out property <string> icon-search;
+    in-out property <int> icon-filter: 0;   // 0 all, 1 customised, 2 default
+
+    callback edited();
+    callback browse(string);
+    callback clear(string);
+    callback add-page();
+    callback remove-page(int);
+    callback browse-page(int);
+    callback set-wave(int, int);
+    callback pick-color(string);
+    callback browse-bgm();
+    callback clear-bgm();
+    callback build();
+    callback cancel();
+    callback open-icon-generator();
+    callback global-font-toggled(bool);
+    callback icon-filter-changed();
+}
+
+// ---------------------------------------------------------------- pieces
+
+component SpecChip inherits Rectangle {
+    in property <string> text;
+    height: 24px;
+    width: t.preferred-width + 14px;
+    border-radius: 5px;
+    background: Palette.primary.transparentize(82%);
+    border-width: 1px;
+    border-color: Palette.accent.transparentize(70%);
+    t := Text {
+        text: root.text;
+        color: Palette.accent;
+        font-family: Palette.mono-font;
+        font-size: Type.label-sm;
+    }
+}
+
+component ReadyPill inherits Rectangle {
+    in property <bool> ok;
+    in property <string> text: root.ok ? "Ready" : "Missing";
+    height: 30px;
+    width: row.preferred-width + 20px;
+    border-radius: 6px;
+    background: root.ok ? Palette.success.transparentize(85%) : Palette.danger.transparentize(88%);
+    row := HorizontalLayout {
+        x: 10px;
+        spacing: 6px;
+        Icon {
+            source: root.ok ? Icons.check-circle : Icons.warning;
+            size: 16px;
+            tint: root.ok ? Palette.success-text : Palette.danger;
+        }
+        Text {
+            text: root.text;
+            color: root.ok ? Palette.success-text : Palette.danger;
+            font-size: Type.body-sm;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Thumb inherits Rectangle {
+    in property <image> source;
+    in property <bool> has: false;
+    in property <float> ratio: 16 / 9;
+    in property <bool> round: false;
+    width: self.height * root.ratio;
+    border-radius: root.round ? self.height / 2 : 8px;
+    background: Palette.inset;
+    border-width: 1px;
+    border-color: Palette.outline;
+    clip: true;
+    if root.has: Image {
+        source: root.source;
+        width: parent.width;
+        height: parent.height;
+        image-fit: cover;
+    }
+    if !root.has: Icon {
+        source: Icons.image;
+        size: 22px;
+        tint: Palette.text-lo;
+    }
+}
+
+// One asset row (Main tab / UI images): thumbnail, name + spec, file, status, actions.
+component AssetRow inherits Rectangle {
+    in property <AssetSlot> slot;
+    in property <float> ratio: 16 / 9;
+    height: Density.compact ? 78px : 92px;
+    border-radius: 12px;
+    background: touch.has-hover ? Palette.surface2.brighter(4%) : Palette.surface2;
+    border-width: 1px;
+    border-color: Palette.outline.transparentize(40%);
+    touch := TouchArea { }
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 16px;
+        Thumb {
+            source: root.slot.thumb;
+            has: root.slot.has-thumb;
+            ratio: root.ratio;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: root.slot.label + (root.slot.required ? "  *" : "");
+                    color: Palette.text-hi;
+                    font-size: Type.body-lg;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                SpecChip { text: root.slot.spec; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            Text {
+                text: root.slot.file != "" ? root.slot.file + (root.slot.info != "" ? "  (" + root.slot.info + ")" : "") : "Not set — " + (root.slot.required ? "required" : "optional");
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            if root.slot.required || root.slot.file != "": ReadyPill { ok: root.slot.file != ""; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Btn {
+                text: "Browse...";
+                icon: Icons.folder-open;
+                has-icon: true;
+                compact: true;
+                clicked => { Creator.browse(root.slot.id); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconBtn {
+                icon: Icons.delete;
+                enabled: root.slot.file != "";
+                clicked => { Creator.clear(root.slot.id); }
+            }
+        }
+    }
+}
+
+component Section inherits Panel {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> icon;
+    in property <string> badge;
+    VerticalLayout {
+        padding: Density.compact ? 18px : 24px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Icon {
+                source: root.icon;
+                size: 24px;
+                tint: Palette.accent;
+            }
+            VerticalLayout {
+                spacing: 3px;
+                horizontal-stretch: 1;
+                Text {
+                    text: root.title;
+                    color: Palette.text-hi;
+                    font-size: Type.headline-lg;
+                    font-weight: 600;
+                }
+                if root.subtitle != "": Text {
+                    text: root.subtitle;
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    wrap: word-wrap;
+                }
+            }
+            if root.badge != "": VerticalLayout {
+                alignment: start;
+                Rectangle {
+                    height: 30px;
+                    width: badge-text.preferred-width + 22px;
+                    border-radius: 15px;
+                    background: Palette.success.transparentize(85%);
+                    badge-text := Text {
+                        text: root.badge;
+                        color: Palette.success-text;
+                        font-size: Type.body-sm;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+        @children
+    }
+}
+
+component ColorRow inherits Rectangle {
+    in property <ColorSlot> slot;
+    in property <bool> enabled: true;
+    height: 52px;
+    border-radius: 10px;
+    background: Palette.surface2;
+    opacity: root.enabled ? 1 : 0.5;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 14px;
+        Text {
+            text: root.slot.label;
+            color: Palette.text-hi;
+            font-size: Type.body-md;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: "#" + root.slot.hex;
+            color: Palette.text-mid;
+            font-family: Palette.mono-font;
+            font-size: Type.label-md;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 64px;
+                height: 32px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Palette.outline;
+                background: root.slot.value;
+                TouchArea {
+                    enabled: root.enabled;
+                    mouse-cursor: pointer;
+                    clicked => { Creator.pick-color(root.slot.id); }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- tabs
+
+component MainTab inherits VerticalLayout {
+    spacing: 18px;
+    Section {
+        title: "Theme Descriptor & Meta";
+        subtitle: "Target: " + Creator.target;
+        icon: Icons.description;
+        HorizontalLayout {
+            spacing: 14px;
+            FormRow {
+                label: "THEME TITLE";
+                required: true;
+                horizontal-stretch: 2;
+                Field {
+                    text <=> Creator.title;
+                    edited => { Creator.edited(); }
+                }
+            }
+            FormRow {
+                label: "AUTHOR / PROVIDER";
+                horizontal-stretch: 2;
+                Field {
+                    text <=> Creator.author;
+                    edited => { Creator.edited(); }
+                }
+            }
+            FormRow {
+                label: "VERSION";
+                required: true;
+                horizontal-stretch: 1;
+                Field {
+                    text <=> Creator.version;
+                    mono: true;
+                    placeholder: "01.00";
+                    edited => { Creator.edited(); }
+                }
+            }
+        }
+    }
+    Section {
+        title: "Master Image & Media Assets";
+        subtitle: "Images are resized to the Vita sizes and converted to 8-bit indexed PNG when you build.";
+        icon: Icons.wallpaper;
+        badge: Creator.required-ready + " of 5 Ready";
+        for s in Creator.main-slots: AssetRow {
+            slot: s;
+        }
+    }
+}
+
+component PagesTab inherits VerticalLayout {
+    spacing: 18px;
+    Section {
+        title: "Multi-Page Home Wallpapers";
+        subtitle: "The PS Vita supports up to 10 swipeable home pages (960×544). Page 1 is set on the Main tab.";
+        icon: Icons.wallpaper;
+        badge: Creator.pages.length + " of 9 Configured";
+        for p[i] in Creator.pages: Rectangle {
+            height: Density.compact ? 96px : 112px;
+            border-radius: 12px;
+            background: i == Creator.selected-page ? Palette.surface3 : Palette.surface2;
+            border-width: 1px;
+            border-color: i == Creator.selected-page ? Palette.accent.transparentize(40%) : Palette.outline.transparentize(40%);
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Creator.selected-page = i; }
+            }
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 16px;
+                Thumb {
+                    source: p.thumb;
+                    has: p.has-thumb;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "Home Page " + p.page;
+                        color: Palette.text-hi;
+                        font-size: Type.body-lg;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: p.file;
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: p.info;
+                        color: Palette.text-lo;
+                        font-size: Type.body-sm;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    Caption { text: "WAVE"; }
+                    Dropdown {
+                        min-width: 90px;
+                        options: ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31"];
+                        current-index: p.wave;
+                        selected(w) => { Creator.set-wave(p.page, w); }
+                    }
+                }
+                if !Creator.use-global-font: VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    Caption { text: "FONT"; }
+                    Rectangle {
+                        width: 56px;
+                        height: 34px;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: Palette.outline;
+                        background: p.color-value;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Creator.pick-color("br" + p.page + "_color"); }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    IconBtn {
+                        icon: Icons.folder-open;
+                        clicked => { Creator.browse-page(p.page); }
+                    }
+                    IconBtn {
+                        icon: Icons.delete;
+                        clicked => { Creator.remove-page(p.page); }
+                    }
+                }
+            }
+        }
+        if Creator.pages.length < 9: Rectangle {
+            height: 120px;
+            border-radius: 12px;
+            border-width: 1.5px;
+            border-color: add-touch.has-hover ? Palette.accent : Palette.outline;
+            background: add-touch.has-hover ? Palette.primary.transparentize(88%) : transparent;
+            VerticalLayout {
+                alignment: center;
+                spacing: 6px;
+                Icon {
+                    source: Icons.cloud-upload;
+                    size: 30px;
+                    tint: Palette.accent;
+                }
+                Text {
+                    text: "Add Home Page " + (Creator.pages.length + 2);
+                    color: Palette.text-hi;
+                    font-size: Type.body-lg;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "PNG or JPG • resized to 960×544 • auto-quantized to 8-bit";
+                    color: Palette.text-lo;
+                    font-size: Type.body-sm;
+                    horizontal-alignment: center;
+                }
+            }
+            add-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Creator.add-page(); }
+            }
+        }
+    }
+}
+
+component IconsTab inherits VerticalLayout {
+    spacing: 18px;
+    Section {
+        title: "System Application Icons";
+        subtitle: "LiveArea launcher bubbles, 128×128. Leave a slot empty to keep the console's default icon.";
+        icon: Icons.apps;
+        badge: Creator.icons-custom + " of 17 Customised";
+        HorizontalLayout {
+            spacing: 12px;
+            if Creator.ai-available: Btn {
+                text: "Launch AI Icon Generator";
+                icon: Icons.auto-awesome;
+                has-icon: true;
+                kind: ButtonKind.primary;
+                hotkey: "Ctrl+G";
+                clicked => { Creator.open-icon-generator(); }
+            }
+            SearchField {
+                placeholder: "Search icons…";
+                text <=> Creator.icon-search;
+                horizontal-stretch: 1;
+                edited => { Creator.icon-filter-changed(); }
+            }
+            Rectangle {
+                height: 44px;
+                border-radius: 10px;
+                background: Palette.inset;
+                HorizontalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+                    Segment { text: "All (17)"; selected: Creator.icon-filter == 0; clicked => { Creator.icon-filter = 0; Creator.icon-filter-changed(); } }
+                    Segment { text: "Customised (" + Creator.icons-custom + ")"; selected: Creator.icon-filter == 1; clicked => { Creator.icon-filter = 1; Creator.icon-filter-changed(); } }
+                    Segment { text: "Default (" + (17 - Creator.icons-custom) + ")"; selected: Creator.icon-filter == 2; clicked => { Creator.icon-filter = 2; Creator.icon-filter-changed(); } }
+                }
+            }
+        }
+    }
+    for group in Creator.icon-groups: VerticalLayout {
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                width: 4px;
+                height: 22px;
+                border-radius: 2px;
+                background: Palette.accent;
+            }
+            Text {
+                text: group.name;
+                color: Palette.text-hi;
+                font-size: Type.headline-md;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: "Target Format: 128×128 PNG";
+                color: Palette.text-lo;
+                font-size: Type.body-sm;
+                vertical-alignment: center;
+            }
+        }
+        icons-grid := Rectangle {
+            property <int> cols: Density.narrow ? 2 : 3;
+            property <length> gap: 12px;
+            property <length> cell-w: (self.width - (self.cols - 1) * self.gap) / self.cols;
+            property <length> cell-h: 96px;
+            height: ceil(group.items.length / self.cols) * (self.cell-h + self.gap);
+            for s[i] in group.items: Rectangle {
+                x: mod(i, icons-grid.cols) * (icons-grid.cell-w + icons-grid.gap);
+                y: floor(i / icons-grid.cols) * (icons-grid.cell-h + icons-grid.gap);
+                width: icons-grid.cell-w;
+                height: icons-grid.cell-h;
+                border-radius: 12px;
+                background: Palette.surface2;
+                border-width: 1px;
+                border-color: Palette.outline.transparentize(40%);
+                HorizontalLayout {
+                    padding: 12px;
+                    spacing: 12px;
+                    Thumb {
+                        source: s.thumb;
+                        has: s.has-thumb;
+                        ratio: 1;
+                        round: true;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: s.label;
+                            color: Palette.text-hi;
+                            font-size: Type.body-lg;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: s.spec;
+                            color: Palette.text-lo;
+                            font-family: Palette.mono-font;
+                            font-size: Type.label-sm;
+                        }
+                        Text {
+                            text: s.file != "" ? "● Custom" : "○ Default";
+                            color: s.file != "" ? Palette.success-text : Palette.text-lo;
+                            font-size: Type.body-sm;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 4px;
+                        Btn {
+                            text: "Replace";
+                            compact: true;
+                            clicked => { Creator.browse(s.id); }
+                        }
+                        Btn {
+                            text: "Revert";
+                            compact: true;
+                            kind: ButtonKind.ghost;
+                            enabled: s.file != "";
+                            clicked => { Creator.clear(s.id); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if Creator.icon-groups.length == 0: Text {
+        text: "No icons match your search.";
+        color: Palette.text-mid;
+        font-size: Type.body-md;
+    }
+}
+
+component ColorsTab inherits VerticalLayout {
+    spacing: 18px;
+    property <bool> global <=> Creator.use-global-font;
+    changed global => { Creator.global-font-toggled(self.global); }
+    Section {
+        title: "System Accent & Interface Colors";
+        subtitle: "Colours are stored as AARRGGBB (alpha first), the official theme format.";
+        icon: Icons.palette;
+        Caption { text: "START SCREEN"; }
+        for c in Creator.colors: ColorRow { slot: c; }
+        Caption { text: "INFO BAR"; }
+        for c in Creator.bar-colors: ColorRow { slot: c; }
+        Caption { text: "HOME SCREEN"; }
+        CheckRow {
+            checked <=> Creator.use-global-font;
+            text: "Use one font color for all pages";
+            hint: "Untick to set a font colour per home page (on the Home Pages tab).";
+        }
+        ColorRow {
+            enabled: Creator.use-global-font;
+            slot: { id: "m_fontColor", label: Creator.use-global-font ? "Global Font Color" : "Page 1 Font Color", group: "Home", hex: Creator.font-color, value: Creator.font-color-value };
+        }
+    }
+    Section {
+        title: "LiveArea & UI Chrome Assets";
+        subtitle: "Page indicators and notification icons (optional).";
+        icon: Icons.image;
+        for s in Creator.ui-slots: AssetRow {
+            slot: s;
+            ratio: 1;
+        }
+    }
+}
+
+// ---------------------------------------------------------------- right column
+
+component PreviewColumn inherits VerticalLayout {
+    spacing: 16px;
+    Panel {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Palette.success;
+                    drop-shadow-blur: 6px;
+                    drop-shadow-color: Palette.success;
+                }
+                Text {
+                    text: "Live Display Canvas";
+                    color: Palette.text-hi;
+                    font-size: Type.body-md;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                SpecChip { text: "960×544"; }
+            }
+            screen := Rectangle {
+                height: self.width * 544 / 960;
+                border-radius: 12px;
+                background: #05070a;
+                border-width: 1px;
+                border-color: Palette.outline;
+                clip: true;
+                property <image> img: Creator.tab == 1 && Creator.selected-page >= 0 ? Creator.selected-page-image
+                    : Creator.preview-tab == 0 ? Creator.prev-livearea : Creator.preview-tab == 1 ? Creator.prev-lock : Creator.prev-thumb;
+                if Creator.preview-tab != 2 || (Creator.tab == 1 && Creator.selected-page >= 0): Image {
+                    source: screen.img;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: contain;
+                }
+                if Creator.preview-tab == 2 && !(Creator.tab == 1 && Creator.selected-page >= 0): Rectangle {
+                    property <length> cell: min((parent.width - 16px) / 6, (parent.height - 16px) / 3);
+                    for icon[i] in Creator.prev-icons: Image {
+                        source: icon;
+                        x: (parent.width - 6 * parent.cell) / 2 + mod(i, 6) * parent.cell + (parent.cell - self.width) / 2;
+                        y: (parent.height - 3 * parent.cell) / 2 + floor(i / 6) * parent.cell + (parent.cell - self.height) / 2;
+                        width: parent.cell * 0.84;
+                        height: self.width;
+                    }
+                }
+            }
+            if !(Creator.tab == 1 && Creator.selected-page >= 0): Rectangle {
+                height: 40px;
+                border-radius: 8px;
+                background: Palette.inset;
+                HorizontalLayout {
+                    padding: 3px;
+                    spacing: 2px;
+                    Segment { text: "LiveArea"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 0; clicked => { Creator.preview-tab = 0; } }
+                    Segment { text: "Lock"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 1; clicked => { Creator.preview-tab = 1; } }
+                    Segment { text: "Icons"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 2; clicked => { Creator.preview-tab = 2; } }
+                    Segment { text: "Thumb"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 3; clicked => { Creator.preview-tab = 3; } }
+                }
+            }
+            if Creator.tab == 1 && Creator.selected-page >= 0: Text {
+                text: "Showing Home Page " + (Creator.selected-page + 2) + " (click a page to preview it)";
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+            }
+        }
+    }
+    Panel {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                Caption {
+                    text: "REQUIRED ASSETS VALIDATION";
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: Creator.required-ready + " / 5 Ready";
+                    color: Creator.required-ready == 5 ? Palette.success-text : Palette.warning;
+                    font-size: Type.body-sm;
+                    font-weight: 600;
+                }
+            }
+            Rectangle {
+                height: 6px;
+                border-radius: 3px;
+                background: Palette.surface3;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * Creator.required-ready / 5;
+                    border-radius: 3px;
+                    background: Creator.required-ready == 5 ? Palette.success : Palette.accent;
+                    animate width { duration: 200ms; }
+                }
+            }
+            for s in Creator.main-slots: HorizontalLayout {
+                spacing: 8px;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: s.file != "" ? Palette.success : Palette.danger;
+                }
+                Text {
+                    text: s.label;
+                    color: Palette.text-hi;
+                    font-size: Type.body-sm;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: s.spec;
+                    color: Palette.text-lo;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-sm;
+                }
+            }
+            Text {
+                text: "BGM, extra pages, icons and UI images are optional. theme.xml is generated on build.";
+                color: Palette.text-lo;
+                font-size: Type.body-sm;
+                wrap: word-wrap;
+            }
+        }
+    }
+    Panel {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 10px;
+                Icon {
+                    source: Icons.music-note;
+                    size: 20px;
+                    tint: Palette.accent;
+                }
+                Caption {
+                    text: "BACKGROUND MUSIC (BGM)";
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: "Optional";
+                    color: Palette.accent;
+                    font-size: Type.body-sm;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 10px;
+                    background: Palette.inset;
+                    Icon {
+                        source: Icons.music-note;
+                        size: 22px;
+                        tint: Creator.has-bgm ? Palette.accent : Palette.text-lo;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: Creator.has-bgm ? Creator.bgm-name : "No background music";
+                        color: Palette.text-hi;
+                        font-size: Type.body-md;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: Creator.bgm-info;
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            if Creator.bgm-encodes: FormRow {
+                label: "Loop start (sample)";
+                note: "0 = loop the whole track";
+                Field {
+                    text <=> Creator.loop-start;
+                    mono: true;
+                    edited => { Creator.edited(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Btn {
+                    text: "Browse...";
+                    icon: Icons.folder-open;
+                    has-icon: true;
+                    compact: true;
+                    clicked => { Creator.browse-bgm(); }
+                }
+                Btn {
+                    text: "Remove";
+                    compact: true;
+                    kind: ButtonKind.ghost;
+                    enabled: Creator.has-bgm;
+                    clicked => { Creator.clear-bgm(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- page
+
+component CreatorTab inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <string> badge;
+    in property <bool> selected;
+    callback clicked();
+    height: 48px;
+    width: row.preferred-width + 28px;
+    border-radius: 10px;
+    background: root.selected ? Palette.primary : touch.has-hover ? Palette.surface3 : transparent;
+    drop-shadow-blur: root.selected ? 14px : 0;
+    drop-shadow-color: Palette.primary.transparentize(55%);
+    row := HorizontalLayout {
+        x: 14px;
+        spacing: 10px;
+        Icon {
+            source: root.icon;
+            size: 20px;
+            tint: root.selected ? Palette.on-primary : Palette.text-mid;
+        }
+        Text {
+            text: root.text;
+            color: root.selected ? Palette.on-primary : Palette.text-hi;
+            font-size: Type.body-md;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+        }
+        if root.badge != "": VerticalLayout {
+            alignment: center;
+            KeyChip {
+                text: root.badge;
+                on-primary: root.selected;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component CreatorPage inherits Rectangle {
+    VerticalLayout {
+        padding-left: 28px;
+        padding-right: 28px;
+        padding-bottom: 16px;
+        spacing: 14px;
+        // Header
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 2px;
+                horizontal-stretch: 1;
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: Creator.editing ? "Editing" : "New Theme";
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                        vertical-alignment: center;
+                    }
+                    if Creator.dirty: VerticalLayout {
+                        alignment: center;
+                        KeyChip { text: "UNSAVED DRAFT"; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                Text {
+                    text: Creator.title != "" ? Creator.title : "Untitled Theme";
+                    color: Palette.text-hi;
+                    font-size: Type.headline-xl;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    text: "Back to Library";
+                    kind: ButtonKind.ghost;
+                    clicked => { Creator.cancel(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Btn {
+                    text: "Build & Save Theme";
+                    icon: Icons.check-circle;
+                    has-icon: true;
+                    hotkey: "Ctrl+S";
+                    kind: ButtonKind.success;
+                    clicked => { Creator.build(); }
+                }
+            }
+        }
+        // Tab bar
+        Panel {
+            height: 64px;
+            HorizontalLayout {
+                padding: 8px;
+                spacing: 6px;
+                CreatorTab {
+                    text: "Main";
+                    icon: Icons.image;
+                    badge: Creator.required-ready == 5 ? "" : Creator.required-ready + "/5";
+                    selected: Creator.tab == 0;
+                    clicked => { Creator.tab = 0; }
+                }
+                CreatorTab {
+                    text: "Home Pages (2-10)";
+                    icon: Icons.wallpaper;
+                    badge: Creator.pages.length + " set";
+                    selected: Creator.tab == 1;
+                    clicked => { Creator.tab = 1; }
+                }
+                CreatorTab {
+                    text: "System Icons";
+                    icon: Icons.apps;
+                    badge: Creator.icons-custom + "/17";
+                    selected: Creator.tab == 2;
+                    clicked => { Creator.tab = 2; }
+                }
+                CreatorTab {
+                    text: "Colors & UI Images";
+                    icon: Icons.palette;
+                    selected: Creator.tab == 3;
+                    clicked => { Creator.tab = 3; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if Creator.ai-available: VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        text: "AI Icon Generator";
+                        icon: Icons.auto-awesome;
+                        has-icon: true;
+                        clicked => { Creator.open-icon-generator(); }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 20px;
+            vertical-stretch: 1;
+            ScrollView {
+                horizontal-stretch: 1;
+                content-width: self.visible-width;
+                VerticalLayout {
+                    padding-right: 12px;
+                    padding-bottom: 8px;
+                    if Creator.tab == 0: MainTab { }
+                    if Creator.tab == 1: PagesTab { }
+                    if Creator.tab == 2: IconsTab { }
+                    if Creator.tab == 3: ColorsTab { }
+                }
+            }
+            ScrollView {
+                width: Density.narrow ? 340px : 420px;
+                content-width: self.visible-width;
+                PreviewColumn {
+                    padding-right: 10px;
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- colour picker
+
+export global ColorPicker {
+    in-out property <bool> open: false;
+    in property <string> title;
+    in-out property <float> a: 255;
+    in-out property <float> r: 255;
+    in-out property <float> g: 255;
+    in-out property <float> b: 255;
+    in-out property <string> hex: "ffffffff";
+    callback hex-edited(string);
+    callback channels-changed();
+    callback done(bool);
+}
+
+component ChannelSlider inherits HorizontalLayout {
+    in property <string> label;
+    in-out property <float> value;
+    in property <color> tint;
+    spacing: 12px;
+    Text {
+        text: root.label;
+        width: 18px;
+        color: root.tint;
+        font-family: Palette.mono-font;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+    Slider {
+        minimum: 0;
+        maximum: 255;
+        value <=> root.value;
+        horizontal-stretch: 1;
+        changed(v) => { ColorPicker.channels-changed(); }
+    }
+    Text {
+        text: round(root.value);
+        width: 36px;
+        color: Palette.text-mid;
+        font-family: Palette.mono-font;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+export component ColorPickerLayer inherits Rectangle {
+    if ColorPicker.open: Rectangle {
+        background: #000000a8;
+        TouchArea { }
+        Rectangle {
+            width: min(460px, root.width - 48px);
+            height: card.preferred-height;
+            border-radius: Palette.radius-card;
+            background: Palette.surface1;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            card := VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+                Text {
+                    text: ColorPicker.title;
+                    color: Palette.text-hi;
+                    font-size: Type.headline-md;
+                    font-weight: 600;
+                }
+                HorizontalLayout {
+                    spacing: 14px;
+                    // Swatch over a checkerboard so alpha is visible
+                    Rectangle {
+                        width: 84px;
+                        height: 84px;
+                        border-radius: 12px;
+                        clip: true;
+                        background: #808080;
+                        for k in 16: Rectangle {
+                            x: mod(k, 4) * 21px;
+                            y: floor(k / 4) * 21px;
+                            width: 21px;
+                            height: 21px;
+                            background: mod(mod(k, 4) + floor(k / 4), 2) == 0 ? #c0c0c0 : #ffffff;
+                        }
+                        Rectangle {
+                            background: rgba(ColorPicker.r, ColorPicker.g, ColorPicker.b, ColorPicker.a / 255);
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 6px;
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Caption { text: "AARRGGBB"; }
+                        Field {
+                            mono: true;
+                            text: ColorPicker.hex;
+                            edited(t) => { ColorPicker.hex-edited(t); }
+                        }
+                    }
+                }
+                ChannelSlider { label: "A"; value <=> ColorPicker.a; tint: Palette.text-hi; }
+                ChannelSlider { label: "R"; value <=> ColorPicker.r; tint: #ef4444; }
+                ChannelSlider { label: "G"; value <=> ColorPicker.g; tint: #10b981; }
+                ChannelSlider { label: "B"; value <=> ColorPicker.b; tint: #38bdf8; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Btn {
+                        text: "Cancel";
+                        clicked => { ColorPicker.done(false); }
+                    }
+                    Btn {
+                        text: "Apply";
+                        kind: ButtonKind.primary;
+                        clicked => {
+                            ColorPicker.done(true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

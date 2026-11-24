@@ -7,11 +7,12 @@ import { Shell, Library, Page, ThemeRow, ThemeDetail } from "state.slint";
 import { TitleBar, NavRail, Breadcrumb } from "shell.slint";
 import { LibraryPage } from "library.slint";
 import { SettingsPage, SettingsState } from "settings.slint";
+import { CreatorPage, Creator, ColorPicker, ColorPickerLayer, AssetSlot, PageSlot, ColorSlot, IconGroup } from "creator.slint";
 import { Splash } from "splash.slint";
 import { DialogLayer, Dialog, DialogButton, DialogIcon, PickItem } from "dialogs.slint";
 import { ButtonKind } from "widgets.slint";
 
-export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState }
+export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup }
 
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-Medium.ttf";
@@ -81,9 +82,11 @@ export component AppWindow inherits Window {
 
     keys := FocusScope {
         key-pressed(event) => {
-            if (Dialog.open || Dialog.progress-open || Dialog.picker-open) { return accept; }
+            if (Dialog.open || Dialog.progress-open || Dialog.picker-open || ColorPicker.open) { return accept; }
             if (event.modifiers.control) {
                 if (Shell.page == Page.settings && (event.text == "s" || event.text == "S")) { SettingsState.save(); return accept; }
+                if (Shell.page == Page.creator && (event.text == "s" || event.text == "S")) { Creator.build(); return accept; }
+                if (Shell.page == Page.creator && (event.text == "g" || event.text == "G") && Creator.ai-available) { Creator.open-icon-generator(); return accept; }
                 if (event.text == "n" || event.text == "N") { Shell.new-theme(); return accept; }
                 if (Shell.page == Page.library) {
                     if (event.modifiers.shift && (event.text == "i" || event.text == "I")) { Library.import-multiple(); return accept; }
@@ -131,10 +134,7 @@ export component AppWindow inherits Window {
                         library := LibraryPage {
                             visible: Shell.page == Page.library;
                         }
-                        if Shell.page == Page.creator: Placeholder {
-                            title: "Theme Creator";
-                            note: "Coming next in the v3 build.";
-                        }
+                        if Shell.page == Page.creator: CreatorPage { }
                         if Shell.page == Page.community: Placeholder {
                             title: "Community Browser";
                             note: Shell.online-available ? "Coming next in the v3 build." : Shell.online-unavailable-reason;
@@ -171,6 +171,10 @@ export component AppWindow inherits Window {
             }
         }
 
+        ColorPickerLayer {
+            width: parent.width;
+            height: parent.height;
+        }
         DialogLayer {
             width: parent.width;
             height: parent.height;

@@ -68,7 +68,7 @@ fn remember_state(state: SharedLibrary) {
     LAST_STATE.with(|ls| *ls.borrow_mut() = Some(state));
 }
 
-fn with_state(f: impl FnOnce(&SharedLibrary)) {
+pub fn with_state(f: impl FnOnce(&SharedLibrary)) {
     LAST_STATE.with(|ls| {
         if let Some(st) = ls.borrow().as_ref() {
             f(st);

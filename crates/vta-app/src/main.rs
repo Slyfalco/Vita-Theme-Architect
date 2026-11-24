@@ -7,6 +7,8 @@ slint::include_modules!();
 mod app_theme;
 mod audio;
 mod bgm_view;
+mod creator_view;
+mod icongen_view;
 mod dialogs;
 mod library_actions;
 mod library_view;
@@ -108,18 +110,36 @@ fn wire_shell(app: &App, ctx: Rc<settings_view::SettingsCtx>) {
         let _ = slint::quit_event_loop();
     });
     let w = app.window.as_weak();
+    let ctx2 = ctx.clone();
     shell.on_navigate(move |page| {
-        if let Some(app) = w.upgrade() {
-            if page == Page::Settings && app.global::<Shell>().get_page() != Page::Settings {
-                settings_view::load(&app, &ctx);
+        let Some(app) = w.upgrade() else { return };
+        let current = app.global::<Shell>().get_page();
+        if page == current {
+            return;
+        }
+        let ctx = ctx2.clone();
+        let go = move |app: &AppWindow| {
+            if page == Page::Settings {
+                settings_view::load(app, &ctx);
+            }
+            if page == Page::Creator && !creator_view::is_dirty() && app.global::<Creator>().get_title().is_empty() {
+                // Nothing loaded yet: start a new theme.
+                creator_view::new_theme(app, &ctx.settings);
+                return;
             }
             app.global::<Shell>().set_page(page);
+        };
+        if current == Page::Creator {
+            creator_view::leave(&app, go);
+        } else {
+            go(&app);
         }
     });
     let w = app.window.as_weak();
     shell.on_new_theme(move || {
         if let Some(app) = w.upgrade() {
-            app.global::<Shell>().set_page(Page::Creator);
+            let settings = ctx.settings.clone();
+            creator_view::leave(&app, move |app| creator_view::new_theme(app, &settings));
         }
     });
     let w = app.window.as_weak();
@@ -206,6 +226,12 @@ fn dev_preselect(app: &App) {
     if let Some(i) = std::env::var("VTA_DEV_SELECT").ok().and_then(|v| v.parse().ok()) {
         library_view::select(&app.window, &app.library, i);
     }
+    if let Some(i) = std::env::var("VTA_DEV_EDIT").ok().and_then(|v| v.parse().ok()) {
+        app.window.global::<Library>().invoke_edit(i);
+    }
+    if let Some(t) = std::env::var("VTA_DEV_CTAB").ok().and_then(|v| v.parse().ok()) {
+        app.window.global::<Creator>().set_tab(t);
+    }
     if let Some(t) = std::env::var("VTA_DEV_STAGE").ok().and_then(|v| v.parse().ok()) {
         app.window.global::<Library>().set_stage_tab(t);
     }
@@ -283,6 +309,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 bgm_view::wire(&app.window, &app.library);
                 dialogs::wire(&app.window);
                 library_actions::wire(&app.window, &app.library, &app.settings);
+                creator_view::wire(&app.window, &app.library, &app.settings);
                 library_view::rescan(&app.window, &app.library);
                 let problems = app.library.borrow().problems.len();
                 (problems > 0).then(|| format!("{problems} theme folder(s) skipped (invalid theme.xml or missing files)"))
@@ -341,6 +368,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?))
                     }) {
                         app.window.window().set_size(slint::LogicalSize::new(w, h));
+                        app.window.window().set_position(slint::PhysicalPosition::new(0, 0));
                     }
                 } else if small {
                     app.window.window().set_maximized(true);
