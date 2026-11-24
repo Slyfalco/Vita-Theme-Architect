@@ -54,6 +54,9 @@ component Scrim inherits Rectangle {
 component Card inherits Rectangle {
     in property <length> card-width: 520px;
     width: root.card-width;
+    // Hug the content height (otherwise the Card fills the scrim and the button
+    // row stretches); the scrim centres it.
+    height: self.preferred-height;
     border-radius: Palette.radius-card;
     background: Palette.surface1.transparentize(4%);
     border-width: 1px;

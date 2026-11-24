@@ -131,7 +131,7 @@ fn save(app: &AppWindow, ctx: &SettingsCtx) -> Result<(), String> {
     Ok(())
 }
 
-fn pick_folder(title: &str, start: &str) -> Option<String> {
+pub(crate) fn pick_folder(title: &str, start: &str) -> Option<String> {
     let mut d = rfd::FileDialog::new().set_title(title);
     if !start.is_empty() && std::path::Path::new(start).is_dir() {
         d = d.set_directory(start);

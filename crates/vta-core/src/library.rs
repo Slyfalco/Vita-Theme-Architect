@@ -4,6 +4,98 @@
 use crate::theme::{parse_theme_xml, ThemeData};
 use std::path::{Path, PathBuf};
 
+/// The immediate sub-folders of `dir` (v2 counts these as "existing themes" when
+/// relocating the library).
+pub fn theme_folder_names(dir: &Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut names: Vec<String> = rd
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Ensure `new_dir` exists and is writable (v2's makedirs + `os.W_OK` check).
+/// `Err(message)` matches v2's "Cannot use this folder" text source.
+pub fn ensure_writable_dir(new_dir: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(new_dir).map_err(|e| e.to_string())?;
+    // Probe writability by creating and removing a temp file (no std W_OK check).
+    let probe = new_dir.join(".vta_write_test");
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            Ok(())
+        }
+        Err(_) => Err("folder is not writable".into()),
+    }
+}
+
+/// Move every theme sub-folder of `old_dir` into `new_dir`, renaming on collision
+/// (`name`, `name1`, `name2`, …), exactly like v2's `change_theme_library_location`.
+/// Returns the list of `"name: error"` strings for any that could not be moved.
+pub fn move_themes(old_dir: &Path, new_dir: &Path) -> Vec<String> {
+    let mut failed = Vec::new();
+    for name in theme_folder_names(old_dir) {
+        let mut target = new_dir.join(&name);
+        let mut counter = 1;
+        while target.exists() {
+            target = new_dir.join(format!("{name}{counter}"));
+            counter += 1;
+        }
+        if let Err(e) = std::fs::rename(old_dir.join(&name), &target) {
+            // rename fails across volumes; fall back to a recursive copy + remove.
+            match copy_dir_all(&old_dir.join(&name), &target).and_then(|_| std::fs::remove_dir_all(old_dir.join(&name))) {
+                Ok(()) => {}
+                Err(_) => failed.push(format!("{name}: {e}")),
+            }
+        }
+    }
+    failed
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_all(&entry.path(), &to)?;
+        } else {
+            std::fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod relocate_tests {
+    use super::*;
+
+    #[test]
+    fn move_themes_renames_on_collision() {
+        let base = std::env::temp_dir().join(format!("vta_reloc_{}", std::process::id()));
+        let (old, new) = (base.join("old"), base.join("new"));
+        let _ = std::fs::remove_dir_all(&base);
+        for t in ["ThemeA", "ThemeB"] {
+            std::fs::create_dir_all(old.join(t)).unwrap();
+            std::fs::write(old.join(t).join("theme.xml"), b"<x/>").unwrap();
+        }
+        // A name collision already present in the destination.
+        std::fs::create_dir_all(new.join("ThemeA")).unwrap();
+        assert!(ensure_writable_dir(&new).is_ok());
+        assert_eq!(theme_folder_names(&old), ["ThemeA", "ThemeB"]);
+        let failed = move_themes(&old, &new);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(new.join("ThemeA").is_dir()); // pre-existing one untouched
+        assert!(new.join("ThemeA1").join("theme.xml").is_file()); // moved, renamed
+        assert!(new.join("ThemeB").join("theme.xml").is_file());
+        assert!(!old.join("ThemeA").exists() && !old.join("ThemeB").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
 /// One theme folder in the library.
 #[derive(Debug, Clone)]
 pub struct LibraryTheme {

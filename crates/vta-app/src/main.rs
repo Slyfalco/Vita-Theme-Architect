@@ -12,6 +12,7 @@ mod crashlog;
 mod creator_view;
 mod icongen_view;
 mod ai_storage_view;
+mod library_location;
 mod dialogs;
 mod library_actions;
 mod library_view;
@@ -501,6 +502,22 @@ fn main() -> Result<(), slint::PlatformError> {
                     show_toast(&app.window, n, true);
                 }
                 dev_preselect(app);
+                // First-run: recommend moving the library out of the hidden data
+                // folder (v2 recommend_library_location, deferred to after show).
+                {
+                    let ctx = Rc::new(settings_view::SettingsCtx {
+                        dirs: app.dirs.clone(),
+                        settings: app.settings.clone(),
+                        library: app.library.clone(),
+                        themes: app.themes.clone(),
+                    });
+                    let w = app.window.as_weak();
+                    Timer::single_shot(Duration::from_millis(400), move || {
+                        if let Some(app) = w.upgrade() {
+                            library_location::recommend_on_first_run(&app, ctx);
+                        }
+                    });
+                }
                 // Silent startup update check (official builds, if enabled).
                 if settings_view::official_build() && app.settings.borrow().flag("auto_update_check", true) {
                     let w = app.window.as_weak();
