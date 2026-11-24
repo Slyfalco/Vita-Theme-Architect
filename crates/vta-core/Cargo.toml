@@ -24,6 +24,16 @@ png = "0.18"
 color_quant = "2"
 symphonia = { version = "0.6", features = ["mp3", "flac", "vorbis", "ogg", "wav", "pcm", "aiff"] }
 at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v1" }
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+hmac = "0.12"
+pbkdf2 = "0.12"
+base64 = "0.22"
+getrandom = "0.2"
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_Storage_FileSystem"] }
