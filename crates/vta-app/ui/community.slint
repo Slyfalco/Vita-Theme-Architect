@@ -1,0 +1,502 @@
+// Community Browser (design/v3-ui/community_theme_repository).
+
+import { ScrollView } from "std-widgets.slint";
+import { Palette, Type, Density } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind, IconBtn, Tag, Segment, Panel, Caption, SearchField, Dropdown, Field } from "widgets.slint";
+import { Shell } from "state.slint";
+
+export struct RemoteTheme {
+    index: int,
+    title: string,
+    author: string,
+    version: string,
+    downloads: string,
+    preview: image,
+    has-preview: bool,
+}
+
+export struct PageButton {
+    number: int,     // 0 = ellipsis
+}
+
+export global Community {
+    in property <bool> available: false;
+    in property <string> unavailable-reason;
+    in property <bool> loading: false;
+    in property <string> error;
+    in property <[RemoteTheme]> themes;
+    in property <int> list-version: 0;   // bumped on each new page: scroll to top
+    in property <string> total-text;
+    in property <int> page: 1;
+    in property <int> pages: 1;
+    in property <[PageButton]> pager;
+    in-out property <string> search;
+    in-out property <int> field: 0;    // title, author, tags
+    in-out property <int> sort: 0;     // newest, oldest, az, za, downloads
+    in-out property <string> goto-page: "1";
+    in-out property <int> selected: -1;
+    // Detail
+    in property <string> d-title;
+    in property <string> d-author;
+    in property <string> d-version;
+    in property <string> d-downloads;
+    in property <string> d-added;
+    in property <string> d-updated;
+    in property <string> d-validation;
+    in property <string> d-description;
+    in property <[string]> d-tags;
+    in property <bool> d-has-extra;
+    in property <image> d-home;
+    in property <image> d-lock;
+    in property <bool> d-home-loaded;
+    in property <bool> d-lock-loaded;
+    in-out property <int> d-tab: 0;
+
+    callback search-changed(string);
+    callback field-changed(int);
+    callback sort-changed(int);
+    callback show-page(int);
+    callback reload();
+    callback select(int);
+    callback tag-clicked(string);
+    callback download();
+    callback download-extra();
+}
+
+component ThemeTile inherits Rectangle {
+    in property <RemoteTheme> theme;
+    in property <bool> selected;
+    border-radius: Palette.radius-card;
+    background: root.selected ? Palette.surface3 : touch.has-hover ? Palette.surface2.brighter(5%) : Palette.surface2;
+    border-width: 1px;
+    border-color: root.selected ? Palette.accent.transparentize(30%) : touch.has-hover ? Palette.accent.transparentize(55%) : Palette.outline.transparentize(40%);
+    drop-shadow-blur: root.selected ? 22px : 0;
+    drop-shadow-color: Palette.primary.transparentize(70%);
+    animate background, border-color { duration: 150ms; }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Community.select(root.theme.index); }
+        double-clicked => {
+            Community.select(root.theme.index);
+            Community.download();
+        }
+    }
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Rectangle {
+            height: self.width * 9 / 16;
+            border-radius: 10px;
+            background: Palette.inset;
+            clip: true;
+            if root.theme.has-preview: Image {
+                source: root.theme.preview;
+                width: parent.width;
+                height: parent.height;
+                image-fit: cover;
+            }
+            if !root.theme.has-preview: Icon {
+                source: Icons.image;
+                size: 30px;
+                tint: Palette.text-lo;
+            }
+        }
+        Text {
+            text: root.theme.title;
+            color: Palette.text-hi;
+            font-size: Type.headline-md;
+            font-weight: 600;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Text {
+                text: "by";
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+            }
+            Text {
+                text: root.theme.author;
+                color: Palette.text-hi;
+                font-size: Type.body-sm;
+                font-weight: 600;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: "v" + root.theme.version;
+                color: Palette.text-lo;
+                font-family: Palette.mono-font;
+                font-size: Type.label-sm;
+            }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Icon {
+                source: Icons.download;
+                size: 15px;
+                tint: Palette.text-lo;
+            }
+            Text {
+                text: root.theme.downloads;
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+}
+
+component StatTile inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    border-radius: 10px;
+    background: Palette.inset;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+        Text {
+            text: root.label;
+            color: Palette.text-mid;
+            font-size: Type.body-sm;
+        }
+        Text {
+            text: root.value;
+            color: Palette.text-hi;
+            font-size: Type.body-lg;
+            font-weight: 600;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component Inspector inherits Panel {
+    width: Density.narrow ? 360px : 440px;
+    if Community.selected < 0: VerticalLayout {
+        alignment: center;
+        padding: 32px;
+        spacing: 12px;
+        Icon {
+            source: Icons.visibility;
+            size: 40px;
+            tint: Palette.text-lo;
+        }
+        Text {
+            text: "Select a theme to see its details";
+            color: Palette.text-mid;
+            horizontal-alignment: center;
+        }
+    }
+    if Community.selected >= 0: ScrollView {
+        content-width: self.visible-width;
+        VerticalLayout {
+            padding: 18px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 8px;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Palette.accent;
+                }
+                Text {
+                    text: "Theme Preview";
+                    color: Palette.text-hi;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Rectangle {
+                    height: 34px;
+                    border-radius: 8px;
+                    background: Palette.inset;
+                    HorizontalLayout {
+                        padding: 3px;
+                        spacing: 2px;
+                        Segment { text: "LiveArea"; selected: Community.d-tab == 0; clicked => { Community.d-tab = 0; } }
+                        Segment { text: "Lockscreen"; selected: Community.d-tab == 1; clicked => { Community.d-tab = 1; } }
+                    }
+                }
+            }
+            stage := Rectangle {
+                height: self.width * 9 / 16;
+                border-radius: 12px;
+                background: #05070a;
+                border-width: 1px;
+                border-color: Palette.outline;
+                clip: true;
+                property <bool> loaded: Community.d-tab == 0 ? Community.d-home-loaded : Community.d-lock-loaded;
+                if stage.loaded: Image {
+                    source: Community.d-tab == 0 ? Community.d-home : Community.d-lock;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: contain;
+                }
+                if !stage.loaded: Text {
+                    text: "Loading preview…";
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                }
+            }
+            Text {
+                text: Community.d-title;
+                color: Palette.text-hi;
+                font-size: Type.headline-lg + 4px;
+                font-weight: 700;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: "Created by"; color: Palette.text-mid; font-size: Type.body-md; }
+                Text { text: Community.d-author; color: Palette.accent; font-size: Type.body-md; font-weight: 600; overflow: elide; }
+                Text { text: "•  v" + Community.d-version; color: Palette.text-lo; font-size: Type.body-md; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            GridLayout {
+                spacing: 8px;
+                Row {
+                    StatTile { label: "Total Downloads"; value: Community.d-downloads; }
+                    StatTile { label: "Validation"; value: Community.d-validation; }
+                }
+                Row {
+                    StatTile { label: "Date Added"; value: Community.d-added; }
+                    StatTile { label: "Last Updated"; value: Community.d-updated; }
+                }
+            }
+            if Community.d-description != "": VerticalLayout {
+                spacing: 6px;
+                Caption { text: "DESCRIPTION"; }
+                Text {
+                    text: Community.d-description;
+                    color: Palette.text-hi;
+                    font-size: Type.body-md;
+                    wrap: word-wrap;
+                }
+            }
+            if Community.d-tags.length > 0: VerticalLayout {
+                spacing: 8px;
+                Caption { text: "TAGS"; }
+                // Wrapping row of tag chips (approximate flow layout).
+                tags := Rectangle {
+                    property <length> chip-w: 120px;
+                    property <int> per-row: max(1, floor(self.width / (self.chip-w + 8px)));
+                    height: ceil(Community.d-tags.length / self.per-row) * 36px;
+                    for t[i] in Community.d-tags: Rectangle {
+                        x: mod(i, tags.per-row) * (tags.chip-w + 8px);
+                        y: floor(i / tags.per-row) * 36px;
+                        width: tags.chip-w;
+                        height: 28px;
+                        border-radius: 6px;
+                        background: tag-touch.has-hover ? Palette.surface3 : Palette.inset;
+                        Text {
+                            text: t;
+                            width: parent.width - 12px;
+                            color: Palette.text-hi;
+                            font-size: Type.body-sm;
+                            overflow: elide;
+                            horizontal-alignment: center;
+                        }
+                        tag-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Community.tag-clicked(t); }
+                        }
+                    }
+                }
+            }
+            if Community.d-has-extra: Btn {
+                text: "Open / Download Extra";
+                icon: Icons.stacks;
+                has-icon: true;
+                clicked => { Community.download-extra(); }
+            }
+            Btn {
+                text: "Download & Import Theme";
+                icon: Icons.cloud-upload;
+                has-icon: true;
+                kind: ButtonKind.primary;
+                min-height: 56px;
+                font-size: Type.body-lg;
+                clicked => { Community.download(); }
+            }
+        }
+    }
+}
+
+export component CommunityPage inherits Rectangle {
+    if !Community.available: VerticalLayout {
+        alignment: center;
+        spacing: 14px;
+        Icon {
+            source: Icons.public;
+            size: 56px;
+            tint: Palette.text-lo;
+        }
+        Text {
+            text: "Community Browser";
+            color: Palette.text-hi;
+            font-size: Type.headline-xl;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: Community.unavailable-reason;
+            color: Palette.text-mid;
+            font-size: Type.body-md;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    if Community.available: VerticalLayout {
+        padding-left: 28px;
+        padding-right: 28px;
+        padding-bottom: 16px;
+        spacing: 14px;
+        Panel {
+            height: Density.compact ? 60px : 72px;
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 12px;
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    SearchField {
+                        placeholder: "Search the community repository";
+                        text <=> Community.search;
+                        edited(t) => { Community.search-changed(t); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Dropdown {
+                        min-width: 170px;
+                        options: ["Search by Title", "Search by Author", "Search by Tags"];
+                        current-index <=> Community.field;
+                        selected(i) => { Community.field-changed(i); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Dropdown {
+                        min-width: 210px;
+                        options: ["Last Updated (Newest)", "Last Updated (Oldest)", "Alphabetical (A-Z)", "Alphabetical (Z-A)", "Most Downloaded"];
+                        current-index <=> Community.sort;
+                        selected(i) => { Community.sort-changed(i); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Btn {
+                        text: "Reload";
+                        icon: Icons.refresh;
+                        has-icon: true;
+                        enabled: !Community.loading;
+                        clicked => { Community.reload(); }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 20px;
+            vertical-stretch: 1;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 12px;
+                HorizontalLayout {
+                    Caption { text: "REPOSITORY CATALOG"; }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: Community.loading ? "Loading…" : Community.total-text;
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    if Community.error != "": Text {
+                        text: Community.error;
+                        color: Palette.danger;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        width: parent.width - 40px;
+                    }
+                    scroller := ScrollView {
+                        content-width: self.visible-width;
+                        property <int> version: Community.list-version;
+                        changed version => { self.content-y = 0; }
+                        grid := Rectangle {
+                            property <int> cols: Density.narrow ? 2 : 3;
+                            property <length> gap: 14px;
+                            property <length> cell-w: (self.width - 12px - (self.cols - 1) * self.gap) / self.cols;
+                            property <length> cell-h: self.cell-w * 9 / 16 + 112px;
+                            height: ceil(Community.themes.length / self.cols) * (self.cell-h + self.gap);
+                            for t[i] in Community.themes: ThemeTile {
+                                theme: t;
+                                selected: t.index == Community.selected;
+                                x: mod(i, grid.cols) * (grid.cell-w + grid.gap);
+                                y: floor(i / grid.cols) * (grid.cell-h + grid.gap);
+                                width: grid.cell-w;
+                                height: grid.cell-h;
+                            }
+                        }
+                    }
+                }
+                // Pager
+                HorizontalLayout {
+                    spacing: 6px;
+                    Btn {
+                        text: "Previous";
+                        compact: true;
+                        enabled: Community.page > 1 && !Community.loading;
+                        clicked => { Community.show-page(Community.page - 1); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    for p in Community.pager: Rectangle {
+                        width: 38px;
+                        height: 36px;
+                        border-radius: 8px;
+                        background: p.number == Community.page ? Palette.primary : p.number > 0 && pg-touch.has-hover ? Palette.surface3 : p.number > 0 ? Palette.surface2 : transparent;
+                        Text {
+                            text: p.number > 0 ? p.number : "…";
+                            color: p.number == Community.page ? Palette.on-primary : Palette.text-hi;
+                            font-size: Type.body-sm;
+                        }
+                        pg-touch := TouchArea {
+                            enabled: p.number > 0 && p.number != Community.page;
+                            mouse-cursor: pointer;
+                            clicked => { Community.show-page(p.number); }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn {
+                        text: "Next";
+                        compact: true;
+                        enabled: Community.page < Community.pages && !Community.loading;
+                        clicked => { Community.show-page(Community.page + 1); }
+                    }
+                    Rectangle { width: 16px; }
+                    Text {
+                        text: "Go to page:";
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                        vertical-alignment: center;
+                    }
+                    Field {
+                        width: 70px;
+                        mono: true;
+                        text <=> Community.goto-page;
+                    }
+                    Btn {
+                        text: "Jump";
+                        compact: true;
+                        clicked => { Community.show-page(Community.goto-page.to-float()); }
+                    }
+                }
+            }
+            Inspector { }
+        }
+    }
+}

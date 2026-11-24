@@ -7,6 +7,7 @@ slint::include_modules!();
 mod app_theme;
 mod audio;
 mod bgm_view;
+mod community_view;
 mod creator_view;
 mod icongen_view;
 mod dialogs;
@@ -14,6 +15,7 @@ mod library_actions;
 mod library_view;
 mod platform;
 mod settings_view;
+mod submit_view;
 mod updater_view;
 
 use library_view::{LibraryState, SharedLibrary};
@@ -122,6 +124,12 @@ fn wire_shell(app: &App, ctx: Rc<settings_view::SettingsCtx>) {
             if page == Page::Settings {
                 settings_view::load(app, &ctx);
             }
+            if page == Page::Community {
+                let s = ctx.settings.borrow();
+                let extras = ctx.dirs.load_path(&s.str_or("extras_library_path", ""), &ctx.dirs.default_extras_path());
+                drop(s);
+                community_view::opened(app, extras);
+            }
             if page == Page::Creator && !creator_view::is_dirty() && app.global::<Creator>().get_title().is_empty() {
                 // Nothing loaded yet: start a new theme.
                 creator_view::new_theme(app, &ctx.settings);
@@ -186,7 +194,7 @@ fn library_paths(dirs: &DataDirs, settings: &mut Settings) -> std::path::PathBuf
 
 /// Centre a window on the monitor it opened on (falls back to the primary one).
 /// Returns false while the native window doesn't exist yet.
-fn center_on_screen(window: &slint::Window) -> bool {
+pub(crate) fn center_on_screen(window: &slint::Window) -> bool {
     let target = window.with_winit_window(|win| {
         let monitor = win.current_monitor().or_else(|| win.primary_monitor())?;
         let (pos, size) = (monitor.position(), monitor.size());
@@ -225,6 +233,9 @@ fn dev_preselect(app: &App) {
     }
     if let Some(i) = std::env::var("VTA_DEV_SELECT").ok().and_then(|v| v.parse().ok()) {
         library_view::select(&app.window, &app.library, i);
+    }
+    if let Some(i) = std::env::var("VTA_DEV_SUBMIT").ok().and_then(|v| v.parse().ok()) {
+        app.window.global::<Library>().invoke_submit(i);
     }
     if let Some(i) = std::env::var("VTA_DEV_EDIT").ok().and_then(|v| v.parse().ok()) {
         app.window.global::<Library>().invoke_edit(i);
@@ -310,6 +321,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 dialogs::wire(&app.window);
                 library_actions::wire(&app.window, &app.library, &app.settings);
                 creator_view::wire(&app.window, &app.library, &app.settings);
+                community_view::wire(&app.window);
+                submit_view::wire(&app.window, &app.library);
                 library_view::rescan(&app.window, &app.library);
                 let problems = app.library.borrow().problems.len();
                 (problems > 0).then(|| format!("{problems} theme folder(s) skipped (invalid theme.xml or missing files)"))

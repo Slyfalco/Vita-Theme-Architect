@@ -11,8 +11,10 @@ import { CreatorPage, Creator, ColorPicker, ColorPickerLayer, AssetSlot, PageSlo
 import { Splash } from "splash.slint";
 import { DialogLayer, Dialog, DialogButton, DialogIcon, PickItem } from "dialogs.slint";
 import { ButtonKind } from "widgets.slint";
+import { CommunityPage, Community, RemoteTheme, PageButton } from "community.slint";
+import { SubmitWindow, ThemeExists, ThemeExistsLayer, ExistingTheme } from "submit.slint";
 
-export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup }
+export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup, Community, RemoteTheme, PageButton, SubmitWindow, ThemeExists, ExistingTheme }
 
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-Medium.ttf";
@@ -22,27 +24,6 @@ import "fonts/JetBrainsMono-Regular.ttf";
 import "fonts/JetBrainsMono-Medium.ttf";
 import "fonts/JetBrainsMono-Bold.ttf";
 
-component Placeholder inherits Rectangle {
-    in property <string> title;
-    in property <string> note;
-    VerticalLayout {
-        alignment: center;
-        spacing: 12px;
-        Text {
-            text: root.title;
-            color: Palette.text-hi;
-            font-size: Type.headline-xl;
-            font-weight: 700;
-            horizontal-alignment: center;
-        }
-        Text {
-            text: root.note;
-            color: Palette.text-mid;
-            font-size: Type.body-md;
-            horizontal-alignment: center;
-        }
-    }
-}
 
 // Invisible strips along the window edges for resizing a frameless window.
 component ResizeEdge inherits TouchArea {
@@ -135,10 +116,7 @@ export component AppWindow inherits Window {
                             visible: Shell.page == Page.library;
                         }
                         if Shell.page == Page.creator: CreatorPage { }
-                        if Shell.page == Page.community: Placeholder {
-                            title: "Community Browser";
-                            note: Shell.online-available ? "Coming next in the v3 build." : Shell.online-unavailable-reason;
-                        }
+                        if Shell.page == Page.community: CommunityPage { }
                         if Shell.page == Page.settings: SettingsPage { }
                     }
                 }
@@ -172,6 +150,10 @@ export component AppWindow inherits Window {
         }
 
         ColorPickerLayer {
+            width: parent.width;
+            height: parent.height;
+        }
+        ThemeExistsLayer {
             width: parent.width;
             height: parent.height;
         }

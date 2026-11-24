@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 vta-core = { path = "../vta-core" }
 vta-online = { path = "../vta-online" }
-slint = { version = "1.19", features = ["unstable-winit-030"] }
+slint = { version = "1.19", features = ["unstable-winit-030", "raw-window-handle-06"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -22,6 +22,10 @@ at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v1" }
 cpal = "0.18"
 rfd = "0.18"
 arboard = { version = "3", default-features = false }
+wry = "0.57"
+base64 = "0.23"
+ureq = "3"
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 slint-build = "1.19"

@@ -557,14 +557,9 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     let a = app.as_weak();
     c.on_remove_page(move |page| {
         let app = a.unwrap();
-        // Later pages move up so the pages stay contiguous (the Vita needs no gaps).
-        STATE.with(|s| {
-            let mut st = s.borrow_mut();
-            let i = page as usize - 2;
-            if i < st.pages.len() {
-                st.pages.remove(i);
-            }
-        });
+        // As in v2: clearing a page also clears every page after it (pages must
+        // stay contiguous; v2 cascade-cleared the later page inputs).
+        STATE.with(|s| s.borrow_mut().pages.truncate(page as usize - 2));
         mark_dirty(&app);
         refresh(&app);
     });

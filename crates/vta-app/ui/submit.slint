@@ -1,0 +1,157 @@
+// Theme submission (v2 `submit_theme_to_repo`): the "Theme Exists" choice and the
+// window that hosts the repository's submission page in the system web engine.
+
+import { ScrollView } from "std-widgets.slint";
+import { Palette, Type } from "palette.slint";
+import { Icons } from "icons.slint";
+import { Icon, Btn, ButtonKind } from "widgets.slint";
+
+// Hosts the web view (a child of this window, created from Rust). Same size and
+// title as v2's pywebview window; not resizable.
+export component SubmitWindow inherits Window {
+    title: "Submit Theme to PSVT";
+    icon: @image-url("../../../Assets/app_icon.png");
+    // A fixed size makes the window non-resizable (v2: resizable=False).
+    width: 800px;
+    height: 600px;
+    background: Palette.canvas;
+}
+
+export struct ExistingTheme {
+    title: string,
+    author: string,
+    version: string,
+    downloads: string,
+    preview: image,
+    has-preview: bool,
+}
+
+export global ThemeExists {
+    in-out property <bool> open: false;
+    in property <string> theme-title;
+    in property <[ExistingTheme]> matches;
+    in-out property <int> chosen: 0;
+    callback finish(string);   // "update" | "new" | "cancel"
+}
+
+export component ThemeExistsLayer inherits Rectangle {
+    if ThemeExists.open: Rectangle {
+        background: #000000a8;
+        TouchArea { }
+        Rectangle {
+            width: min(600px, root.width - 48px);
+            height: body.preferred-height;
+            border-radius: Palette.radius-card;
+            background: Palette.surface1;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            body := VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+                Text {
+                    text: "Theme Exists";
+                    color: Palette.text-hi;
+                    font-size: Type.headline-md;
+                    font-weight: 600;
+                }
+                Text {
+                    text: "A theme named '" + ThemeExists.theme-title + "' already exists in the repository.";
+                    color: Palette.text-hi;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: ThemeExists.matches.length > 1
+                        ? "Update one of the existing themes below, or submit this as a completely new theme."
+                        : "Update the existing theme below, or submit this as a completely new theme.";
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
+                    wrap: word-wrap;
+                }
+                Rectangle {
+                    height: min(ThemeExists.matches.length * 140px, 430px);
+                    ScrollView {
+                        content-width: self.visible-width;
+                        VerticalLayout {
+                            spacing: 8px;
+                            for m[i] in ThemeExists.matches: Rectangle {
+                                height: 132px;
+                                border-radius: 12px;
+                                background: i == ThemeExists.chosen && ThemeExists.matches.length > 1 ? Palette.surface3 : Palette.surface2;
+                                border-width: 1px;
+                                border-color: i == ThemeExists.chosen && ThemeExists.matches.length > 1 ? Palette.accent : Palette.outline.transparentize(40%);
+                                TouchArea {
+                                    mouse-cursor: ThemeExists.matches.length > 1 ? pointer : default;
+                                    clicked => { ThemeExists.chosen = i; }
+                                }
+                                HorizontalLayout {
+                                    padding: 6px;
+                                    spacing: 14px;
+                                    if ThemeExists.matches.length > 1: VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            width: 20px;
+                                            height: 20px;
+                                            border-radius: 10px;
+                                            border-width: 2px;
+                                            border-color: i == ThemeExists.chosen ? Palette.accent : Palette.text-lo;
+                                            if i == ThemeExists.chosen: Rectangle {
+                                                width: 10px;
+                                                height: 10px;
+                                                border-radius: 5px;
+                                                background: Palette.accent;
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: 213px;
+                                        border-radius: 8px;
+                                        background: Palette.inset;
+                                        clip: true;
+                                        if m.has-preview: Image {
+                                            source: m.preview;
+                                            width: parent.width;
+                                            height: parent.height;
+                                            image-fit: cover;
+                                        }
+                                        if !m.has-preview: Text {
+                                            text: "Loading preview…";
+                                            color: Palette.text-lo;
+                                            font-size: Type.body-sm;
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        alignment: center;
+                                        Text { text: m.title; color: Palette.text-hi; font-weight: 700; wrap: word-wrap; }
+                                        Text { text: "by " + m.author; color: Palette.text-mid; font-size: Type.body-sm; }
+                                        Text { text: "Version " + m.version + "  ·  " + m.downloads + " downloads"; color: Palette.text-mid; font-size: Type.body-sm; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Btn {
+                        text: "Update Existing";
+                        kind: ButtonKind.success;
+                        clicked => { ThemeExists.finish("update"); }
+                    }
+                    Btn {
+                        text: "Submit as New";
+                        clicked => { ThemeExists.finish("new"); }
+                    }
+                    Btn {
+                        text: "Cancel";
+                        kind: ButtonKind.ghost;
+                        clicked => { ThemeExists.finish("cancel"); }
+                    }
+                }
+            }
+        }
+    }
+}
