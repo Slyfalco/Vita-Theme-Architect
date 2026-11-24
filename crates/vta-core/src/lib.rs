@@ -2,6 +2,7 @@
 
 pub mod build;
 pub mod iconai;
+pub mod iconai_net;
 pub mod import;
 pub mod integrity;
 pub mod library;

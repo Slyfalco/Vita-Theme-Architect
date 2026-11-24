@@ -175,7 +175,7 @@ fn normalise_color(value: String) -> String {
 
 /// Decode a theme.xml file to text the way expat would: honour a BOM, else the XML
 /// declaration's encoding, else UTF-8.
-fn decode_xml(bytes: &[u8]) -> Option<String> {
+pub(crate) fn decode_xml(bytes: &[u8]) -> Option<String> {
     if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(bytes) {
         let (text, had_errors) = enc.decode_without_bom_handling(&bytes[bom_len..]);
         return (!had_errors).then(|| text.into_owned());

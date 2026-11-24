@@ -19,16 +19,19 @@ ureq = "3"
 regex = "1"
 flate2 = "1"
 tar = "0.4"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 png = "0.18"
 color_quant = "2"
 symphonia = { version = "0.6", features = ["mp3", "flac", "vorbis", "ogg", "wav", "pcm", "aiff"] }
+base64 = "0.22"
+sha1 = "0.10"
+htmlize = { version = "1", features = ["unescape"] }
+vta-online = { path = "../vta-online" }
 at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v1" }
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 hmac = "0.12"
 pbkdf2 = "0.12"
-base64 = "0.22"
 getrandom = "0.2"
 url = "2"
 
