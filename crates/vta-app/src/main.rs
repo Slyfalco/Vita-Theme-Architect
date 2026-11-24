@@ -41,6 +41,11 @@ pub fn edition_name() -> &'static str {
     }
 }
 
+thread_local! {
+    /// The resolved data folders, for controllers that need them outside the App struct.
+    pub(crate) static DATA_DIRS: RefCell<Option<DataDirs>> = const { RefCell::new(None) };
+}
+
 struct App {
     window: AppWindow,
     dirs: DataDirs,
@@ -319,6 +324,9 @@ fn dev_preselect(app: &App) {
     if let Some(t) = std::env::var("VTA_DEV_CTAB").ok().and_then(|v| v.parse().ok()) {
         app.window.global::<Creator>().set_tab(t);
     }
+    if std::env::var("VTA_DEV_ICONGEN").is_ok() {
+        app.window.global::<Creator>().invoke_open_icon_generator();
+    }
     if let Some(t) = std::env::var("VTA_DEV_STAGE").ok().and_then(|v| v.parse().ok()) {
         app.window.global::<Library>().set_stage_tab(t);
     }
@@ -402,6 +410,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 creator_view::wire(&app.window, &app.library, &app.settings);
                 community_view::wire(&app.window);
                 submit_view::wire(&app.window, &app.library);
+                DATA_DIRS.with(|d| *d.borrow_mut() = Some(app.dirs.clone()));
+                icongen_view::wire(&app.window);
                 library_view::rescan(&app.window, &app.library);
                 let problems = app.library.borrow().problems.len();
                 (problems > 0).then(|| format!("{problems} theme folder(s) skipped (invalid theme.xml or missing files)"))
@@ -499,6 +509,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     slint::run_event_loop_until_quit()?;
+    icongen_view::cleanup();
     drop(app_slot);
     Ok(())
 }

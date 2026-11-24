@@ -14,8 +14,9 @@ import { ButtonKind } from "widgets.slint";
 import { CommunityPage, Community, RemoteTheme, PageButton } from "community.slint";
 import { SubmitWindow, ThemeExists, ThemeExistsLayer, ExistingTheme } from "submit.slint";
 import { IconGenPage, IconGen, GenIcon, ReqRow } from "icongen.slint";
+import { ImageSearchLayer, ImageSearch, SearchItem } from "imagesearch.slint";
 
-export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup, Community, RemoteTheme, PageButton, SubmitWindow, ThemeExists, ExistingTheme, IconGen, GenIcon, ReqRow }
+export { Palette, Shell, Library, Page, ThemeRow, ThemeDetail, Splash, Dialog, DialogButton, DialogIcon, PickItem, ButtonKind, SettingsState, Creator, ColorPicker, AssetSlot, PageSlot, ColorSlot, IconGroup, Community, RemoteTheme, PageButton, SubmitWindow, ThemeExists, ExistingTheme, IconGen, GenIcon, ReqRow, ImageSearch, SearchItem }
 
 import "fonts/Inter-Regular.ttf";
 import "fonts/Inter-Medium.ttf";
@@ -159,6 +160,10 @@ export component AppWindow inherits Window {
             height: parent.height;
         }
         ThemeExistsLayer {
+            width: parent.width;
+            height: parent.height;
+        }
+        ImageSearchLayer {
             width: parent.width;
             height: parent.height;
         }

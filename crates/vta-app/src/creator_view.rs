@@ -462,6 +462,50 @@ pub fn leave(app: &AppWindow, then: impl FnOnce(&AppWindow) + 'static) {
     }
 }
 
+/// What the AI icon generator needs (v2 `open_icon_generator`): the title, the
+/// theme's wallpapers (lock screen + home pages, each picture once) and every
+/// colour set in the creator (AARRGGBB).
+pub fn icon_generator_inputs(app: &AppWindow) -> (String, Vec<PathBuf>, Vec<String>) {
+    let title = app.global::<Creator>().get_title().to_string();
+    STATE.with(|s| {
+        let st = s.borrow();
+        let mut paths: Vec<String> = Vec::new();
+        for id in ["lockpaper.png", "br1.png"] {
+            if let Some(p) = st.sources.get(id).filter(|p| !p.is_empty()) {
+                paths.push(p.clone());
+            }
+        }
+        paths.extend(st.pages.iter().map(|p| p.src.clone()));
+        let mut seen = std::collections::HashSet::new();
+        let wallpapers: Vec<PathBuf> = paths
+            .into_iter()
+            .filter(|p| Path::new(p).is_file())
+            .filter(|p| seen.insert(vta_core::paths::normcase(&vta_core::paths::normpath(Path::new(p)))))
+            .map(PathBuf::from)
+            .collect();
+        let mut colors: Vec<String> = st.colors.values().cloned().collect();
+        colors.extend(st.pages.iter().map(|p| p.color.clone()));
+        (title, wallpapers, colors)
+    })
+}
+
+/// "Use Generated Icons": put the generated icons into the icon slots.
+pub fn use_generated_icons(app: &AppWindow, icons: &BTreeMap<String, PathBuf>) {
+    STATE.with(|s| {
+        let mut st = s.borrow_mut();
+        for (name, path) in icons {
+            st.sources.insert(name.clone(), path.to_string_lossy().into_owned());
+        }
+        st.dirty = true;
+    });
+    refresh(app);
+}
+
+/// Source files currently used by the creator (to know which generated sets are still needed).
+pub fn used_sources() -> Vec<PathBuf> {
+    STATE.with(|s| s.borrow().sources.values().map(PathBuf::from).collect())
+}
+
 pub fn is_dirty() -> bool {
     STATE.with(|s| s.borrow().dirty)
 }

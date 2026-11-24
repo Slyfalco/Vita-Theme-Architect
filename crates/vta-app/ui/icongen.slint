@@ -569,6 +569,7 @@ export component IconGenPage inherits Rectangle {
                 padding: 10px;
                 spacing: 8px;
                 Btn {
+                    compact: Density.narrow;
                     text: IconGen.show-log ? "Hide Log" : "Show Log";
                     icon: Icons.description;
                     has-icon: true;
@@ -576,33 +577,39 @@ export component IconGenPage inherits Rectangle {
                     clicked => { IconGen.show-log = !IconGen.show-log; }
                 }
                 if IconGen.view == 1 && !IconGen.busy: Btn {
+                    compact: Density.narrow;
                     text: "Change Settings";
                     kind: ButtonKind.ghost;
                     clicked => { IconGen.view = 0; }
                 }
                 if IconGen.show-install && !IconGen.busy: Btn {
-                    text: IconGen.install-text;
+                    compact: Density.narrow;
+                    text: Density.narrow ? (IconGen.needs-update ? "Update AI..." : "Install AI...") : IconGen.install-text;
                     icon: Icons.download;
                     has-icon: true;
                     clicked => { IconGen.install(); }
                 }
                 if IconGen.show-remove && !IconGen.busy: Btn {
-                    text: IconGen.remove-text;
+                    compact: Density.narrow;
+                    text: Density.narrow ? "Remove AI" : IconGen.remove-text;
                     kind: ButtonKind.danger;
                     clicked => { IconGen.remove(); }
                 }
                 Rectangle { horizontal-stretch: 1; }
                 if IconGen.busy: Btn {
+                    compact: Density.narrow;
                     text: "Cancel";
                     clicked => { IconGen.cancel(); }
                 }
                 Btn {
+                    compact: Density.narrow;
                     text: "Close";
                     kind: ButtonKind.ghost;
                     clicked => { IconGen.close(); }
                 }
                 if !IconGen.busy: Btn {
-                    text: "Use Generated Icons";
+                    compact: Density.narrow;
+                    text: Density.narrow ? "Use Icons" : "Use Generated Icons";
                     enabled: IconGen.can-apply;
                     clicked => { IconGen.apply(); }
                 }
@@ -610,7 +617,8 @@ export component IconGenPage inherits Rectangle {
                     text: "Generate";
                     icon: Icons.auto-awesome;
                     has-icon: true;
-                    hotkey: "F5";
+                    compact: Density.narrow;
+                    hotkey: Density.narrow ? "" : "F5";
                     kind: ButtonKind.primary;
                     enabled: IconGen.can-generate;
                     clicked => { IconGen.generate(); }
