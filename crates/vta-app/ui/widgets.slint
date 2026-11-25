@@ -190,16 +190,17 @@ export component Tag inherits Rectangle {
     in property <color> fg: Palette.text-hi;
     in property <color> bg: Palette.inset;
     in property <bool> mono: false;
-    height: 26px;
-    border-radius: 6px;
+    in property <float> scale: 1.0;   // lets responsive rows shrink the chip
+    height: 26px * root.scale;
+    border-radius: 6px * root.scale;
     background: root.bg;
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
+        padding-left: 10px * root.scale;
+        padding-right: 10px * root.scale;
         Text {
             text: root.text;
             color: root.fg;
-            font-size: Type.body-sm;
+            font-size: Type.body-sm * root.scale;
             font-family: root.mono ? Palette.mono-font : Palette.ui-font;
             vertical-alignment: center;
         }

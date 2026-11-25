@@ -256,7 +256,13 @@ component ThemeCard inherits Rectangle {
     in property <int> index;
     in property <bool> selected;
     property <bool> hovered: touch.has-hover;
-    height: Density.compact ? 136px : 172px;
+    // Width available to the row (from the list's visible width — reading our own
+    // width would loop through the scroll area). Row height and everything inside
+    // scale with it (`s` vs a ~760px reference), so rows stay compact and text
+    // never crowds or clips.
+    in property <length> avail: 760px;
+    property <float> s: max(0.72, min(1.12, root.avail / 760px));
+    height: max(96px, min(150px, root.avail * 0.15));
     border-radius: Palette.radius-card;
     background: root.selected ? Palette.surface3 : root.hovered ? Palette.surface2.brighter(6%) : Palette.surface2;
     border-width: 1px;
@@ -274,22 +280,22 @@ component ThemeCard inherits Rectangle {
     // Selection accent bar
     if root.selected: Rectangle {
         x: 0;
-        y: 14px;
+        y: 10px * root.s;
         width: 4px;
-        height: parent.height - 28px;
+        height: parent.height - 20px * root.s;
         border-radius: 2px;
         background: Palette.accent;
         drop-shadow-blur: 8px;
         drop-shadow-color: Palette.accent;
     }
     HorizontalLayout {
-        padding: 14px;
-        padding-left: 18px;
-        spacing: 22px;
+        padding: 10px * root.s;
+        padding-left: 14px * root.s;
+        spacing: 16px * root.s;
         // 16:9 preview
         Rectangle {
-            width: (parent.height - 28px) * 16 / 9;
-            border-radius: 10px;
+            width: (root.height - 20px * root.s) * 16 / 9;
+            border-radius: 8px * root.s;
             background: Palette.inset;
             border-width: 1px;
             border-color: Palette.outline;
@@ -306,91 +312,87 @@ component ThemeCard inherits Rectangle {
                 tint: Palette.text-lo;
             }
             if root.theme.has-bgm: Rectangle {
-                x: 10px;
-                y: 10px;
-                width: bgm-row.preferred-width + 16px;
-                height: 24px;
-                border-radius: 6px;
+                x: 6px * root.s;
+                y: 6px * root.s;
+                width: bgm-row.preferred-width + 12px * root.s;
+                height: 20px * root.s;
+                border-radius: 5px * root.s;
                 background: #000000b3;
                 bgm-row := HorizontalLayout {
-                    padding-left: 8px;
-                    spacing: 4px;
+                    padding-left: 6px * root.s;
+                    spacing: 3px * root.s;
                     Icon {
                         source: Icons.music-note;
-                        size: 14px;
+                        size: 12px * root.s;
                         tint: Palette.success-text;
                     }
                     Text {
                         text: "BGM";
                         color: #ffffff;
-                        font-size: Type.label-md;
+                        font-size: max(8px, 11px * root.s);
                         font-weight: 700;
                         vertical-alignment: center;
                     }
                 }
             }
             Rectangle {
-                x: parent.width - self.width - 8px;
-                y: parent.height - self.height - 8px;
-                width: size-text.preferred-width + 12px;
-                height: 22px;
-                border-radius: 5px;
+                x: parent.width - self.width - 6px * root.s;
+                y: parent.height - self.height - 6px * root.s;
+                width: size-text.preferred-width + 10px * root.s;
+                height: 18px * root.s;
+                border-radius: 4px * root.s;
                 background: #000000a0;
                 size-text := Text {
                     text: root.theme.size;
                     color: #ffffffb0;
                     font-family: Palette.mono-font;
-                    font-size: Type.label-sm;
+                    font-size: max(8px, 10px * root.s);
                 }
             }
         }
         VerticalLayout {
-            spacing: 6px;
-            padding-top: 2px;
+            spacing: 3px * root.s;
             HorizontalLayout {
-                spacing: 12px;
+                spacing: 8px * root.s;
+                // The title shrinks (elides) only when needed; the version sits
+                // right after it and the spare width goes to the trailing spacer.
                 Text {
                     text: root.theme.title;
                     color: Palette.text-hi;
-                    font-size: 20px;
+                    font-size: max(12px, 17px * root.s);
                     font-weight: 600;
                     overflow: elide;
                     vertical-alignment: center;
+                    horizontal-stretch: 0;
                 }
                 VerticalLayout {
                     alignment: center;
                     Rectangle {
-                        height: 22px;
-                        width: ver.preferred-width + 14px;
-                        border-radius: 5px;
+                        height: 18px * root.s;
+                        width: ver.preferred-width + 10px * root.s;
+                        border-radius: 4px * root.s;
                         background: root.selected ? Palette.primary.transparentize(70%) : transparent;
                         ver := Text {
                             text: "v" + root.theme.version;
                             color: root.selected ? Palette.accent : Palette.text-lo;
                             font-family: Palette.mono-font;
-                            font-size: Type.label-md;
+                            font-size: max(8px, 11px * root.s);
                         }
                     }
                 }
                 Rectangle { horizontal-stretch: 1; }
-                Text {
-                    text: "Local Storage";
-                    color: Palette.text-lo;
-                    font-size: Type.body-sm;
-                    vertical-alignment: center;
-                }
             }
             HorizontalLayout {
-                spacing: 8px;
+                spacing: 6px * root.s;
                 Icon {
                     source: Icons.person;
-                    size: 16px;
+                    size: 13px * root.s;
                     tint: Palette.accent;
                 }
                 Text {
                     text: root.theme.author;
                     color: Palette.accent;
-                    font-size: Type.body-md;
+                    font-size: max(9px, 12px * root.s);
                     font-weight: 500;
                     vertical-alignment: center;
                     overflow: elide;
@@ -398,32 +400,48 @@ component ThemeCard inherits Rectangle {
                 Text {
                     text: "•";
                     color: Palette.text-lo;
+                    font-size: max(9px, 12px * root.s);
                     vertical-alignment: center;
                 }
                 Text {
                     text: "Folder: " + root.theme.folder;
                     color: Palette.text-mid;
                     font-family: Palette.mono-font;
-                    font-size: Type.label-md;
+                    font-size: max(8px, 10.5px * root.s);
                     vertical-alignment: center;
                     overflow: elide;
+                    horizontal-stretch: 1;
                 }
-                Rectangle { horizontal-stretch: 1; }
             }
             Text {
                 text: root.theme.summary;
                 color: Palette.text-mid;
-                font-size: Type.body-md;
+                font-size: max(9px, 12px * root.s);
                 overflow: elide;
             }
             Rectangle { vertical-stretch: 1; }
             HorizontalLayout {
-                spacing: 8px;
-                Tag {
-                    text: root.theme.pages + (root.theme.pages == 1 ? " Home Page" : " Home Pages");
+                spacing: 6px * root.s;
+                VerticalLayout {
+                    alignment: center;
+                    Tag {
+                        scale: root.s * 0.82;
+                        text: root.theme.pages + (root.theme.pages == 1 ? " Home Page" : " Home Pages");
+                    }
                 }
-                if root.theme.icons > 0: Tag {
-                    text: root.theme.icons + " Custom Icons";
+                if root.theme.icons > 0: VerticalLayout {
+                    alignment: center;
+                    Tag {
+                        scale: root.s * 0.82;
+                        text: root.theme.icons + " Custom Icons";
+                    }
+                }
+                Text {
+                    text: "Local Storage";
+                    color: Palette.text-lo;
+                    font-size: max(8px, 10.5px * root.s);
+                    vertical-alignment: center;
+                    overflow: elide;
                 }
                 Rectangle { horizontal-stretch: 1; }
                 IconBtn {
@@ -986,17 +1004,18 @@ export component LibraryPage inherits Rectangle {
                         horizontal-alignment: center;
                     }
                 }
-                ScrollView {
+                list := ScrollView {
                     content-width: self.visible-width;
                     VerticalLayout {
                         padding-right: 12px;
                         padding-top: 4px;
                         padding-bottom: 4px;
-                        spacing: 14px;
+                        spacing: 10px;
                         for row[i] in Library.themes: ThemeCard {
                             theme: row;
                             index: i;
                             selected: i == Library.selected;
+                            avail: list.visible-width - 12px;
                         }
                     }
                 }
