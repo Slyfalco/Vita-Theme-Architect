@@ -689,6 +689,8 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     let a = app.as_weak();
     c.on_edited(move || mark_dirty(&a.unwrap()));
 
+    c.on_sim_sound(|name| crate::audio::play_sim_sound(&name));
+
     // The simulator's clock follows local time.
     tick_clock(&c);
     let a = app.as_weak();

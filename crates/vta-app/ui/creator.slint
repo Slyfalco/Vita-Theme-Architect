@@ -111,6 +111,7 @@ export global Creator {
     in property <image> sim-dot-current;        // screen_current.png
     in property <image> sim-dot-other;          // screen_other.png
     in property <bool> sim-custom-dots: false;
+    callback sim-sound(string);
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
     in-out property <int> icon-filter: 0;   // 0 all, 1 customised, 2 default
@@ -796,6 +797,10 @@ component VitaStage inherits Rectangle {
     in property <bool> custom-dots;
     in-out property <int> page;
     in-out property <bool> locked;
+    // UI sound to play: tap, open, swipe, peel, back.
+    callback sound(string);
+    // A bubble was pressed and the touch has not turned into a swipe.
+    property <bool> armed: false;
 
     property <int> page-count: max(1, root.pages.length);
     property <length> bar-h: root.height * 32 / 544;
@@ -843,6 +848,12 @@ component VitaStage inherits Rectangle {
             property <bool> hit: ta.pressed && !root.locked && b.page == root.page && abs(root.drag-y) < 8px && self.fx * self.fx + self.fy * self.fy < 0.25;
             property <length> d: self.hit ? root.diam * 0.9 : root.diam;
             animate d { duration: 90ms; }
+            changed hit => {
+                if self.hit {
+                    root.armed = true;
+                    root.sound("tap");
+                }
+            }
             // Bubbles drift gently in place, each on its own phase, like the Vita's.
             property <angle> phase: root.floating ? animation-tick() / 3.4s * 360deg + (b.slot * 67 + b.page * 29) * 1deg : 0deg;
             visible: b.page < root.page-count;
@@ -1055,26 +1066,37 @@ component VitaStage inherits Rectangle {
             if e.delta-y < 0 && root.page < root.page-count - 1 {
                 root.page += 1;
                 root.wheel-cool = true;
+                root.sound("swipe");
             } else if e.delta-y > 0 && root.page > 0 {
                 root.page -= 1;
                 root.wheel-cool = true;
+                root.sound("swipe");
             }
             accept
         }
         pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.armed = false;
+            }
             if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
                 if root.locked {
                     // A drag toward the bottom-left, or a tap on the corner, peels it open.
-                    if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.18 {
+                    if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.18
+                        || (self.pressed-x > root.width * 0.8 && self.pressed-y < root.height * 0.4) {
                         root.locked = false;
-                    } else if self.pressed-x > root.width * 0.8 && self.pressed-y < root.height * 0.4 {
-                        root.locked = false;
+                        root.sound("peel");
                     }
                 } else if self.mouse-y - self.pressed-y < -root.height * 0.12 && root.page < root.page-count - 1 {
                     root.page += 1;
+                    root.sound("swipe");
                 } else if self.mouse-y - self.pressed-y > root.height * 0.12 && root.page > 0 {
                     root.page -= 1;
+                    root.sound("swipe");
+                } else if root.armed && abs(self.mouse-y - self.pressed-y) < 8px {
+                    // A tap on a bubble opens its app on the console.
+                    root.sound("open");
                 }
+                root.armed = false;
             }
         }
     }
@@ -1139,6 +1161,7 @@ component SimPanel inherits Panel {
                 custom-dots: Creator.sim-custom-dots;
                 page <=> Creator.sim-page;
                 locked <=> Creator.sim-locked;
+                sound(s) => { Creator.sim-sound(s); }
             }
         }
         HorizontalLayout {
@@ -1158,7 +1181,10 @@ component SimPanel inherits Panel {
                 has-icon: true;
                 compact: true;
                 kind: ButtonKind.secondary;
-                clicked => { Creator.sim-locked = !Creator.sim-locked; }
+                clicked => {
+                    Creator.sim-sound(Creator.sim-locked ? "peel" : "back");
+                    Creator.sim-locked = !Creator.sim-locked;
+                }
             }
         }
     }
