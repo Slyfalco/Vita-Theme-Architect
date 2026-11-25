@@ -18,22 +18,8 @@ use wry::{PageLoadEvent, Rect, WebView, WebViewBuilder};
 const NEW_URL: &str = "https://psvt.ovh/index.php#submit";
 const SUBMIT_PREFIX: &str = "https://psvt.ovh/submit.php";
 
-// --- Page scripts: verbatim from v2 ------------------------------------------
+// --- submit.php scripts: verbatim from v2 (that page is unchanged) ----------
 
-const NAV_REMOVAL: &str = r#"
-        document.querySelectorAll(".ui-bar-a, .ui-page-theme-a .ui-bar-inherit, html .ui-bar-a .ui-bar-inherit, html .ui-body-a .ui-bar-inherit, html body .ui-group-theme-a .ui-bar-inherit").forEach(function(i) {if($(i.parentNode).attr('data-url') !== "/submit.php") {i.remove()}});
-        "#;
-const PADDING_CHANGE: &str = r#"
-        const submitPage = document.getElementById('submit');
-        submitPage.style.paddingTop = '0px'
-        "#;
-const NAV_THEME: &str = r#"
-        (function tryClick(attempts) {
-            var btn = document.querySelector('.ui-input-btn input');
-            if (btn) { btn.click(); return; }
-            if (attempts > 0) setTimeout(function() { tryClick(attempts - 1); }, 300);
-        })(15);
-        "#;
 const BASE64_TO_FILE: &str = r#"
         function base64ToFile(base64, filename, mimeType) {
             // 1. Decode the (Base64 string to a binary string
@@ -100,6 +86,52 @@ const GET_CONTENT: &str = r#"
             await pywebview.api.ready();
         }
         "#;
+
+// --- The site's current home and theme pages ----------------------------------
+//
+// psvt.ovh rebuilt index.php and theme.php (Bootstrap): "#submit" is no longer
+// its own page but a warning pop-up (#submitModal) opened from the menu, and a
+// theme's page has a plain "Submit a New Version" form. submit.php itself is
+// unchanged, so v2's scripts above still fill it in.
+
+/// New theme: open the submit warning straight away, filling the whole window,
+/// with no way to dismiss it (no close button, Esc or backdrop click), so the
+/// only way on is its "go on" button. The window is shown once it is open.
+const SUBMIT_MODAL: &str = r#"
+(function openSubmit(attempts) {
+    var el = document.getElementById('submitModal');
+    if (!el || !window.bootstrap) {
+        if (attempts > 0) setTimeout(function () { openSubmit(attempts - 1); }, 100);
+        else window.pywebview.api.ready();
+        return;
+    }
+    el.classList.remove('fade');
+    el.setAttribute('data-bs-backdrop', 'static');
+    el.setAttribute('data-bs-keyboard', 'false');
+    var dialog = el.querySelector('.modal-dialog');
+    dialog.classList.remove('modal-lg', 'modal-dialog-scrollable');
+    dialog.classList.add('modal-fullscreen');
+    el.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (b) { b.remove(); });
+    var style = document.createElement('style');
+    style.textContent = 'body > :not(#submitModal):not(.modal-backdrop):not(script){visibility:hidden!important}'
+        + '.modal-backdrop{opacity:1!important}';
+    document.head.appendChild(style);
+    el.addEventListener('shown.bs.modal', function () { window.pywebview.api.ready(); }, { once: true });
+    el.addEventListener('hide.bs.modal', function (e) { e.preventDefault(); });
+    new bootstrap.Modal(el, { backdrop: 'static', keyboard: false, focus: true }).show();
+})(50);
+"#;
+
+/// Update: send the theme page's "Submit a New Version" form (while hidden),
+/// which opens submit.php for that theme.
+const SUBMIT_NEW_VERSION: &str = r#"
+(function trySubmit(attempts) {
+    if (window.__vtaSent) return;
+    var form = document.querySelector('form[action="./submit.php"]');
+    if (form) { window.__vtaSent = true; form.submit(); return; }
+    if (attempts > 0) setTimeout(function () { trySubmit(attempts - 1); }, 300);
+})(15);
+"#;
 
 /// The `pywebview.api` the scripts call, bridged to Rust over the IPC channel.
 const API_SHIM: &str = r#"
@@ -311,40 +343,6 @@ fn run_js(js: &str) {
     });
 }
 
-/// Run a script and call `then` on the UI thread once it has finished running
-/// (scripts are evaluated in order, so earlier `run_js` calls are done too).
-fn run_js_then(js: &str, then: impl FnOnce() + 'static) {
-    let then = std::rc::Rc::new(std::cell::RefCell::new(Some(then)));
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    let ok = SESSION.with(|s| {
-        s.borrow().as_ref().and_then(|s| s.webview.as_ref()).is_some_and(|wv| {
-            wv.evaluate_script_with_callback(js, move |_| {
-                let _ = tx.send(());
-            })
-            .is_ok()
-        })
-    });
-    if !ok {
-        if let Some(f) = then.borrow_mut().take() {
-            f();
-        }
-        return;
-    }
-    // The callback arrives on the UI thread's message loop; poll for it.
-    let timer = std::rc::Rc::new(slint::Timer::default());
-    let t2 = timer.clone();
-    let started = std::time::Instant::now();
-    timer.start(slint::TimerMode::Repeated, Duration::from_millis(10), move || {
-        if rx.try_recv().is_ok() || started.elapsed() > Duration::from_secs(5) {
-            t2.stop();
-            if let Some(f) = then.borrow_mut().take() {
-                f();
-            }
-        }
-    });
-    std::mem::forget(timer);
-}
-
 fn close_session() {
     if let Some(s) = SESSION.with(|s| s.borrow_mut().take()) {
         drop(s.webview);
@@ -394,7 +392,7 @@ fn on_page_load(event: PageLoadEvent, url: String) {
                 false
             });
             if go {
-                slint::Timer::single_shot(Duration::from_secs(1), || run_js(NAV_THEME));
+                slint::Timer::single_shot(Duration::from_secs(1), || run_js(SUBMIT_NEW_VERSION));
             }
         }
         PageLoadEvent::Finished => {
@@ -409,20 +407,11 @@ fn on_page_load(event: PageLoadEvent, url: String) {
                 Some(s.is_update)
             });
             match first {
-                Some(false) => {
-                    // v2's `run_js` blocks until each script has run, so the
-                    // window only appears once the page is already cleaned up.
-                    // Do the same: show it from the scripts' completion callback.
-                    run_js(NAV_REMOVAL);
-                    run_js_then(PADDING_CHANGE, || {
-                        SESSION.with(|s| {
-                            if let Some(s) = s.borrow_mut().as_mut() {
-                                reveal(s);
-                            }
-                        })
-                    });
-                }
-                Some(true) => run_js(NAV_THEME),
+                // New theme: open the full-window submit warning; the page calls
+                // `ready()` once it is showing, and only then is the window shown.
+                Some(false) => run_js(SUBMIT_MODAL),
+                // Update: go straight on to submit.php via the theme page's form.
+                Some(true) => run_js(SUBMIT_NEW_VERSION),
                 None => {}
             }
             // v2 `onSubmitLoaded`: on submit.php (once), hide (new path) and fill the form.
