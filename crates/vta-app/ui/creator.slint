@@ -118,6 +118,9 @@ export global Creator {
     in property <int> page1-wave: 12;           // home page 1's background wave type
     in property <image> sim-wave;               // animated background wave frame
     callback sim-sound(string);
+    // Muted by default: no sounds and no BGM. Unmuted, the theme's BGM streams
+    // (looping) while the home screen shows, as on the console.
+    in-out property <bool> sim-muted: true;
     in property <[image]> sim-spin-frames;      // the launched bubble spinning in 3D
     callback sim-launch(int);                   // render those frames for a bubble
     in-out property <int> sim-unlock-request: 0;
@@ -1817,6 +1820,12 @@ component SimPanel inherits Panel {
                 color: Palette.text-mid;
                 font-size: Type.body-sm;
                 vertical-alignment: center;
+            }
+            IconBtn {
+                icon: Creator.sim-muted ? Icons.volume-off : Icons.volume-up;
+                scale: 0.8;
+                tooltip: Creator.sim-muted ? "Unmute: play the theme's BGM and sounds" : "Mute";
+                clicked => { Creator.sim-muted = !Creator.sim-muted; }
             }
         }
         Rectangle {

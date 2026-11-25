@@ -107,6 +107,9 @@ thread_local! {
     static SIM_WAVES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     /// The flat theme icon of each simulator bubble (for the 3D launch spin).
     static SIM_FLAT: RefCell<Vec<Image>> = const { RefCell::new(Vec::new()) };
+    /// The simulator's BGM stream: what it is playing (path + loop start) and
+    /// the player, or a preparation in flight.
+    static SIM_BGM: RefCell<(String, Option<crate::audio::Player>, bool)> = const { RefCell::new((String::new(), None, false)) };
     static WAVE_FADE: RefCell<(i32, i32, Option<std::time::Instant>)> = const { RefCell::new((12, 12, None)) };
 }
 
@@ -363,6 +366,65 @@ fn tick_clock(c: &Creator) {
     c.set_sim_clock(now.format("%-I:%M").to_string().into());
     c.set_sim_ampm(now.format("%p").to_string().into());
     c.set_sim_date(now.format("%-d %B (%A)").to_string().into());
+}
+
+/// Keep the simulator's BGM in step with the console: it streams (looping)
+/// only while unmuted, unlocked and on the Creator. Otherwise the player is
+/// dropped, which stops the AT9 stream outright (no decoding, no audio device).
+/// A BGM that is not AT9 yet is encoded once to a temporary AT9 first, so the
+/// preview plays what the Vita will play.
+fn sync_sim_bgm(app: &AppWindow) {
+    let c = app.global::<Creator>();
+    let bgm = STATE.with(|s| s.borrow().bgm.clone());
+    let loop_start: Option<u32> = c.get_loop_start().trim().parse().ok().filter(|v| *v > 0);
+    let want = !c.get_sim_muted() && !c.get_sim_locked() && !bgm.is_empty() && app.global::<Shell>().get_page() == crate::Page::Creator;
+    let key = if want { format!("{bgm}|{loop_start:?}") } else { String::new() };
+    let start = SIM_BGM.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.0 == key {
+            return false;
+        }
+        // Stop whatever was playing (dropping the player ends its stream).
+        *s = (key.clone(), None, want);
+        want
+    });
+    if !start {
+        return;
+    }
+    let weak = app.as_weak();
+    std::thread::spawn(move || {
+        let src = std::path::PathBuf::from(&bgm);
+        let is_at9 = src.extension().is_some_and(|e| e.eq_ignore_ascii_case("at9"));
+        let path = if is_at9 {
+            Ok(src)
+        } else {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(&key, &mut h);
+            let dest = std::env::temp_dir().join(format!("vta-sim-bgm-{:x}.at9", std::hash::Hasher::finish(&h)));
+            if dest.is_file() {
+                Ok(dest)
+            } else {
+                build::convert_to_at9(&src, &dest, loop_start, &|_, _| {}).map(|_| dest)
+            }
+        };
+        let track = path.and_then(|p| crate::audio::decode_file(&p));
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(_app) = weak.upgrade() else { return };
+            SIM_BGM.with(|s| {
+                let mut s = s.borrow_mut();
+                if s.0 != key {
+                    return; // muted, locked or changed meanwhile
+                }
+                s.2 = false;
+                if let Ok(track) = track {
+                    if let Ok(p) = crate::audio::Player::new(std::sync::Arc::new(track), true) {
+                        p.play();
+                        s.1 = Some(p);
+                    }
+                }
+            });
+        });
+    });
 }
 
 /// After an asset is picked, turn the simulator to where that asset shows.
@@ -762,7 +824,12 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     let a = app.as_weak();
     c.on_edited(move || mark_dirty(&a.unwrap()));
 
-    c.on_sim_sound(|name| crate::audio::play_sim_sound(&name));
+    let a = app.as_weak();
+    c.on_sim_sound(move |name| {
+        if a.upgrade().is_some_and(|app| !app.global::<Creator>().get_sim_muted()) {
+            crate::audio::play_sim_sound(&name);
+        }
+    });
     // A tapped bubble spins into its LiveArea: render its 3D spin frames now.
     let a = app.as_weak();
     c.on_sim_launch(move |i| {
@@ -780,6 +847,7 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     let wave_timer = slint::Timer::default();
     wave_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(33), move || {
         let Some(app) = a.upgrade() else { return };
+        sync_sim_bgm(&app);
         if app.global::<Shell>().get_page() != crate::Page::Creator {
             return;
         }
