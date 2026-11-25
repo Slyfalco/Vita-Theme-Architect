@@ -31,7 +31,8 @@ export struct PageSlot {
 }
 
 // One launcher bubble on the simulated home screen. kind: 0 theme icon,
-// 1 folder (minis inside), 2 Welcome Park (not themeable).
+// 1 folder (minis inside), 2 Welcome Park, 3 PS Store (neither themeable),
+// 4 placeholder game (extra pages).
 export struct SimBubble {
     page: int,
     slot: int,
@@ -974,6 +975,27 @@ component VitaStage inherits Rectangle {
                     commands: "M5 8 H19 L18 21 H6 Z M9 8 V6 A3 3 0 0 1 15 6 V8 H13.5 V6 A1.5 1.5 0 0 0 10.5 6 V8 Z";
                 }
             }
+            // A placeholder for one of the owner's games (extra pages).
+            if b.kind == 4: Rectangle {
+                width: parent.width * 0.9;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                background: @radial-gradient(circle, #8c95a6 0%, #5d6678 60%, #3c4352 100%);
+                border-width: 1px;
+                border-color: #ffffff50;
+                Path {
+                    width: parent.width * 0.5;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    fill: #ffffffd0;
+                    commands: "M7 7 H17 A5 5 0 0 1 17 17 C15.5 17 14.8 15.5 14 14.5 H10 C9.2 15.5 8.5 17 7 17 A5 5 0 0 1 7 7 Z M6 10 V11 H5 V12 H6 V13 H7 V12 H8 V11 H7 V10 Z M16 10.2 A0.8 0.8 0 1 0 16.01 10.2 Z M18 12.2 A0.8 0.8 0 1 0 18.01 12.2 Z";
+                }
+            }
             if b.kind == 2: Rectangle {
                 width: parent.width * 0.9;
                 height: self.width;
@@ -1247,7 +1269,7 @@ component SimPanel inherits Panel {
             spacing: 8px;
             Text {
                 text: Creator.sim-locked ? "Peel the top-right corner to unlock."
-                    : Creator.sim-page >= 2 ? "Extra page: shown once the owner's apps fill more than the 2 stock pages."
+                    : Creator.sim-page >= 2 ? "Extra page: the owner's games go here."
                     : "Scroll or drag to change pages.";
                 color: Palette.text-lo;
                 font-size: Type.label-md;

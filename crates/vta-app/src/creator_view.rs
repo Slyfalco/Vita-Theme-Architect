@@ -248,7 +248,7 @@ const SIM_MIN_PAGES: usize = 2;
 /// lock-screen + indicator images, all from the theme being edited.
 fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     let img = |id: &str| icons.get(id).cloned().unwrap_or_default();
-    let bubbles: Vec<SimBubble> = SIM_HOME
+    let mut bubbles: Vec<SimBubble> = SIM_HOME
         .iter()
         .map(|&(page, slot, id, label, kind)| SimBubble {
             page,
@@ -259,7 +259,6 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
             minis: ModelRc::new(VecModel::from(if kind == 1 { SIM_FOLDER.iter().map(|m| img(m)).collect() } else { Vec::new() })),
         })
         .collect();
-    c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
 
     let col = |st: &State, id: &str, def: &str| parse_argb(st.colors.get(id).map(String::as_str).unwrap_or(def));
     c.set_sim_bar_color(col(st, "m_barColor", "ff000000"));
@@ -289,6 +288,22 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     SIM_WAVES.with(|w| *w.borrow_mut() = waves);
     let pages: Vec<Image> = srcs.iter().map(|p| if p.is_empty() { Image::default() } else { thumb(st, p).0 }).collect();
     let count = pages.len() as i32;
+    // Pages past the stock two hold the owner's own games: plain placeholder
+    // bubbles (a theme can't restyle game icons), numbered across the pages.
+    for page in SIM_MIN_PAGES as i32..count {
+        for slot in 0..10 {
+            let n = (page - SIM_MIN_PAGES as i32) * 10 + slot + 1;
+            bubbles.push(SimBubble {
+                page,
+                slot,
+                icon: Image::default(),
+                label: format!("Game {n}").into(),
+                kind: 4,
+                minis: ModelRc::default(),
+            });
+        }
+    }
+    c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
     c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
     c.set_sim_font_colors(ModelRc::new(VecModel::from(fonts)));
     if c.get_sim_page() >= count {
