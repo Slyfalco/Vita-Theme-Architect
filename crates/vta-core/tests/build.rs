@@ -63,12 +63,15 @@ fn rebuilds_real_theme() {
         }
     }
     input.colors = data.colors.clone();
+    // Page 1's wave is the user's choice too (v2 always wrote 12).
+    input.page_waves.insert(1, "5".into());
     assert!(validate(&input).is_empty(), "{:?}", validate(&input));
     let out = tmp("real");
     let warnings = build_theme(&out, &input, &|_, _, _| {}).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let rebuilt = parse_theme_xml(&out.join("theme.xml"));
     assert_eq!(rebuilt.title, data.title);
+    assert_eq!(rebuilt.page_waves.get("br1_wave").map(String::as_str), Some("5"));
     assert!(find_theme_problem(&out, &rebuilt).is_none());
     assert_eq!(rebuilt.assets.len(), data.assets.len(), "{:?} vs {:?}", rebuilt.assets.keys(), data.assets.keys());
     std::fs::remove_dir_all(&out).ok();

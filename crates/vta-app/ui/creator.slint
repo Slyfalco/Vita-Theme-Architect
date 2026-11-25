@@ -111,6 +111,7 @@ export global Creator {
     in property <image> sim-dot-current;        // screen_current.png
     in property <image> sim-dot-other;          // screen_other.png
     in property <bool> sim-custom-dots: false;
+    in property <int> page1-wave: 12;           // home page 1's background wave type
     in property <image> sim-wave;               // animated background wave frame
     callback sim-sound(string);
     in property <bool> ai-available: false;
@@ -427,6 +428,57 @@ component PagesTab inherits VerticalLayout {
         subtitle: "The PS Vita supports up to 10 swipeable home pages (960×544). Page 1 is set on the Main tab.";
         icon: Icons.wallpaper;
         badge: Creator.pages.length + " of 9 Configured";
+        // Home page 1: its wallpaper is set on the Main tab, its wave here.
+        Rectangle {
+            height: Density.compact ? 96px : 112px;
+            border-radius: 12px;
+            background: Creator.sim-page == 0 && !Creator.sim-locked ? Palette.surface3 : Palette.surface2;
+            border-width: 1px;
+            border-color: Creator.sim-page == 0 && !Creator.sim-locked ? Palette.accent.transparentize(40%) : Palette.outline.transparentize(40%);
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    Creator.sim-page = 0;
+                    Creator.sim-locked = false;
+                }
+            }
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 16px;
+                Thumb {
+                    source: Creator.main-slots.length > 1 ? Creator.main-slots[1].thumb : @image-url("");
+                    has: Creator.main-slots.length > 1 && Creator.main-slots[1].has-thumb;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "Home Page 1";
+                        color: Palette.text-hi;
+                        font-size: Type.body-lg;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "Wallpaper is set on the Main tab";
+                        color: Palette.text-mid;
+                        font-size: Type.body-sm;
+                        overflow: elide;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    Caption { text: "WAVE"; }
+                    Dropdown {
+                        min-width: 90px;
+                        options: ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31"];
+                        current-index: Creator.page1-wave;
+                        selected(w) => { Creator.set-wave(1, w); }
+                    }
+                }
+            }
+        }
         for p[i] in Creator.pages: Rectangle {
             height: Density.compact ? 96px : 112px;
             border-radius: 12px;

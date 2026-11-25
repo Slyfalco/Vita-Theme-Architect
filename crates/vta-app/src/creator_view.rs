@@ -86,6 +86,8 @@ struct State {
     target: String,
     sources: BTreeMap<String, String>,
     pages: Vec<Page>,
+    /// Home page 1's wave type (pages 2-10 keep theirs in `pages`).
+    page1_wave: i32,
     bgm: String,
     colors: BTreeMap<String, String>,
     use_global: bool,
@@ -272,8 +274,8 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     }
     srcs.truncate(10);
     fonts.truncate(10);
-    // Page 1 always builds with wave 12 (as v2 does); the rest use their own.
-    let waves: Vec<i32> = std::iter::once(12).chain(st.pages.iter().map(|p| p.wave)).take(10).collect();
+    c.set_page1_wave(st.page1_wave);
+    let waves: Vec<i32> = std::iter::once(st.page1_wave).chain(st.pages.iter().map(|p| p.wave)).take(10).collect();
     SIM_WAVES.with(|w| *w.borrow_mut() = waves);
     let pages: Vec<Image> = srcs.iter().map(|p| if p.is_empty() { Image::default() } else { thumb(st, p).0 }).collect();
     let count = pages.len() as i32;
@@ -432,7 +434,7 @@ fn reset(app: &AppWindow) {
     STATE.with(|s| {
         let mut st = s.borrow_mut();
         let templates = std::mem::take(&mut st.templates);
-        *st = State { use_global: true, templates, ..Default::default() };
+        *st = State { use_global: true, page1_wave: 12, templates, ..Default::default() };
         st.colors = DEFAULT_COLORS.iter().map(|(id, _, _, v)| (id.to_string(), v.to_string())).collect();
     });
     let c = app.global::<Creator>();
@@ -505,6 +507,7 @@ pub fn edit_theme(app: &AppWindow, theme: &LibraryTheme) {
             st.pages.push(Page { src: full.to_string_lossy().into_owned(), wave, color });
         }
         st.use_global = all_same;
+        st.page1_wave = data.page_waves.get("br1_wave").and_then(|w| w.trim().parse().ok()).unwrap_or(12);
     });
     let c = app.global::<Creator>();
     c.set_title(data.title.clone().unwrap_or_default().into());
@@ -538,6 +541,7 @@ fn build(app: &AppWindow, library: &SharedLibrary) {
             use_global_font_color: st.use_global,
             ..Default::default()
         };
+        input.page_waves.insert(1, st.page1_wave.to_string());
         for (i, p) in st.pages.iter().enumerate() {
             let n = i as u32 + 2;
             input.sources.insert(format!("br{n}.png"), p.src.clone());
@@ -808,11 +812,19 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     c.on_set_wave(move |page, wave| {
         let app = a.unwrap();
         STATE.with(|s| {
-            if let Some(pg) = s.borrow_mut().pages.get_mut(page as usize - 2) {
+            let mut st = s.borrow_mut();
+            if page == 1 {
+                st.page1_wave = wave;
+            } else if let Some(pg) = st.pages.get_mut(page as usize - 2) {
                 pg.wave = wave;
             }
         });
         mark_dirty(&app);
+        refresh(&app);
+        // Show the page whose wave changed, so the new wave is visible.
+        let c = app.global::<Creator>();
+        c.set_sim_locked(false);
+        c.set_sim_page(page - 1);
     });
     let a = app.as_weak();
     c.on_global_font_toggled(move |on| {

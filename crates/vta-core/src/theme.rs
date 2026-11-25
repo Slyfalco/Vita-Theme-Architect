@@ -389,7 +389,7 @@ pub fn theme_xml_string(data: &ThemeData) -> String {
             let bg = bg_param.child("BackgroundParam");
             bg.leaf("m_imageFilePath", br1_path);
             bg.leaf("m_thumbnailFilePath", tbr1_path);
-            bg.leaf("m_waveType", "12");
+            bg.leaf("m_waveType", get(&data.page_waves, "br1_wave", "12"));
             bg.leaf("m_fontColor", global_font_color);
             bg.leaf("m_fontShadow", "1");
         }

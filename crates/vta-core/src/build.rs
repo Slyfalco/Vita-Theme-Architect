@@ -289,7 +289,7 @@ pub struct BuildInput {
     pub bgm_loop_start: Option<u32>,
     /// Colour id (`m_*`) -> AARRGGBB.
     pub colors: BTreeMap<String, String>,
-    /// Page n (2..=10) -> wave type text.
+    /// Page n (1..=10) -> wave type text.
     pub page_waves: BTreeMap<u32, String>,
     /// Page n (2..=10) -> AARRGGBB (used when not using one global font colour).
     pub page_colors: BTreeMap<u32, String>,
@@ -409,7 +409,7 @@ pub fn build_theme(dest: &Path, input: &BuildInput, progress: BuildProgress) -> 
     let _ = std::fs::remove_dir_all(&scratch);
     result?;
 
-    data.page_waves.insert("br1_wave".into(), "12".into());
+    data.page_waves.insert("br1_wave".into(), input.page_waves.get(&1).cloned().unwrap_or_else(|| "12".into()));
     let font = input.colors.get("m_fontColor").cloned().unwrap_or_else(|| "ffffffff".into());
     data.page_colors.insert("br1_color".into(), font);
     for i in 2..=10 {
