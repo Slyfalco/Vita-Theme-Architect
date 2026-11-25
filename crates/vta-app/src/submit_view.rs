@@ -219,6 +219,33 @@ const WATCH_NEW_KEY: &str = r#"
 
 /// Debug builds only (`VTA_DEV_SUBMIT_SPY`): log every request the page makes,
 /// with its body and the server's reply, to the submit trace.
+/// Debug builds only (`VTA_DEV_SUBMIT_SPY`): snapshot the page's full HTML
+/// (with current form values) when it loads and again whenever it changes
+/// (debounced), so the real pages can be inspected afterwards.
+#[cfg(debug_assertions)]
+const PAGE_DUMP: &str = r#"
+(function () {
+    var timer = null, last = '';
+    function dump(why) {
+        if (!document.documentElement) return;
+        document.querySelectorAll('input, textarea').forEach(function (i) {
+            if (i.type !== 'file' && i.type !== 'password') i.setAttribute('data-vta-value', i.value || '');
+        });
+        var html = document.documentElement.outerHTML;
+        if (html === last) return;
+        last = html;
+        window.ipc.postMessage('dump:' + why + '|' + location.pathname + '|' + html);
+    }
+    window.addEventListener('load', function () {
+        dump('load');
+        new MutationObserver(function () {
+            clearTimeout(timer);
+            timer = setTimeout(function () { dump('change'); }, 1200);
+        }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+    });
+})();
+"#;
+
 #[cfg(debug_assertions)]
 const XHR_SPY: &str = r#"
 (function () {
@@ -268,6 +295,7 @@ fn init_script() -> String {
     {
         if std::env::var("VTA_DEV_SUBMIT_SPY").is_ok() {
             s.push_str(XHR_SPY);
+            s.push_str(PAGE_DUMP);
         }
         if let Ok(reply) = std::env::var("VTA_DEV_FAKE_UKEY") {
             s.push_str(&FAKE_UKEY.replace("__VTA_REPLY__", &serde_json::Value::String(reply).to_string()));
@@ -501,6 +529,20 @@ fn close_session() {
 }
 
 fn on_ipc(message: &str) {
+    // Debug builds: page snapshots go to %TEMP%/vta-submit-pages/, not the trace.
+    #[cfg(debug_assertions)]
+    if let Some(rest) = message.strip_prefix("dump:") {
+        let mut parts = rest.splitn(3, '|');
+        let (why, path, html) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+        let dir = std::env::temp_dir().join("vta-submit-pages");
+        let _ = std::fs::create_dir_all(&dir);
+        let n = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
+        let page: String = path.trim_start_matches('/').chars().map(|c| if c.is_alphanumeric() || c == '.' { c } else { '_' }).collect();
+        let file = dir.join(format!("{n:03}-{page}-{why}.html"));
+        let _ = std::fs::write(&file, html);
+        trace(&format!("dump {}", file.display()));
+        return;
+    }
     trace(&format!("ipc {message}"));
     match message {
         "ready" => {
