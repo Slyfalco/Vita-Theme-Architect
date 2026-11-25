@@ -38,8 +38,36 @@ pub fn ask(
         .map(|(t, k)| DialogButton { text: SharedString::from(*t), kind: *k })
         .collect();
     d.set_buttons(ModelRc::new(VecModel::from(buttons)));
+    d.set_has_input(false);
     PENDING.with(|p| *p.borrow_mut() = Some(Box::new(on_answer)));
     d.set_open(true);
+}
+
+/// A dialog with a one-line text entry; `on_answer` gets the clicked button and
+/// the text entered.
+#[allow(clippy::too_many_arguments)]
+pub fn ask_text(
+    app: &AppWindow,
+    icon: DialogIcon,
+    title: &str,
+    message: &str,
+    placeholder: &str,
+    password: bool,
+    buttons: &[(&str, Kind)],
+    on_answer: impl FnOnce(&AppWindow, usize, String) + 'static,
+) {
+    ask(app, icon, title, message, "", buttons, move |app, i| {
+        let d = app.global::<Dialog>();
+        let text = d.get_input().to_string();
+        d.set_input("".into());
+        d.set_has_input(false);
+        on_answer(app, i, text)
+    });
+    let d = app.global::<Dialog>();
+    d.set_input("".into());
+    d.set_input_placeholder(placeholder.into());
+    d.set_input_password(password);
+    d.set_has_input(true);
 }
 
 /// A message with a single OK button.

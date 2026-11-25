@@ -4,6 +4,7 @@
 //! system web engine (WebView2 / WKWebView / WebKitGTK — as pywebview did) and the
 //! same scripts as v2 fill the theme package into the form.
 
+use crate::library_actions::SharedSettings;
 use crate::library_view::{theme_at, SharedLibrary};
 use crate::{dialogs, AppWindow, DialogIcon, ExistingTheme, SubmitWindow, ThemeExists};
 use base64::Engine;
@@ -133,6 +134,34 @@ const SUBMIT_NEW_VERSION: &str = r#"
 })(15);
 "#;
 
+/// submit.php: attach the user key from Settings through the page's own "Add"
+/// pop-up (fill #uki, press Attach), waiting until the page reports it attached
+/// (#ukey set) or shows an error (#error-attach), which is passed back to the app.
+/// `__VTA_KEY__` is replaced with the JSON-quoted key.
+const ATTACH_KEY: &str = r#"
+function vtaAttachKey() {
+    return new Promise(function (done) {
+        var key = __VTA_KEY__;
+        if (!key || !window.jQuery || !document.getElementById('uki')) { done(); return; }
+        $('#uki').val(key);
+        $('#btn-attach').trigger('click');
+        var tries = 40;
+        (function wait() {
+            var err = ($('#error-attach').text() || '').trim();
+            if (($('#ukey').val() || '') !== '') { done(); return; }
+            if (err !== '') {
+                try { $('#popupAddukey').popup('close'); } catch (_) {}
+                window.ipc.postMessage('keyerror:' + err);
+                done();
+                return;
+            }
+            if (--tries <= 0) { done(); return; }
+            setTimeout(wait, 100);
+        })();
+    });
+}
+"#;
+
 /// The `pywebview.api` the scripts call, bridged to Rust over the IPC channel.
 const API_SHIM: &str = r#"
 window.pywebview = { api: {
@@ -155,10 +184,16 @@ struct Session {
     run_once: u32,
     zip: PathBuf,
     shown: bool,
+    /// The repository user key from Settings (empty = none), attached on submit.php.
+    user_key: String,
 }
 
 thread_local! {
     static SESSION: RefCell<Option<Session>> = const { RefCell::new(None) };
+    /// The main window (for messages raised from the web page).
+    static APP: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
+    /// Settings, for the user key.
+    static SETTINGS: RefCell<Option<SharedSettings>> = const { RefCell::new(None) };
     static PENDING: RefCell<Option<(PathBuf, Vec<Entry>)>> = const { RefCell::new(None) };
 }
 
@@ -360,6 +395,17 @@ fn on_ipc(message: &str) {
             }
         }),
         "cancel" => close_session(),
+        m if m.starts_with("keyerror:") => {
+            let err = m["keyerror:".len()..].to_string();
+            if let Some(app) = APP.with(|a| a.borrow().as_ref().and_then(|w| w.upgrade())) {
+                dialogs::message(
+                    &app,
+                    DialogIcon::Warning,
+                    "User key not attached",
+                    &format!("The repository did not accept the user key saved in Settings: {err}\n\nYou can still submit without it, or fix the key in Settings > Connection."),
+                );
+            }
+        }
         "get_content" => {
             let zip = SESSION.with(|s| s.borrow().as_ref().map(|s| s.zip.clone()));
             let reply = match zip.filter(|z| z.is_file()) {
@@ -428,7 +474,21 @@ fn on_page_load(event: PageLoadEvent, url: String) {
                 true
             });
             if act {
-                let combined = [CANCEL_BUTTON, FILE_TEXT, BASE64_TO_FILE, GUESS_MIME_TYPE, OPEN_FILE_BUTTON, GET_CONTENT, "fetchData();"].concat();
+                // The user key (if any) is attached first, so the window shows
+                // with both the theme package and the key already in place.
+                let key = SESSION.with(|s| s.borrow().as_ref().map(|s| s.user_key.clone())).unwrap_or_default();
+                let attach = ATTACH_KEY.replace("__VTA_KEY__", &serde_json::Value::String(key).to_string());
+                let combined = [
+                    CANCEL_BUTTON,
+                    FILE_TEXT,
+                    BASE64_TO_FILE,
+                    GUESS_MIME_TYPE,
+                    OPEN_FILE_BUTTON,
+                    GET_CONTENT,
+                    &attach,
+                    "vtaAttachKey().then(fetchData);",
+                ]
+                .concat();
                 run_js(&combined);
             }
         }
@@ -472,6 +532,7 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
             run_once: 0,
             zip,
             shown: false,
+            user_key: user_key(),
         })
     });
     // The native window exists once the event loop has run; attach the web view then.
@@ -529,9 +590,55 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
     std::mem::forget(timer);
 }
 
-pub fn wire(app: &AppWindow, library: &SharedLibrary) {
+/// The repository user key saved in Settings (empty = none).
+fn user_key() -> String {
+    // Debug builds only: test a key without touching settings.json.
+    #[cfg(debug_assertions)]
+    if let Ok(k) = std::env::var("VTA_DEV_PSVT_KEY") {
+        return k;
+    }
+    SETTINGS.with(|s| s.borrow().as_ref().map(|s| s.borrow().str_or("psvt_user_key", "").trim().to_string())).unwrap_or_default()
+}
+
+/// Before submitting without a saved user key, ask for one (every time, until
+/// a key is saved or "Don't ask again" is chosen; "Not now" skips just this time).
+fn submit_with_key_prompt(app: &AppWindow, library: &SharedLibrary, index: i32) {
+    let ask = SETTINGS.with(|s| s.borrow().as_ref().is_some_and(|s| s.borrow().flag("psvt_key_prompt", true)));
+    if !user_key().is_empty() || !ask || vta_online::status().is_err() || SESSION.with(|s| s.borrow().is_some()) {
+        return submit(app, library, index);
+    }
+    let library = library.clone();
+    dialogs::ask_text(
+        app,
+        DialogIcon::Question,
+        "Do you have a repository user key?",
+        "The repository gives you a user key on your first submission. Attach it every time so your submissions count toward your uploader record (after 5 accepted themes they skip moderation). Paste it below to save it in Settings, and it will be attached for you from now on. If this is your first submission, choose Not now: the repository will create your key.",
+        "Paste your user key",
+        true,
+        &[("Don't ask again", dialogs::Kind::Ghost), ("Not now", dialogs::Kind::Secondary), ("Save key", dialogs::Kind::Primary)],
+        move |app, choice, text| {
+            let key = text.trim().to_string();
+            SETTINGS.with(|s| {
+                if let Some(s) = s.borrow().as_ref() {
+                    let mut s = s.borrow_mut();
+                    match choice {
+                        0 => s.set("psvt_key_prompt", false),
+                        2 if !key.is_empty() => s.set("psvt_user_key", key.clone()),
+                        _ => return,
+                    }
+                    let _ = s.save();
+                }
+            });
+            submit(app, &library, index);
+        },
+    );
+}
+
+pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings) {
+    APP.with(|a| *a.borrow_mut() = Some(app.as_weak()));
+    SETTINGS.with(|s| *s.borrow_mut() = Some(settings.clone()));
     let (a, l) = (app.as_weak(), library.clone());
-    app.global::<crate::Library>().on_submit(move |i| submit(&a.unwrap(), &l, i));
+    app.global::<crate::Library>().on_submit(move |i| submit_with_key_prompt(&a.unwrap(), &l, i));
     let a = app.as_weak();
     app.global::<ThemeExists>().on_finish(move |action| {
         let app = a.unwrap();

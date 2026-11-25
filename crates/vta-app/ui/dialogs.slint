@@ -4,7 +4,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Palette, Type } from "palette.slint";
 import { Icons } from "icons.slint";
-import { Icon, Btn, ButtonKind } from "widgets.slint";
+import { Icon, Btn, ButtonKind, Field } from "widgets.slint";
 
 export enum DialogIcon { info, warning, error, question, success }
 
@@ -26,6 +26,11 @@ export global Dialog {
     in property <string> message;
     in property <string> details;
     in property <[DialogButton]> buttons;
+    // Optional one-line text entry (e.g. a key), shown when has-input is set.
+    in property <bool> has-input: false;
+    in property <string> input-placeholder;
+    in property <bool> input-password: false;
+    in-out property <string> input;
     callback answer(int);
     // Progress
     in-out property <bool> progress-open: false;
@@ -116,6 +121,12 @@ export component DialogLayer inherits Rectangle {
                     color: Palette.text-mid;
                     font-size: Type.body-md;
                     wrap: word-wrap;
+                }
+                if Dialog.has-input: Field {
+                    text <=> Dialog.input;
+                    placeholder: Dialog.input-placeholder;
+                    password: Dialog.input-password;
+                    mono: true;
                 }
                 if Dialog.details != "": VerticalLayout {
                     spacing: 8px;

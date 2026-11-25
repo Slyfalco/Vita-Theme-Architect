@@ -44,6 +44,10 @@ export global SettingsState {
     in-out property <string> hf-token;
     in-out property <bool> ai-min-memory: false;
     in-out property <bool> show-key: false;
+    // Theme repository (psvt.ovh) user key, attached automatically on submit.
+    in-out property <string> psvt-user-key;
+    in-out property <bool> show-psvt-key: false;
+    in-out property <bool> psvt-key-prompt: true;   // ask on submit when no key is set
     in-out property <bool> show-token: false;
     // Footer
     in property <string> footer-status;
@@ -310,6 +314,36 @@ component ConnectionTab inherits VerticalLayout {
                     fg: SettingsState.conn-state == 2 ? Palette.success-text : SettingsState.conn-state == 3 ? Palette.danger : Palette.text-mid;
                 }
             }
+        }
+    }
+    Card {
+        title: "Theme Repository User Key";
+        subtitle: "Your psvt.ovh user key, attached for you whenever you submit a theme.";
+        icon: Icons.lock;
+        FormRow {
+            label: "User Key";
+            note: "Created by the repository on your first submission";
+            HorizontalLayout {
+                spacing: 10px;
+                Field {
+                    text <=> SettingsState.psvt-user-key;
+                    placeholder: "Paste your user key";
+                    password: !SettingsState.show-psvt-key;
+                    mono: true;
+                    horizontal-stretch: 1;
+                }
+                Btn {
+                    text: SettingsState.show-psvt-key ? "Hide" : "Show";
+                    icon: Icons.visibility;
+                    has-icon: true;
+                    clicked => { SettingsState.show-psvt-key = !SettingsState.show-psvt-key; }
+                }
+            }
+        }
+        CheckRow {
+            checked <=> SettingsState.psvt-key-prompt;
+            text: "Ask for a user key when submitting without one";
+            hint: "With a user key attached, your submissions count toward your uploader record; after 5 accepted themes they skip moderation. The key is stored in this app's settings file on this PC.";
         }
     }
     Card {

@@ -453,7 +453,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 library_actions::wire(&app.window, &app.library, &app.settings);
                 creator_view::wire(&app.window, &app.library, &app.settings);
                 community_view::wire(&app.window, &app.settings);
-                submit_view::wire(&app.window, &app.library);
+                submit_view::wire(&app.window, &app.library, &app.settings);
                 DATA_DIRS.with(|d| *d.borrow_mut() = Some(app.dirs.clone()));
                 icongen_view::wire(&app.window);
                 ai_storage_view::wire(&app.window, &app.dirs);

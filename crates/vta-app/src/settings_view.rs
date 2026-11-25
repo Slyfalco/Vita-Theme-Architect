@@ -62,6 +62,9 @@ pub fn load(app: &AppWindow, ctx: &SettingsCtx) {
         _ => "1337".into(),
     };
     st.set_vita_port(port.into());
+    st.set_psvt_user_key(s.str_or("psvt_user_key", "").into());
+    st.set_show_psvt_key(false);
+    st.set_psvt_key_prompt(s.flag("psvt_key_prompt", true));
     st.set_conn_status("".into());
     st.set_conn_state(0);
 
@@ -103,6 +106,8 @@ fn save(app: &AppWindow, ctx: &SettingsCtx) -> Result<(), String> {
         s.set("vita_ip", st.get_vita_ip().to_string());
         s.set("vita_port", st.get_vita_port().to_string());
         s.set("auto_update_check", st.get_auto_update_check());
+        s.set("psvt_user_key", st.get_psvt_user_key().trim().to_string());
+        s.set("psvt_key_prompt", st.get_psvt_key_prompt());
         if let Some(t) = ctx.themes.get(st.get_app_theme_index() as usize) {
             s.set("app_theme", t.id.clone());
         }
