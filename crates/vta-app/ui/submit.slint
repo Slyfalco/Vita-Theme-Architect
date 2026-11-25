@@ -12,8 +12,9 @@ export component SubmitWindow inherits Window {
     title: "Submit Theme to PSVT";
     icon: @image-url("../../../Assets/app_icon.png");
     // A fixed size makes the window non-resizable (v2: resizable=False).
-    width: 800px;
-    height: 600px;
+    // Landscape (16:9), so the repository's wide pages fit without crowding.
+    width: 1100px;
+    height: 620px;
     background: Palette.canvas;
 }
 

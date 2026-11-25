@@ -148,7 +148,7 @@ function vtaAttachKey() {
         var tries = 40;
         (function wait() {
             var err = ($('#error-attach').text() || '').trim();
-            if (($('#ukey').val() || '') !== '') { done(); return; }
+            if (($('#ukey').val() || '') !== '') { window.ipc.postMessage('keyok'); done(); return; }
             if (err !== '') {
                 try { $('#popupAddukey').popup('close'); } catch (_) {}
                 window.ipc.postMessage('keyerror:' + err);
@@ -161,6 +161,105 @@ function vtaAttachKey() {
     });
 }
 "#;
+
+/// submit.php, after the user presses Submit: the repository shows a brand-new
+/// user key on screen when none was attached. Keep all page text selectable,
+/// and watch for a new key-like code (a run of 16+ letters/digits that was not
+/// on the page before), then hand it to the app so the user can copy / save it.
+const WATCH_NEW_KEY: &str = r#"
+(function () {
+    var css = document.createElement('style');
+    css.textContent = '*{-webkit-user-select:text!important;user-select:text!important}';
+    document.head.appendChild(css);
+    var re = /[A-Za-z0-9]{16,}/g;
+    function tokens() {
+        var out = {}, text = document.body.innerText || '';
+        document.querySelectorAll('input:not([type=hidden]):not([type=file]), textarea').forEach(function (i) { text += ' ' + (i.value || ''); });
+        (text.match(re) || []).forEach(function (t) { out[t] = true; });
+        return out;
+    }
+    var before = tokens(), sent = {};
+    new MutationObserver(function () {
+        if (!/user\s*key/i.test(document.body.innerText || '')) return;
+        var now = tokens();
+        Object.keys(now).forEach(function (t) {
+            if (before[t] || sent[t]) return;
+            if (Object.keys(sent).some(function (s) { return t.indexOf(s) === 0; })) return;
+            sent[t] = true;
+            window.ipc.postMessage('newkey:' + t);
+            // A "Copy key" button right beside the key on the page.
+            var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n, host = null;
+            while ((n = walker.nextNode())) { if (n.nodeValue.indexOf(t) >= 0) { host = n.parentElement; break; } }
+            if (!host) document.querySelectorAll('input, textarea').forEach(function (i) { if ((i.value || '').indexOf(t) >= 0) host = i; });
+            if (!host) return;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = 'Copy key';
+            b.style.cssText = 'margin:0.5em;padding:0.4em 1.2em;font-weight:bold;border-radius:6px;border:1px solid #2a7;background:#2a7;color:#fff;cursor:pointer';
+            b.addEventListener('click', function (e) { e.preventDefault(); window.ipc.postMessage('copykey:' + t); b.textContent = 'Copied'; });
+            host.insertAdjacentElement('afterend', b);
+            host.insertAdjacentText('afterend', ' ');
+        });
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+})();
+"#;
+
+/// Debug builds only (`VTA_DEV_SUBMIT_SPY`): log every request the page makes,
+/// with its body and the server's reply, to the submit trace.
+const XHR_SPY: &str = r#"
+(function () {
+    var open = XMLHttpRequest.prototype.open, send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) { this.__vta = m + ' ' + u; return open.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function (body) {
+        var x = this, b = (typeof body === 'string') ? body : (body instanceof FormData ? '[FormData ' + Array.from(body.keys()).join(',') + ']' : String(body));
+        x.addEventListener('loadend', function () {
+            window.ipc.postMessage('log:' + x.__vta + ' body=' + b.slice(0, 300) + ' status=' + x.status + ' reply=' + String(x.responseText).slice(0, 2000));
+        });
+        return send.apply(this, arguments);
+    };
+})();
+"#;
+
+/// Debug builds only (`VTA_DEV_FAKE_UKEY=<reply>`): answer the site's user-key
+/// check (POST ukey.php) locally with `<reply>`, to test an accepted key
+/// without a real one. Nothing is sent to the server for that request.
+const FAKE_UKEY: &str = r#"
+(function () {
+    var open = XMLHttpRequest.prototype.open, send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) { this.__vtaUrl = String(u); return open.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function () {
+        if (!/ukey\.php$/.test(this.__vtaUrl || '')) return send.apply(this, arguments);
+        var x = this;
+        setTimeout(function () {
+            Object.defineProperty(x, 'readyState', { value: 4 });
+            Object.defineProperty(x, 'status', { value: 200 });
+            Object.defineProperty(x, 'statusText', { value: 'OK' });
+            Object.defineProperty(x, 'responseText', { value: __VTA_REPLY__ });
+            Object.defineProperty(x, 'response', { value: __VTA_REPLY__ });
+            x.getAllResponseHeaders = function () { return 'content-type: text/html\r\n'; };
+            if (x.onreadystatechange) x.onreadystatechange();
+            if (x.onload) x.onload();
+            x.dispatchEvent(new Event('load'));
+            x.dispatchEvent(new Event('loadend'));
+        }, 50);
+    };
+})();
+"#;
+
+fn init_script() -> String {
+    #[allow(unused_mut)]
+    let mut s = API_SHIM.to_string();
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("VTA_DEV_SUBMIT_SPY").is_ok() {
+            s.push_str(XHR_SPY);
+        }
+        if let Ok(reply) = std::env::var("VTA_DEV_FAKE_UKEY") {
+            s.push_str(&FAKE_UKEY.replace("__VTA_REPLY__", &serde_json::Value::String(reply).to_string()));
+        }
+    }
+    s
+}
 
 /// The `pywebview.api` the scripts call, bridged to Rust over the IPC channel.
 const API_SHIM: &str = r#"
@@ -389,12 +488,46 @@ fn close_session() {
 fn on_ipc(message: &str) {
     trace(&format!("ipc {message}"));
     match message {
-        "ready" => SESSION.with(|s| {
-            if let Some(s) = s.borrow_mut().as_mut() {
-                reveal(s);
+        "ready" => {
+            SESSION.with(|s| {
+                if let Some(s) = s.borrow_mut().as_mut() {
+                    reveal(s);
+                }
+            });
+            // Debug builds (`VTA_DEV_FAKE_DONE`): then write a made-up result
+            // into the page (as if a first submission finished) to test the
+            // new-key capture without submitting anything.
+            #[cfg(debug_assertions)]
+            if std::env::var("VTA_DEV_FAKE_DONE").is_ok() {
+                slint::Timer::single_shot(Duration::from_secs(2), || {
+                    run_js("document.getElementById('mainpage').style.display='none'; document.querySelector('.upload').innerHTML = '<h1>Congratulations!</h1><p>Your theme has been submitted. This is your user key: <b>a1b2c3d4e5f60718293a4b5c</b></p>'; document.querySelector('.upload').scrollIntoView();");
+                });
             }
-        }),
+        }
         "cancel" => close_session(),
+        m if m.starts_with("copykey:") => {
+            let key = m["copykey:".len()..].trim().to_string();
+            let _ = arboard::Clipboard::new().and_then(|mut c| c.set_text(key));
+        }
+        m if m.starts_with("newkey:") => {
+            let key = m["newkey:".len()..].trim().to_string();
+            // Only offered when no key was attached (the repository makes one then).
+            let had_key = SESSION.with(|s| s.borrow().as_ref().is_some_and(|s| !s.user_key.is_empty()));
+            if key.is_empty() || had_key {
+                return;
+            }
+            if let Some(app) = APP.with(|a| a.borrow().as_ref().and_then(|w| w.upgrade())) {
+                offer_new_key(&app, key);
+            }
+        }
+        "keyok" => {
+            // Debug builds: when testing with a faked key check, scroll the
+            // user-key controls into view for a screenshot.
+            #[cfg(debug_assertions)]
+            if std::env::var("VTA_DEV_FAKE_UKEY").is_ok() {
+                run_js("document.getElementById('ukeylabel').scrollIntoView({block:'center'});");
+            }
+        }
         m if m.starts_with("keyerror:") => {
             let err = m["keyerror:".len()..].to_string();
             if let Some(app) = APP.with(|a| a.borrow().as_ref().and_then(|w| w.upgrade())) {
@@ -486,6 +619,7 @@ fn on_page_load(event: PageLoadEvent, url: String) {
                     OPEN_FILE_BUTTON,
                     GET_CONTENT,
                     &attach,
+                    WATCH_NEW_KEY,
                     "vtaAttachKey().then(fetchData);",
                 ]
                 .concat();
@@ -550,9 +684,9 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
                 .with_url(url.clone())
                 .with_bounds(Rect {
                     position: wry::dpi::LogicalPosition::new(0, 0).into(),
-                    size: wry::dpi::LogicalSize::new(800, 600).into(),
+                    size: wry::dpi::LogicalSize::new(1100, 620).into(),
                 })
-                .with_initialization_script(API_SHIM)
+                .with_initialization_script(&init_script())
                 .with_ipc_handler(|req| {
                     let body = req.body().clone();
                     slint::Timer::single_shot(Duration::ZERO, move || on_ipc(&body));
@@ -590,6 +724,41 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
     std::mem::forget(timer);
 }
 
+/// The repository showed a brand-new user key after a submission: show it in the
+/// app, with Copy and Save to Settings (so it is attached next time).
+fn offer_new_key(app: &AppWindow, key: String) {
+    let copy = |key: &str| arboard::Clipboard::new().and_then(|mut c| c.set_text(key.to_string())).is_ok();
+    dialogs::ask(
+        app,
+        DialogIcon::Success,
+        "Your new repository user key",
+        &format!(
+            "The repository created a user key for you:\n\n{key}\n\nKeep it safe like a password: it cannot be recovered if lost. Save it to Settings and it will be attached to your future submissions automatically."
+        ),
+        "",
+        &[("Copy", dialogs::Kind::Secondary), ("Save to Settings & Copy", dialogs::Kind::Primary)],
+        move |app, choice| {
+            let copied = copy(&key);
+            if choice == 1 {
+                SETTINGS.with(|s| {
+                    if let Some(s) = s.borrow().as_ref() {
+                        let mut s = s.borrow_mut();
+                        s.set("psvt_user_key", key.clone());
+                        let _ = s.save();
+                    }
+                });
+            }
+            let msg = match (choice, copied) {
+                (1, true) => "User key saved to Settings and copied to the clipboard.",
+                (1, false) => "User key saved to Settings (could not access the clipboard).",
+                (_, true) => "User key copied to the clipboard.",
+                _ => "Could not access the clipboard.",
+            };
+            crate::show_toast(app, msg, !copied);
+        },
+    );
+}
+
 /// The repository user key saved in Settings (empty = none).
 fn user_key() -> String {
     // Debug builds only: test a key without touching settings.json.
@@ -603,7 +772,13 @@ fn user_key() -> String {
 /// Before submitting without a saved user key, ask for one (every time, until
 /// a key is saved or "Don't ask again" is chosen; "Not now" skips just this time).
 fn submit_with_key_prompt(app: &AppWindow, library: &SharedLibrary, index: i32) {
-    let ask = SETTINGS.with(|s| s.borrow().as_ref().is_some_and(|s| s.borrow().flag("psvt_key_prompt", true)));
+    #[allow(unused_mut)]
+    let mut ask = SETTINGS.with(|s| s.borrow().as_ref().is_some_and(|s| s.borrow().flag("psvt_key_prompt", true)));
+    // Debug builds: tests that submit without a key skip the question.
+    #[cfg(debug_assertions)]
+    if std::env::var("VTA_DEV_FAKE_DONE").is_ok() {
+        ask = false;
+    }
     if !user_key().is_empty() || !ask || vta_online::status().is_err() || SESSION.with(|s| s.borrow().is_some()) {
         return submit(app, library, index);
     }
