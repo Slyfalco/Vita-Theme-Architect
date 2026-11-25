@@ -10,11 +10,19 @@ export component Icon inherits Rectangle {
     in property <image> source;
     in property <color> tint: Palette.text-mid;
     in property <length> size: 20px;
-    width: root.size;
+    // Natural size is `size`; when a layout hands it more room (e.g. a centred
+    // column stretches it to the full width) the glyph stays centred, not pinned
+    // to the left edge.
+    min-width: root.size;
+    preferred-width: root.size;
     min-height: root.size;
     preferred-height: root.size;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
     Image {
         source: root.source;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
         width: root.size;
         height: root.size;
         colorize: root.tint;
