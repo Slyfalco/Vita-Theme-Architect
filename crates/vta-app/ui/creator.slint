@@ -90,6 +90,10 @@ export global Creator {
     in property <string> sim-clock: "12:48";   // updated by the controller
     in-out property <bool> sim-chrome: true;    // show/hide the Vita UI overlay
     in-out property <int> sim-page: 0;          // which home page the simulator shows
+    in property <[image]> sim-pages;            // every home-page wallpaper
+    in-out property <int> sim-mode: 0;          // 0 grid, 1 peel, 2 folder deck
+    in-out property <bool> sim-swiping: false;  // Test Swipe animation running
+    callback test-swipe();
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
     in-out property <int> icon-filter: 0;   // 0 all, 1 customised, 2 default
@@ -690,12 +694,14 @@ component ColorsTab inherits VerticalLayout {
 // launcher-icon bubbles laid out in the home grid, a status bar, and page dots.
 component VitaStage inherits Rectangle {
     in property <image> wallpaper;
+    in property <[image]> pages;        // all home-page wallpapers (for Test Swipe)
     in property <[image]> bubbles;
     in property <string> page-label: "Home";
     in property <string> clock: "12:48";
     in property <int> page-count: 1;
     in property <int> current-page: 0;
     in property <bool> chrome: true;
+    in property <int> mode: 0;          // 0 grid, 1 peel, 2 folder deck
     border-radius: 12px;
     background: #05070a;
     clip: true;
@@ -703,11 +709,43 @@ component VitaStage inherits Rectangle {
     // beneath each bubble so the layout reads as a real home screen.
     property <[string]> labels: ["VitaShell", "Browser", "Trophies", "Settings", "Content", "Photos", "Music", "Games"];
 
-    Image {
+    // A horizontal strip of every page wallpaper; sliding it is the Test Swipe.
+    if root.pages.length > 0: Rectangle {
+        width: root.pages.length * root.width;
+        height: root.height;
+        x: -root.current-page * root.width;
+        animate x { duration: 340ms; easing: ease-in-out; }
+        for pg[i] in root.pages: Image {
+            x: i * root.width;
+            width: root.width;
+            height: root.height;
+            source: pg;
+            image-fit: cover;
+        }
+    }
+    if root.pages.length == 0: Image {
         source: root.wallpaper;
         width: 100%;
         height: 100%;
         image-fit: cover;
+    }
+    // Peel Simulation: the Vita's top-right corner lifts to reveal the layer beneath.
+    if root.mode == 1: peel := Path {
+        width: 100%;
+        height: 100%;
+        fill: @linear-gradient(135deg, #0b1220f0 0%, #1e293bc0 60%, #00000000 60%);
+        MoveTo { x: 1; y: 0; }
+        LineTo { x: 1; y: 0.42; }
+        LineTo { x: 0.58; y: 0; }
+        Close { }
+    }
+    if root.mode == 1: Text {
+        x: root.width - self.width - root.width * 0.03;
+        y: root.height * 0.03;
+        text: "PEEL";
+        color: Palette.accent;
+        font-size: max(8px, root.width * 0.016);
+        font-weight: 700;
     }
     // Top + bottom scrims for status-bar / page-dot legibility.
     if root.chrome: Rectangle {
@@ -739,9 +777,9 @@ component VitaStage inherits Rectangle {
             Rectangle { x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px; border-radius: 1px; background: Palette.success; }
         }
     }
-    // Launcher bubbles: up to 8 in a 4×2 grid. Sized to the stage height so two
-    // rows + labels never collide with the status bar on a small preview.
-    Rectangle {
+    // Grid mode (and under the peel): up to 8 launcher bubbles in a 4×2 grid,
+    // sized to the stage height so two rows + labels never collide with the bar.
+    if root.mode != 2: Rectangle {
         property <length> diam: root.height * 0.23;
         property <length> gap-x: (root.width - 4 * self.diam) / 5;
         property <length> row0: root.height * 0.3;
@@ -779,6 +817,37 @@ component VitaStage inherits Rectangle {
                 font-size: max(6px, root.height * 0.035);
                 horizontal-alignment: center;
                 overflow: elide;
+            }
+        }
+    }
+    // Folder Deck mode: the bubbles fan out as an overlapping card deck, centre
+    // one largest — the Vita's folder/deck view.
+    if root.mode == 2: Rectangle {
+        property <length> diam: root.height * 0.42;
+        property <length> step: root.width * 0.14;
+        for ic[i] in root.bubbles: Rectangle {
+            property <int> off: i - 3;    // fan around the middle
+            visible: i < 7;
+            x: root.width / 2 - self.width / 2 + self.off * parent.step;
+            y: root.height / 2 - self.height / 2 + (self.off * self.off) * root.height * 0.018;
+            width: parent.diam * (self.off == 0 ? 1.0 : 0.82);
+            height: self.width;
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                border-radius: self.width / 2;
+                background: #0b1220e0;
+                border-width: 2px;
+                border-color: parent.off == 0 ? Palette.accent.transparentize(30%) : #ffffff33;
+                clip: true;
+                drop-shadow-blur: 14px;
+                drop-shadow-color: #000000c0;
+                Image {
+                    source: ic;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: cover;
+                }
             }
         }
     }
@@ -838,11 +907,14 @@ component PreviewColumn inherits VerticalLayout {
                     width: parent.width;
                     height: parent.height;
                     wallpaper: screen.homepage-view ? Creator.selected-page-image : Creator.prev-livearea;
+                    pages: screen.homepage-view ? [] : Creator.sim-pages;
                     bubbles: Creator.prev-icons;
-                    page-label: screen.homepage-view ? "Home " + (Creator.selected-page + 2) : "Home";
+                    page-label: screen.homepage-view ? "Home " + (Creator.selected-page + 2)
+                        : Creator.sim-page == 0 ? "Home" : "Home " + (Creator.sim-page + 1);
                     clock: Creator.sim-clock;
                     page-count: Creator.pages.length + 1;
-                    current-page: screen.homepage-view ? Creator.selected-page + 1 : 0;
+                    current-page: screen.homepage-view ? Creator.selected-page + 1 : Creator.sim-page;
+                    mode: screen.homepage-view ? 0 : Creator.sim-mode;
                     chrome: Creator.sim-chrome;
                 }
                 if !screen.sim && Creator.preview-tab != 2: Image {
@@ -892,6 +964,31 @@ component PreviewColumn inherits VerticalLayout {
                     Segment { text: "Lock"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 1; clicked => { Creator.preview-tab = 1; } }
                     Segment { text: "Icons"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 2; clicked => { Creator.preview-tab = 2; } }
                     Segment { text: "Thumb"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 3; clicked => { Creator.preview-tab = 3; } }
+                }
+            }
+            // Interactive canvas controls (LiveArea simulator only).
+            if Creator.preview-tab == 0 && !(Creator.tab == 1 && Creator.selected-page >= 0): HorizontalLayout {
+                spacing: 8px;
+                Rectangle {
+                    height: 36px;
+                    horizontal-stretch: 1;
+                    border-radius: 8px;
+                    background: Palette.inset;
+                    HorizontalLayout {
+                        padding: 3px;
+                        spacing: 2px;
+                        Segment { text: "Grid"; min-width: 36px; horizontal-stretch: 1; selected: Creator.sim-mode == 0; clicked => { Creator.sim-mode = 0; } }
+                        Segment { text: "Peel"; min-width: 36px; horizontal-stretch: 1; selected: Creator.sim-mode == 1; clicked => { Creator.sim-mode = 1; } }
+                        Segment { text: "Folder Deck"; min-width: 36px; horizontal-stretch: 1; selected: Creator.sim-mode == 2; clicked => { Creator.sim-mode = 2; } }
+                    }
+                }
+                Btn {
+                    text: Creator.sim-swiping ? "Swiping…" : "Test Swipe";
+                    icon: Icons.sync;
+                    has-icon: true;
+                    compact: true;
+                    enabled: !Creator.sim-swiping && Creator.sim-pages.length > 1;
+                    clicked => { Creator.test-swipe(); }
                 }
             }
             if Creator.tab == 1 && Creator.selected-page >= 0: Text {

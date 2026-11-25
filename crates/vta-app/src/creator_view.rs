@@ -5,7 +5,8 @@ use crate::dialogs;
 use crate::library_actions::SharedSettings;
 use crate::library_view::{rescan, select, SharedLibrary};
 use crate::{AppWindow, AssetSlot, ColorPicker, ColorSlot, Creator, DialogIcon, IconGroup, Library, PageSlot, Shell};
-use slint::{ComponentHandle, Image, ModelRc, VecModel};
+use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
+use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -97,6 +98,8 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
+    /// Keeps the Test Swipe timer alive while it runs.
+    static SWIPE_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
 }
 
 fn image_from_png(bytes: &[u8]) -> Image {
@@ -298,6 +301,16 @@ fn refresh(app: &AppWindow) {
         let sel = c.get_selected_page();
         let sel_img = usize::try_from(sel).ok().and_then(|i| st.pages.get(i)).map(|p| p.src.clone());
         c.set_selected_page_image(sel_img.map(|p| thumb(st, &p).0).unwrap_or_default());
+
+        // Every home-page wallpaper (page 1 + the additional pages), so the Vita
+        // simulator's Test Swipe can cycle through them.
+        let page1 = st.sources.get("br1.png").cloned().filter(|p| !p.is_empty());
+        let page_srcs: Vec<String> = page1.into_iter().chain(st.pages.iter().map(|p| p.src.clone())).filter(|p| !p.is_empty()).collect();
+        let sim_pages: Vec<Image> = page_srcs.iter().map(|p| thumb(st, p).0).collect();
+        c.set_sim_pages(ModelRc::new(VecModel::from(sim_pages)));
+        if c.get_sim_page() >= page_srcs.len().max(1) as i32 {
+            c.set_sim_page(0);
+        }
         if sel >= st.pages.len() as i32 {
             c.set_selected_page(st.pages.len() as i32 - 1);
         }
@@ -590,6 +603,37 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     let c = app.global::<Creator>();
     let a = app.as_weak();
     c.on_edited(move || mark_dirty(&a.unwrap()));
+
+    // Test Swipe: cycle the simulator through every home page, then stop.
+    let a = app.as_weak();
+    c.on_test_swipe(move || {
+        let app = a.unwrap();
+        let c = app.global::<Creator>();
+        let count = c.get_sim_pages().row_count().max(1);
+        if count < 2 || c.get_sim_swiping() {
+            return;
+        }
+        c.set_sim_swiping(true);
+        c.set_sim_page(0);
+        let steps = Rc::new(RefCell::new(0usize));
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(650), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let c = app.global::<Creator>();
+            let count = c.get_sim_pages().row_count().max(1);
+            let mut s = steps.borrow_mut();
+            *s += 1;
+            if *s >= count {
+                c.set_sim_page(0);
+                c.set_sim_swiping(false);
+                SWIPE_TIMER.with(|t| *t.borrow_mut() = None);
+            } else {
+                c.set_sim_page(*s as i32);
+            }
+        });
+        SWIPE_TIMER.with(|slot| *slot.borrow_mut() = Some(t));
+    });
 
     let a = app.as_weak();
     c.on_browse(move |id| {
