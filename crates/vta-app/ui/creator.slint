@@ -111,6 +111,7 @@ export global Creator {
     in property <image> sim-dot-current;        // screen_current.png
     in property <image> sim-dot-other;          // screen_other.png
     in property <bool> sim-custom-dots: false;
+    in property <image> sim-wave;               // animated background wave frame
     callback sim-sound(string);
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
@@ -795,6 +796,7 @@ component VitaStage inherits Rectangle {
     in property <image> dot-current;
     in property <image> dot-other;
     in property <bool> custom-dots;
+    in property <image> wave;
     in-out property <int> page;
     in-out property <bool> locked;
     // UI sound to play: tap, open, swipe, peel, back.
@@ -821,24 +823,28 @@ component VitaStage inherits Rectangle {
     background: #0d1117;
     clip: true;
 
+    // The animated background wave, behind every page; it shows through any
+    // transparent parts of the wallpapers, as on the console.
+    Image {
+        width: root.width;
+        height: root.height;
+        source: root.wave;
+        image-fit: fill;
+    }
+
     // Home pages, stacked vertically like the Vita's.
     Rectangle {
         y: -root.page * root.height + root.pull;
         width: root.width;
         height: root.page-count * root.height;
         animate y { duration: ta.pressed ? 0ms : 300ms; easing: ease-out; }
-        for pg[i] in root.pages: Rectangle {
+        // A page with no wallpaper shows just the wave, as on the console.
+        for pg[i] in root.pages: Image {
             y: i * root.height;
             width: root.width;
             height: root.height;
-            // The stock home background until the theme provides a wallpaper.
-            background: @linear-gradient(115deg, #06104a 0%, #0a1f78 45%, #040b3a 100%);
-            Image {
-                width: parent.width;
-                height: parent.height;
-                source: pg;
-                image-fit: cover;
-            }
+            source: pg;
+            image-fit: cover;
         }
         for b in root.bubbles: Rectangle {
             property <length> cx: root.width * root.cxs[b.slot];
@@ -1159,6 +1165,7 @@ component SimPanel inherits Panel {
                 dot-current: Creator.sim-dot-current;
                 dot-other: Creator.sim-dot-other;
                 custom-dots: Creator.sim-custom-dots;
+                wave: Creator.sim-wave;
                 page <=> Creator.sim-page;
                 locked <=> Creator.sim-locked;
                 sound(s) => { Creator.sim-sound(s); }

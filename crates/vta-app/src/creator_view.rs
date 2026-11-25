@@ -99,6 +99,11 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
     /// Keeps the simulator clock ticking.
     static CLOCK_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    /// Drives the simulator's animated background wave.
+    static WAVE_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    /// Wave type per simulator page, and the cross-fade between page waves.
+    static SIM_WAVES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
+    static WAVE_FADE: RefCell<(i32, i32, Option<std::time::Instant>)> = const { RefCell::new((12, 12, None)) };
 }
 
 fn image_from_png(bytes: &[u8]) -> Image {
@@ -267,6 +272,9 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     }
     srcs.truncate(10);
     fonts.truncate(10);
+    // Page 1 always builds with wave 12 (as v2 does); the rest use their own.
+    let waves: Vec<i32> = std::iter::once(12).chain(st.pages.iter().map(|p| p.wave)).take(10).collect();
+    SIM_WAVES.with(|w| *w.borrow_mut() = waves);
     let pages: Vec<Image> = srcs.iter().map(|p| if p.is_empty() { Image::default() } else { thumb(st, p).0 }).collect();
     let count = pages.len() as i32;
     c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
@@ -690,6 +698,38 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     c.on_edited(move || mark_dirty(&a.unwrap()));
 
     c.on_sim_sound(|name| crate::audio::play_sim_sound(&name));
+
+    // The simulator's background wave: ~30 fps while the creator shows the home
+    // screen; cross-fades to the next page's wave type when the page changes.
+    let a = app.as_weak();
+    let started = std::time::Instant::now();
+    let wave_timer = slint::Timer::default();
+    wave_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(33), move || {
+        let Some(app) = a.upgrade() else { return };
+        if app.global::<Shell>().get_page() != crate::Page::Creator {
+            return;
+        }
+        let c = app.global::<Creator>();
+        if c.get_sim_locked() {
+            return;
+        }
+        let target = SIM_WAVES.with(|w| w.borrow().get(c.get_sim_page().max(0) as usize).copied().unwrap_or(12));
+        let (from, to, fade) = WAVE_FADE.with(|f| {
+            let mut f = f.borrow_mut();
+            if f.1 != target {
+                // Start from wherever the current fade has got to.
+                *f = (f.1, target, Some(std::time::Instant::now()));
+            }
+            let fade = f.2.map(|s| s.elapsed().as_secs_f32() / 0.6).unwrap_or(1.0);
+            if fade >= 1.0 {
+                f.0 = f.1;
+                f.2 = None;
+            }
+            (f.0, f.1, fade.min(1.0))
+        });
+        c.set_sim_wave(crate::wave::frame(from, to, fade, started.elapsed().as_secs_f32()));
+    });
+    WAVE_TIMER.with(|slot| *slot.borrow_mut() = Some(wave_timer));
 
     // The simulator's clock follows local time.
     tick_clock(&c);
