@@ -8,188 +8,32 @@ import { Library, ThemeRow, Shell } from "state.slint";
 
 // ---------------------------------------------------------------- toolbar rows
 
-component ToolbarRow inherits Panel {
-    height: Density.compact ? 60px : 76px;
+// One unified bar: search + filters + sort on the left, library folder and
+// Import menus on the right. (Replaces the old two-row toolbar + filter row;
+// every action and shortcut is kept — Import and the folder actions moved into
+// menus, the theme count lives in the status bar.)
+component MenuItem inherits Btn {
+    kind: ButtonKind.ghost;
+    has-icon: true;
+}
+
+component LibraryBar inherits Panel {
+    callback focus-search();
+    focus-search => { search.focus-input(); }
+    height: Density.compact ? 48px : 62px;
     HorizontalLayout {
-        padding-left: 20px;
-        padding-right: 12px;
-        spacing: 16px;
-        alignment: stretch;
-        // "Local Vault | Installed Themes (N Themes)"
-        HorizontalLayout {
-            spacing: 10px;
-            Icon {
-                source: Icons.folder-open;
-                size: 22px;
-                tint: Palette.accent;
-            }
-            if !Density.narrow: Text {
-                text: "Local Vault";
-                color: Palette.accent;
-                font-size: Type.body-md;
-                font-weight: 600;
-                vertical-alignment: center;
-            }
-        }
-        if !Density.narrow: Rectangle {
-            width: 1px;
-            background: Palette.outline;
-        }
-        Text {
-            text: "Installed Themes";
-            color: Palette.text-hi;
-            font-size: Type.body-md;
-            font-weight: 600;
-            vertical-alignment: center;
-        }
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                height: 28px;
-                width: count.preferred-width + 24px;
-                border-radius: 14px;
-                background: Palette.primary.transparentize(80%);
-                count := Text {
-                    text: Library.total + (Library.total == 1 ? " Theme" : " Themes");
-                    color: Palette.accent;
-                    font-size: Type.body-sm;
-                    font-weight: 600;
-                }
-            }
-        }
-        // Library path box
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
             min-width: 160px;
-            Rectangle {
-                height: 44px;
-                border-radius: Palette.radius-control;
-                background: Palette.inset;
-                border-width: 1px;
-                border-color: Palette.outline;
-                HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 4px;
-                    spacing: 10px;
-                    Icon {
-                        source: Icons.storage;
-                        size: 18px;
-                        tint: Palette.text-lo;
-                    }
-                    Text {
-                        text: Shell.library-path;
-                        color: Palette.text-mid;
-                        font-family: Palette.mono-font;
-                        font-size: Type.label-md;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        horizontal-stretch: 1;
-                    }
-                    IconBtn {
-                        icon: Icons.folder-open;
-                        icon-size: 18px;
-                        y: 4px;
-                        clicked => { Library.open-library-folder(); }
-                    }
-                    IconBtn {
-                        icon: Icons.content-copy;
-                        icon-size: 18px;
-                        y: 4px;
-                        clicked => { Library.copy-path(); }
-                    }
-                }
-            }
-        }
-        // Import group
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                height: Density.compact ? 48px : 56px;
-                border-radius: 12px;
-                background: Palette.surface2;
-                HorizontalLayout {
-                    padding: 8px;
-                    spacing: 4px;
-                    Btn {
-                        text: "Import .zip";
-                        icon: Icons.folder-zip;
-                        has-icon: true;
-                        hotkey: Density.narrow ? "" : "Ctrl+I";
-                        kind: ButtonKind.ghost;
-                        clicked => { Library.import-zip(); }
-                    }
-                    Btn {
-                        text: "Import Folder";
-                        icon: Icons.drive-folder-upload;
-                        has-icon: true;
-                        hotkey: Density.narrow ? "" : "Ctrl+O";
-                        kind: ButtonKind.ghost;
-                        clicked => { Library.import-folder(); }
-                    }
-                    batch := Btn {
-                        text: "Batch";
-                        icon: Icons.stacks;
-                        has-icon: true;
-                        kind: ButtonKind.ghost;
-                        clicked => { batch-menu.show(); }
-                    }
-                }
-                batch-menu := PopupWindow {
-                    x: parent.width - 300px;
-                    y: parent.height + 6px;
-                    width: 300px;
-                    Rectangle {
-                        background: Palette.surface1;
-                        border-radius: Palette.radius-control;
-                        border-width: 1px;
-                        border-color: #ffffff14;
-                        drop-shadow-blur: 24px;
-                        drop-shadow-color: #00000099;
-                        drop-shadow-offset-y: 10px;
-                        VerticalLayout {
-                            padding: 6px;
-                            spacing: 2px;
-                            Btn {
-                                text: "Import Multiple Themes";
-                                icon: Icons.stacks;
-                                has-icon: true;
-                                hotkey: "Ctrl+Shift+I";
-                                kind: ButtonKind.ghost;
-                                clicked => { Library.import-multiple(); }
-                            }
-                            Btn {
-                                text: "Import from PS Vita";
-                                icon: Icons.send-to-mobile;
-                                has-icon: true;
-                                hotkey: "Ctrl+V";
-                                kind: ButtonKind.ghost;
-                                clicked => { Library.import-from-vita(); }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-component FilterRow inherits Panel {
-    callback focus-search();
-    focus-search => { search.focus-input(); }
-    height: Density.compact ? 58px : 72px;
-    HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
-        spacing: 16px;
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 1;
-            min-width: 200px;
-            max-width: 520px;
+            max-width: 440px;
             search := SearchField {
-                placeholder: Library.search-field == 0 ? "Search themes by title" : "Search themes by author";
-                hotkey: "Ctrl+F";
+                placeholder: Density.narrow ? "Search themes"
+                    : Library.search-field == 0 ? "Search themes by title" : "Search themes by author";
+                hotkey: Density.narrow ? "" : "Ctrl+F";
                 text <=> Library.search;
                 edited(t) => { Library.search-changed(t); }
             }
@@ -197,7 +41,7 @@ component FilterRow inherits Panel {
         VerticalLayout {
             alignment: center;
             Dropdown {
-                min-width: 170px;
+                min-width: 150px;
                 options: ["Search by Title", "Search by Author"];
                 current-index <=> Library.search-field;
                 selected(i) => { Library.search-field-changed(i); }
@@ -206,24 +50,27 @@ component FilterRow inherits Panel {
         VerticalLayout {
             alignment: center;
             Rectangle {
-                height: 48px;
-                border-radius: 10px;
+                height: Density.compact ? 32px : 40px;
+                border-radius: 9px;
                 background: Palette.inset;
                 HorizontalLayout {
-                    padding: 4px;
+                    padding: 2px;
                     spacing: 2px;
                     Segment {
-                        text: "All (" + Library.total + ")";
+                        min-width: 0px;
+                        text: (Density.narrow ? "All " : "All (") + Library.total + (Density.narrow ? "" : ")");
                         selected: Library.filter == 0;
                         clicked => { Library.filter-changed(0); }
                     }
                     Segment {
-                        text: "With BGM (" + Library.with-bgm + ")";
+                        min-width: 0px;
+                        text: (Density.narrow ? "BGM " : "With BGM (") + Library.with-bgm + (Density.narrow ? "" : ")");
                         selected: Library.filter == 1;
                         clicked => { Library.filter-changed(1); }
                     }
                     Segment {
-                        text: "Custom Icons (" + Library.with-icons + ")";
+                        min-width: 0px;
+                        text: (Density.narrow ? "Icons " : "Custom Icons (") + Library.with-icons + (Density.narrow ? "" : ")");
                         selected: Library.filter == 2;
                         clicked => { Library.filter-changed(2); }
                     }
@@ -231,12 +78,6 @@ component FilterRow inherits Panel {
             }
         }
         Rectangle { horizontal-stretch: 1; }
-        Text {
-            text: "Sort:";
-            color: Palette.text-mid;
-            font-size: Type.body-sm;
-            vertical-alignment: center;
-        }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -244,6 +85,108 @@ component FilterRow inherits Panel {
                 options: Library.sort-options;
                 current-index <=> Library.sort;
                 selected(i) => { Library.sort-changed(i); }
+            }
+        }
+        // Library folder menu (open / copy the path; the path itself is shown).
+        VerticalLayout {
+            alignment: center;
+            folder := IconBtn {
+                icon: Icons.folder-open;
+                tooltip: "Library folder";
+                clicked => { folder-menu.show(); }
+            }
+        }
+        // Import menu.
+        VerticalLayout {
+            alignment: center;
+            import-btn := Btn {
+                text: "Import";
+                icon: Icons.download;
+                has-icon: true;
+                kind: ButtonKind.primary;
+                clicked => { import-menu.show(); }
+            }
+        }
+    }
+    folder-menu := PopupWindow {
+        x: root.width - 380px;
+        y: root.height + 6px;
+        width: 360px;
+        Rectangle {
+            background: Palette.surface1;
+            border-radius: Palette.radius-control;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 10px;
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                Text {
+                    text: Shell.library-path;
+                    color: Palette.text-mid;
+                    font-family: Palette.mono-font;
+                    font-size: Type.label-md;
+                    overflow: elide;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                    height: 30px;
+                    x: 8px;
+                    width: parent.width - 16px;
+                }
+                MenuItem {
+                    text: "Open Library Folder";
+                    icon: Icons.folder-open;
+                    clicked => { Library.open-library-folder(); }
+                }
+                MenuItem {
+                    text: "Copy Path";
+                    icon: Icons.content-copy;
+                    clicked => { Library.copy-path(); }
+                }
+            }
+        }
+    }
+    import-menu := PopupWindow {
+        x: root.width - 300px;
+        y: root.height + 6px;
+        width: 290px;
+        Rectangle {
+            background: Palette.surface1;
+            border-radius: Palette.radius-control;
+            border-width: 1px;
+            border-color: #ffffff14;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 10px;
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuItem {
+                    text: "Import .zip";
+                    icon: Icons.folder-zip;
+                    hotkey: "Ctrl+I";
+                    clicked => { Library.import-zip(); }
+                }
+                MenuItem {
+                    text: "Import Folder";
+                    icon: Icons.drive-folder-upload;
+                    hotkey: "Ctrl+O";
+                    clicked => { Library.import-folder(); }
+                }
+                MenuItem {
+                    text: "Import Multiple Themes";
+                    icon: Icons.stacks;
+                    hotkey: "Ctrl+Shift+I";
+                    clicked => { Library.import-multiple(); }
+                }
+                MenuItem {
+                    text: "Import from PS Vita";
+                    icon: Icons.send-to-mobile;
+                    hotkey: "Ctrl+V";
+                    clicked => { Library.import-from-vita(); }
+                }
             }
         }
     }
@@ -512,27 +455,33 @@ component MetaTile inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <bool> ok: false;
-    border-radius: 10px;
+    in property <float> k: 1.0;   // panel fit factor
+    border-radius: 10px * root.k;
     background: Palette.inset;
-    min-height: 64px;
+    min-height: 56px * root.k;
     VerticalLayout {
-        padding: 12px;
-        spacing: 4px;
-        Caption {
+        padding: 10px * root.k;
+        spacing: 3px * root.k;
+        Text {
             text: root.label;
+            color: Palette.text-lo;
+            font-size: Type.label-sm * root.k;
+            font-weight: 600;
+            letter-spacing: 1px;
+            overflow: elide;
         }
         HorizontalLayout {
-            spacing: 6px;
+            spacing: 5px * root.k;
             if root.ok: Icon {
                 source: Icons.check-circle;
-                size: 16px;
+                size: 15px * root.k;
                 tint: Palette.success-text;
             }
             Text {
                 text: root.value;
                 color: root.ok ? Palette.success-text : Palette.text-hi;
                 font-family: Palette.mono-font;
-                font-size: Type.label-md;
+                font-size: Type.label-md * root.k;
                 font-weight: 500;
                 wrap: word-wrap;
                 horizontal-stretch: 1;
@@ -542,20 +491,21 @@ component MetaTile inherits Rectangle {
 }
 
 component BgmPlayer inherits Rectangle {
+    in property <float> k: 1.0;   // panel fit factor
     VerticalLayout {
-        spacing: 10px;
+        spacing: 8px * root.k;
         HorizontalLayout {
-            spacing: 12px;
+            spacing: 10px * root.k;
             Rectangle {
-                width: 44px;
-                height: 44px;
-                border-radius: 22px;
+                width: 44px * root.k;
+                height: 44px * root.k;
+                border-radius: self.width / 2;
                 background: play-touch.has-hover ? Palette.primary.brighter(15%) : Palette.primary;
                 drop-shadow-blur: 12px;
                 drop-shadow-color: Palette.primary.transparentize(50%);
                 Icon {
                     source: Library.bgm-playing ? Icons.pause : Icons.play-arrow;
-                    size: 24px;
+                    size: 24px * root.k;
                     tint: Palette.on-primary;
                 }
                 play-touch := TouchArea {
@@ -569,38 +519,46 @@ component BgmPlayer inherits Rectangle {
                 Text {
                     text: Library.detail.bgm-name;
                     color: Palette.text-hi;
-                    font-size: Type.body-md;
+                    font-size: Type.body-md * root.k;
                     font-weight: 600;
                     overflow: elide;
                 }
                 Text {
                     text: Library.detail.bgm-info;
                     color: Palette.text-mid;
-                    font-size: Type.body-sm;
+                    font-size: Type.body-sm * root.k;
                     overflow: elide;
                 }
             }
-            IconBtn {
-                icon: Icons.repeat;
-                active: Library.bgm-loop;
-                tooltip: "Loop";
-                clicked => { Library.bgm-toggle-loop(); }
+            VerticalLayout {
+                alignment: center;
+                IconBtn {
+                    scale: root.k;
+                    icon: Icons.repeat;
+                    active: Library.bgm-loop;
+                    tooltip: "Loop";
+                    clicked => { Library.bgm-toggle-loop(); }
+                }
             }
-            IconBtn {
-                icon: Icons.download;
-                tooltip: "Extract BGM";
-                clicked => { Library.extract-bgm(Library.selected); }
+            VerticalLayout {
+                alignment: center;
+                IconBtn {
+                    scale: root.k;
+                    icon: Icons.download;
+                    tooltip: "Extract BGM";
+                    clicked => { Library.extract-bgm(Library.selected); }
+                }
             }
         }
         // Waveform + time
         Rectangle {
-            height: 40px;
-            border-radius: 8px;
+            height: 40px * root.k;
+            border-radius: 8px * root.k;
             background: Palette.inset;
             HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                spacing: 10px;
+                padding-left: 12px * root.k;
+                padding-right: 12px * root.k;
+                spacing: 10px * root.k;
                 wave := Rectangle {
                     horizontal-stretch: 1;
                     for level[i] in Library.bgm-wave: Rectangle {
@@ -621,7 +579,7 @@ component BgmPlayer inherits Rectangle {
                     text: Library.bgm-time + " / " + Library.bgm-length;
                     color: Palette.text-mid;
                     font-family: Palette.mono-font;
-                    font-size: Type.label-md;
+                    font-size: Type.label-md * root.k;
                     vertical-alignment: center;
                 }
             }
@@ -634,6 +592,12 @@ component BgmPlayer inherits Rectangle {
 
 component Inspector inherits Panel {
     property <bool> has: Library.selected >= 0 && Library.detail.valid;
+    // Fit factor: everything in the panel scales by `k` so the whole inspector
+    // fits the panel height without scrolling. `natural` is the content height at
+    // k = 1 (constant, so there's no layout loop); scrolling remains a fallback
+    // below the 0.6 legibility floor.
+    property <length> natural: Library.detail.has-bgm ? 790px : 690px;
+    property <float> k: max(0.5, min(1.0, root.height / root.natural));
     width: Density.narrow ? 340px : 420px;
     if !root.has: VerticalLayout {
         alignment: center;
@@ -654,14 +618,14 @@ component Inspector inherits Panel {
     if root.has: ScrollView {
         content-width: self.visible-width;
         VerticalLayout {
-            padding: Density.narrow ? 14px : 20px;
-            spacing: 16px;
+            padding: (Density.narrow ? 14px : 20px) * root.k;
+            spacing: 14px * root.k;
             // Stage header
             HorizontalLayout {
-                spacing: 8px;
+                spacing: 8px * root.k;
                 Icon {
                     source: Icons.visibility;
-                    size: 22px;
+                    size: 22px * root.k;
                     tint: Palette.accent;
                 }
                 VerticalLayout {
@@ -671,7 +635,7 @@ component Inspector inherits Panel {
                     Text {
                         text: "LiveArea Stage";
                         color: Palette.text-hi;
-                        font-size: Type.body-md;
+                        font-size: Type.body-md * root.k;
                         font-weight: 600;
                         overflow: elide;
                     }
@@ -679,7 +643,7 @@ component Inspector inherits Panel {
                         text: "960×544";
                         color: Palette.text-lo;
                         font-family: Palette.mono-font;
-                        font-size: Type.label-sm;
+                        font-size: Type.label-sm * root.k;
                         overflow: elide;
                     }
                 }
@@ -687,6 +651,7 @@ component Inspector inherits Panel {
                 VerticalLayout {
                     alignment: center;
                     IconBtn {
+                        scale: root.k;
                         icon: Icons.close;
                         tooltip: "Close";
                         clicked => { Library.select(-1); }
@@ -695,44 +660,47 @@ component Inspector inherits Panel {
             }
             // Stage view tabs on their own full-width row so the header never crowds.
             Rectangle {
-                height: 36px;
-                border-radius: 8px;
+                height: 36px * root.k;
+                border-radius: 8px * root.k;
                 background: Palette.inset;
                 HorizontalLayout {
-                    padding: 3px;
-                    spacing: 2px;
+                    padding: 3px * root.k;
+                    spacing: 2px * root.k;
                     Segment {
+                        scale: root.k;
                         text: "Home";
-                        min-width: 40px;
+                        min-width: 40px * root.k;
                         horizontal-stretch: 1;
                         selected: Library.stage-tab == 0;
                         clicked => { Library.stage-tab = 0; }
                     }
                     Segment {
+                        scale: root.k;
                         text: "Lock";
-                        min-width: 40px;
+                        min-width: 40px * root.k;
                         horizontal-stretch: 1;
                         selected: Library.stage-tab == 1;
                         clicked => { Library.stage-tab = 1; }
                     }
                     Segment {
+                        scale: root.k;
                         text: "Icons";
-                        min-width: 40px;
+                        min-width: 40px * root.k;
                         horizontal-stretch: 1;
                         selected: Library.stage-tab == 2;
                         clicked => { Library.stage-tab = 2; }
                     }
                 }
             }
-            // Stage: 960x544 aspect, scaled to the panel width but never taller than
-            // ~45% of the panel, so it always fits the window.
+            // Stage: 960x544 aspect, panel width scaled by the fit factor (centred).
             stage-box := Rectangle {
-                property <length> h: min(self.width * 544 / 960, max(150px, root.height * 0.45));
+                property <length> h: self.width * 544 / 960 * root.k;
                 height: self.h;
             stage := Rectangle {
+                x: (parent.width - self.width) / 2;
                 width: parent.h * 960 / 544;
                 height: parent.h;
-                border-radius: 12px;
+                border-radius: 12px * root.k;
                 background: #05070a;
                 border-width: 1px;
                 border-color: Palette.outline;
@@ -752,24 +720,26 @@ component Inspector inherits Panel {
                 }
                 // FIT / 1:1 toggle, overlaid on the preview's corner
                 if Library.stage-tab != 2: Rectangle {
-                    x: parent.width - self.width - 8px;
-                    y: parent.height - self.height - 8px;
+                    x: parent.width - self.width - 8px * root.k;
+                    y: parent.height - self.height - 8px * root.k;
                     width: fit-row.preferred-width;
-                    height: 30px;
-                    border-radius: 7px;
+                    height: 30px * root.k;
+                    border-radius: 7px * root.k;
                     background: #000000b0;
                     fit-row := HorizontalLayout {
-                        padding: 3px;
-                        spacing: 2px;
+                        padding: 3px * root.k;
+                        spacing: 2px * root.k;
                         Segment {
+                            scale: root.k;
                             text: "FIT";
-                            min-width: 36px;
+                            min-width: 36px * root.k;
                             selected: Library.stage-fit;
                             clicked => { Library.stage-fit = true; }
                         }
                         Segment {
+                            scale: root.k;
                             text: "1:1";
-                            min-width: 36px;
+                            min-width: 36px * root.k;
                             selected: !Library.stage-fit;
                             clicked => { Library.stage-fit = false; }
                         }
@@ -778,7 +748,7 @@ component Inspector inherits Panel {
                 if Library.stage-tab == 2 && Library.detail.icons.length == 0: Text {
                     text: "This theme uses the default system icons";
                     color: Palette.text-mid;
-                    font-size: Type.body-sm;
+                    font-size: Type.body-sm * root.k;
                 }
                 if Library.stage-tab == 2: Rectangle {
                     property <int> cols: 6;
@@ -794,98 +764,108 @@ component Inspector inherits Panel {
                 }
             }
             }
-            if Library.detail.has-bgm: BgmPlayer { }
+            if Library.detail.has-bgm: BgmPlayer { k: root.k; }
             // Title block
             VerticalLayout {
-                spacing: 6px;
+                spacing: 4px * root.k;
                 Text {
                     text: Library.detail.title;
                     color: Palette.text-hi;
-                    font-size: Type.headline-lg + 2px;
+                    font-size: (Type.headline-lg + 2px) * root.k;
                     font-weight: 700;
                     wrap: word-wrap;
                 }
                 HorizontalLayout {
-                    spacing: 6px;
+                    spacing: 5px * root.k;
                     Text {
                         text: "Author:";
                         color: Palette.text-lo;
-                        font-size: Type.body-md;
+                        font-size: Type.body-md * root.k;
                     }
                     Text {
                         text: Library.detail.author;
                         color: Palette.text-hi;
-                        font-size: Type.body-md;
+                        font-size: Type.body-md * root.k;
                         overflow: elide;
                     }
                     Text {
                         text: "•  Version " + Library.detail.version;
                         color: Palette.text-lo;
-                        font-size: Type.body-md;
+                        font-size: Type.body-md * root.k;
                     }
                     Rectangle { horizontal-stretch: 1; }
                 }
             }
             // Meta grid
             GridLayout {
-                spacing: 10px;
+                spacing: 8px * root.k;
                 Row {
                     MetaTile {
+                        k: root.k;
                         label: "FORMAT STANDARD";
                         value: "Official SCE Theme";
                     }
                     MetaTile {
+                        k: root.k;
                         label: "PACKAGE TARGET";
                         value: Library.detail.target;
                     }
                 }
                 Row {
                     MetaTile {
+                        k: root.k;
                         label: "SYSTEM ICONS";
                         value: Library.detail.icons-text;
                         ok: Library.detail.icons.length > 0;
                     }
                     MetaTile {
+                        k: root.k;
                         label: "THEME XML";
                         value: "theme.xml (Valid)";
                         ok: true;
                     }
                 }
             }
+            // Hotkey chips don't scale with the buttons, so they show only near
+            // full size.
             Btn {
+                scale: root.k;
                 text: "Send to PS Vita";
                 icon: Icons.send-to-mobile;
                 has-icon: true;
-                hotkey: "Ctrl+S";
+                hotkey: root.k >= 0.9 ? "Ctrl+S" : "";
                 trailing-arrow: true;
                 kind: ButtonKind.primary;
-                min-height: 50px;
+                min-height: 48px * root.k;
                 font-size: Type.body-lg;
                 clicked => { Library.send-to-vita(Library.selected); }
             }
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px * root.k;
                 Btn {
+                    scale: root.k;
                     text: "Edit Theme";
                     icon: Icons.edit;
                     has-icon: true;
-                    hotkey: "Ctrl+E";
+                    hotkey: root.k >= 0.9 ? "Ctrl+E" : "";
                     horizontal-stretch: 1;
                     clicked => { Library.edit(Library.selected); }
                 }
                 Btn {
+                    scale: root.k;
                     text: "Extract BGM";
                     icon: Icons.download;
                     has-icon: true;
-                    hotkey: "Ctrl+X";
+                    hotkey: root.k >= 0.9 ? "Ctrl+X" : "";
                     horizontal-stretch: 1;
                     enabled: Library.detail.has-bgm;
                     clicked => { Library.extract-bgm(Library.selected); }
                 }
             }
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px * root.k;
                 Btn {
+                    scale: root.k;
                     text: "Submit to Repository";
                     icon: Icons.cloud-upload;
                     has-icon: true;
@@ -895,10 +875,11 @@ component Inspector inherits Panel {
                     clicked => { Library.submit(Library.selected); }
                 }
                 Btn {
+                    scale: root.k;
                     text: "Delete Theme";
                     icon: Icons.delete;
                     has-icon: true;
-                    hotkey: "Del";
+                    hotkey: root.k >= 0.9 ? "Del" : "";
                     kind: ButtonKind.danger;
                     clicked => { Library.delete(Library.selected); }
                 }
@@ -986,14 +967,13 @@ component StatusBar inherits Panel {
 // ---------------------------------------------------------------- page
 
 export component LibraryPage inherits Rectangle {
-    public function focus-search() { filter-row.focus-search(); }
+    public function focus-search() { bar.focus-search(); }
     VerticalLayout {
         padding-left: 28px;
         padding-right: 28px;
-        padding-bottom: 20px;
-        spacing: 16px;
-        ToolbarRow { }
-        filter-row := FilterRow { }
+        padding-bottom: Density.compact ? 12px : 20px;
+        spacing: Density.compact ? 8px : 16px;
+        bar := LibraryBar { }
         body := HorizontalLayout {
             spacing: 0px;
             vertical-stretch: 1;

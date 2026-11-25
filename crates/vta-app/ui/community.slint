@@ -238,32 +238,43 @@ component StatTile inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <string> sub;
-    border-radius: 10px;
+    in property <float> k: 1.0;   // panel fit factor
+    border-radius: 10px * root.k;
     background: Palette.inset;
     VerticalLayout {
-        padding: 12px;
-        spacing: 4px;
+        padding: 10px * root.k;
+        spacing: 3px * root.k;
         Text {
             text: root.label;
             color: Palette.text-mid;
-            font-size: Type.body-sm;
+            font-size: Type.body-sm * root.k;
+            overflow: elide;
         }
         Text {
             text: root.value;
             color: Palette.text-hi;
-            font-size: Type.body-lg;
+            font-size: Type.body-lg * root.k;
             font-weight: 600;
             wrap: word-wrap;
         }
         if root.sub != "": Text {
             text: root.sub;
             color: Palette.text-lo;
-            font-size: Type.label-sm;
+            font-size: Type.label-sm * root.k;
         }
     }
 }
 
 component Inspector inherits Panel {
+    // Fit factor: everything in the panel scales by `k` so the detail fits the
+    // panel height without scrolling. `natural` approximates the content height
+    // at k = 1 (constant inputs only — no layout loop); scrolling stays as the
+    // fallback for unusually long descriptions.
+    property <length> natural: 760px
+        + (Community.d-description != "" ? 100px : 0px)
+        + (Community.d-has-extra ? 50px : 0px)
+        + (Community.d-tags.length > 0 ? 70px : 0px);
+    property <float> k: max(0.5, min(1.0, root.height / root.natural));
     width: Density.narrow ? 360px : 440px;
     if Community.selected < 0: VerticalLayout {
         alignment: center;
@@ -283,19 +294,21 @@ component Inspector inherits Panel {
     if Community.selected >= 0: ScrollView {
         content-width: self.visible-width;
         VerticalLayout {
-            padding: 18px;
-            spacing: 14px;
+            padding: 18px * root.k;
+            spacing: 12px * root.k;
             HorizontalLayout {
-                spacing: 8px;
+                spacing: 8px * root.k;
                 Rectangle {
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 5px;
+                    y: (parent.height - self.height) / 2;
+                    width: 10px * root.k;
+                    height: 10px * root.k;
+                    border-radius: self.width / 2;
                     background: Palette.accent;
                 }
                 Text {
                     text: "Theme Preview";
                     color: Palette.text-hi;
+                    font-size: Type.body-md * root.k;
                     font-weight: 600;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
@@ -305,6 +318,7 @@ component Inspector inherits Panel {
                 VerticalLayout {
                     alignment: center;
                     IconBtn {
+                        scale: root.k;
                         icon: Icons.close;
                         tooltip: "Close";
                         clicked => { Community.select(-1); }
@@ -313,21 +327,26 @@ component Inspector inherits Panel {
             }
             HorizontalLayout {
                 Rectangle {
-                    height: 34px;
+                    height: 34px * root.k;
                     horizontal-stretch: 1;
-                    border-radius: 8px;
+                    border-radius: 8px * root.k;
                     background: Palette.inset;
                     HorizontalLayout {
-                        padding: 3px;
-                        spacing: 2px;
-                        Segment { text: "LiveArea"; horizontal-stretch: 1; selected: Community.d-tab == 0; clicked => { Community.d-tab = 0; } }
-                        Segment { text: "Lockscreen"; horizontal-stretch: 1; selected: Community.d-tab == 1; clicked => { Community.d-tab = 1; } }
+                        padding: 3px * root.k;
+                        spacing: 2px * root.k;
+                        Segment { scale: root.k; text: "LiveArea"; horizontal-stretch: 1; selected: Community.d-tab == 0; clicked => { Community.d-tab = 0; } }
+                        Segment { scale: root.k; text: "Lockscreen"; horizontal-stretch: 1; selected: Community.d-tab == 1; clicked => { Community.d-tab = 1; } }
                     }
                 }
             }
+            // Preview at 16:9, panel width scaled by the fit factor (centred).
+            stage-box := Rectangle {
+                height: self.width * 9 / 16 * root.k;
             stage := Rectangle {
-                height: self.width * 9 / 16;
-                border-radius: 12px;
+                x: (parent.width - self.width) / 2;
+                width: parent.height * 16 / 9;
+                height: parent.height;
+                border-radius: 12px * root.k;
                 background: #05070a;
                 border-width: 1px;
                 border-color: Palette.outline;
@@ -342,15 +361,16 @@ component Inspector inherits Panel {
                 if !stage.loaded: Text {
                     text: "Loading preview…";
                     color: Palette.text-mid;
-                    font-size: Type.body-sm;
+                    font-size: Type.body-sm * root.k;
                 }
             }
+            }
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px * root.k;
                 Text {
                     text: Community.d-title;
                     color: Palette.text-hi;
-                    font-size: Type.headline-lg + 4px;
+                    font-size: (Type.headline-lg + 4px) * root.k;
                     font-weight: 700;
                     wrap: word-wrap;
                     horizontal-stretch: 1;
@@ -359,21 +379,21 @@ component Inspector inherits Panel {
                 VerticalLayout {
                     alignment: start;
                     Rectangle {
-                        height: 26px;
-                        width: val-row.preferred-width + 20px;
-                        border-radius: 13px;
+                        height: 24px * root.k;
+                        width: val-row.preferred-width + 18px * root.k;
+                        border-radius: self.height / 2;
                         background: Community.d-vita-validated ? #0f2b1dbf : #1e293bbf;
                         border-width: 1px;
                         border-color: Community.d-vita-validated ? Palette.success.transparentize(50%) : #ffffff1f;
                         val-row := HorizontalLayout {
-                            x: 10px;
-                            spacing: 5px;
+                            x: 9px * root.k;
+                            spacing: 4px * root.k;
                             alignment: center;
-                            if Community.d-vita-validated: Icon { source: Icons.check-circle; size: 14px; tint: Palette.success-text; }
+                            if Community.d-vita-validated: Icon { source: Icons.check-circle; size: 13px * root.k; tint: Palette.success-text; }
                             Text {
                                 text: Community.d-vita-validated ? "Vita Validated" : "Community";
                                 color: Community.d-vita-validated ? Palette.success-text : Palette.text-mid;
-                                font-size: Type.label-md;
+                                font-size: Type.label-md * root.k;
                                 font-weight: 600;
                                 vertical-alignment: center;
                             }
@@ -382,62 +402,64 @@ component Inspector inherits Panel {
                 }
             }
             HorizontalLayout {
-                spacing: 6px;
-                Text { text: "Created by"; color: Palette.text-mid; font-size: Type.body-md; }
-                Text { text: Community.d-author; color: Palette.accent; font-size: Type.body-md; font-weight: 600; overflow: elide; }
-                Text { text: "•  v" + Community.d-version; color: Palette.text-lo; font-size: Type.body-md; }
+                spacing: 5px * root.k;
+                Text { text: "Created by"; color: Palette.text-mid; font-size: Type.body-md * root.k; }
+                Text { text: Community.d-author; color: Palette.accent; font-size: Type.body-md * root.k; font-weight: 600; overflow: elide; }
+                Text { text: "•  v" + Community.d-version; color: Palette.text-lo; font-size: Type.body-md * root.k; }
                 Rectangle { horizontal-stretch: 1; }
             }
             GridLayout {
-                spacing: 8px;
+                spacing: 7px * root.k;
                 Row {
-                    StatTile { label: "Total Downloads"; value: Community.d-downloads; }
+                    StatTile { k: root.k; label: "Total Downloads"; value: Community.d-downloads; }
                     StatTile {
+                        k: root.k;
                         label: "Community Rating";
                         value: Community.d-stars > 0 ? "★ " + Community.d-rating : "Not rated";
                         sub: Community.d-stars > 0 ? Community.d-votes : "";
                     }
                 }
                 Row {
-                    StatTile { label: "Date Added"; value: Community.d-added; }
-                    StatTile { label: "Last Updated"; value: Community.d-updated; }
+                    StatTile { k: root.k; label: "Date Added"; value: Community.d-added; }
+                    StatTile { k: root.k; label: "Last Updated"; value: Community.d-updated; }
                 }
             }
             Text {
                 text: "Validation: " + Community.d-validation;
                 color: Palette.text-lo;
-                font-size: Type.label-md;
+                font-size: Type.label-md * root.k;
             }
             if Community.d-description != "": VerticalLayout {
-                spacing: 6px;
-                Caption { text: "DESCRIPTION"; }
+                spacing: 4px * root.k;
+                Text { text: "DESCRIPTION"; color: Palette.text-lo; font-size: Type.label-sm * root.k; font-weight: 600; letter-spacing: 1px; }
                 Text {
                     text: Community.d-description;
                     color: Palette.text-hi;
-                    font-size: Type.body-md;
+                    font-size: Type.body-md * root.k;
                     wrap: word-wrap;
                 }
             }
             if Community.d-tags.length > 0: VerticalLayout {
-                spacing: 8px;
-                Caption { text: "TAGS"; }
+                spacing: 6px * root.k;
+                Text { text: "TAGS"; color: Palette.text-lo; font-size: Type.label-sm * root.k; font-weight: 600; letter-spacing: 1px; }
                 // Wrapping row of tag chips (approximate flow layout).
                 tags := Rectangle {
-                    property <length> chip-w: 120px;
-                    property <int> per-row: max(1, floor(self.width / (self.chip-w + 8px)));
-                    height: ceil(Community.d-tags.length / self.per-row) * 36px;
+                    property <length> chip-w: 120px * root.k;
+                    property <length> row-h: 36px * root.k;
+                    property <int> per-row: max(1, floor(self.width / (self.chip-w + 8px * root.k)));
+                    height: ceil(Community.d-tags.length / self.per-row) * self.row-h;
                     for t[i] in Community.d-tags: Rectangle {
-                        x: mod(i, tags.per-row) * (tags.chip-w + 8px);
-                        y: floor(i / tags.per-row) * 36px;
+                        x: mod(i, tags.per-row) * (tags.chip-w + 8px * root.k);
+                        y: floor(i / tags.per-row) * tags.row-h;
                         width: tags.chip-w;
-                        height: 28px;
-                        border-radius: 6px;
+                        height: 28px * root.k;
+                        border-radius: 6px * root.k;
                         background: tag-touch.has-hover ? Palette.surface3 : Palette.inset;
                         Text {
                             text: t;
-                            width: parent.width - 12px;
+                            width: parent.width - 12px * root.k;
                             color: Palette.text-hi;
-                            font-size: Type.body-sm;
+                            font-size: Type.body-sm * root.k;
                             overflow: elide;
                             horizontal-alignment: center;
                         }
@@ -449,6 +471,7 @@ component Inspector inherits Panel {
                 }
             }
             if Community.d-has-extra: Btn {
+                scale: root.k;
                 text: "Open / Download Extra";
                 icon: Icons.stacks;
                 has-icon: true;
@@ -456,42 +479,45 @@ component Inspector inherits Panel {
             }
             // Auto-deploy: after import, send straight to the connected Vita.
             Rectangle {
-                height: deploy-row.preferred-height + 20px;
-                border-radius: 10px;
+                height: deploy-row.preferred-height;
+                border-radius: 10px * root.k;
                 background: Palette.inset;
                 deploy-row := HorizontalLayout {
-                    padding: 12px;
-                    spacing: 10px;
-                    Rectangle {
-                        width: 22px;
-                        height: 22px;
-                        border-radius: 5px;
-                        y: 2px;
-                        background: Community.auto-deploy ? Palette.accent : transparent;
-                        border-width: 1px;
-                        border-color: Community.auto-deploy ? Palette.accent : Palette.outline;
-                        if Community.auto-deploy: Icon { source: Icons.check-circle; size: 16px; tint: #ffffff; }
-                        TouchArea { clicked => { Community.auto-deploy = !Community.auto-deploy; } }
+                    padding: 11px * root.k;
+                    spacing: 9px * root.k;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 20px * root.k;
+                            height: 20px * root.k;
+                            border-radius: 5px * root.k;
+                            background: Community.auto-deploy ? Palette.accent : transparent;
+                            border-width: 1px;
+                            border-color: Community.auto-deploy ? Palette.accent : Palette.outline;
+                            if Community.auto-deploy: Icon { source: Icons.check-circle; size: 15px * root.k; tint: #ffffff; }
+                            TouchArea { clicked => { Community.auto-deploy = !Community.auto-deploy; } }
+                        }
                     }
                     VerticalLayout {
-                        spacing: 2px;
+                        spacing: 2px * root.k;
                         horizontal-stretch: 1;
-                        Text { text: "Auto-deploy to PS Vita"; color: Palette.text-hi; font-size: Type.body-md; font-weight: 600; }
+                        Text { text: "Auto-deploy to PS Vita"; color: Palette.text-hi; font-size: Type.body-md * root.k; font-weight: 600; }
                         Text {
                             text: "After import, send over the active FTP connection.";
                             color: Palette.text-mid;
-                            font-size: Type.label-md;
+                            font-size: Type.label-md * root.k;
                             wrap: word-wrap;
                         }
                     }
                 }
             }
             Btn {
+                scale: root.k;
                 text: Community.auto-deploy ? "Download, Import & Deploy" : "Download & Import Theme";
                 icon: Icons.cloud-upload;
                 has-icon: true;
                 kind: ButtonKind.primary;
-                min-height: 56px;
+                min-height: 52px * root.k;
                 font-size: Type.body-lg;
                 clicked => { Community.download(); }
             }
@@ -526,10 +552,10 @@ export component CommunityPage inherits Rectangle {
     if Community.available: VerticalLayout {
         padding-left: 28px;
         padding-right: 28px;
-        padding-bottom: 16px;
-        spacing: 14px;
+        padding-bottom: Density.compact ? 10px : 16px;
+        spacing: Density.compact ? 8px : 14px;
         Panel {
-            height: Density.compact ? 60px : 72px;
+            height: Density.compact ? 46px : 72px;
             HorizontalLayout {
                 padding-left: 14px;
                 padding-right: 14px;

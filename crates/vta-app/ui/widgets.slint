@@ -66,6 +66,7 @@ export component Btn inherits Rectangle {
     in property <bool> compact: false;
     in property <bool> trailing-arrow: false;
     in property <length> font-size: Type.body-md;
+    in property <float> scale: 1.0;   // shrink-to-fit panels scale the whole button
     callback clicked();
 
     property <bool> hovered: touch.has-hover && root.enabled;
@@ -74,7 +75,7 @@ export component Btn inherits Rectangle {
         : root.kind == ButtonKind.danger ? Palette.danger
         : Palette.text-hi;
 
-    min-height: root.compact || Density.compact ? 34px : 40px;
+    min-height: (root.compact || Density.compact ? 32px : 40px) * root.scale;
     border-radius: Palette.radius-control;
     opacity: root.enabled ? 1 : 0.55;
     background: root.kind == ButtonKind.primary
@@ -94,19 +95,19 @@ export component Btn inherits Rectangle {
     animate background, border-color, drop-shadow-blur { duration: 150ms; easing: ease-out; }
 
     HorizontalLayout {
-        padding-left: root.compact ? 10px : 14px;
-        padding-right: root.compact ? 10px : 14px;
-        spacing: 8px;
+        padding-left: (root.compact ? 10px : 14px) * root.scale;
+        padding-right: (root.compact ? 10px : 14px) * root.scale;
+        spacing: 8px * root.scale;
         alignment: center;
         if root.has-icon: Icon {
             source: root.icon;
             tint: root.fg;
-            size: 18px;
+            size: 18px * root.scale;
         }
         Text {
             text: root.text;
             color: root.fg;
-            font-size: root.font-size;
+            font-size: root.font-size * root.scale;
             font-weight: 600;
             vertical-alignment: center;
         }
@@ -137,16 +138,17 @@ export component IconBtn inherits Rectangle {
     in property <color> tint: Palette.text-mid;
     in property <color> hover-bg: Palette.surface3;
     in property <length> icon-size: 20px;
+    in property <float> scale: 1.0;
     callback clicked();
-    width: 36px;
-    height: 36px;
+    width: 36px * root.scale;
+    height: 36px * root.scale;
     border-radius: Palette.radius-control;
     background: root.active ? Palette.primary : touch.has-hover && root.enabled ? root.hover-bg : transparent;
     opacity: root.enabled ? 1 : 0.4;
     animate background { duration: 120ms; }
     Icon {
         source: root.icon;
-        size: root.icon-size;
+        size: root.icon-size * root.scale;
         tint: root.active ? Palette.on-primary : touch.has-hover && root.enabled ? Palette.text-hi : root.tint;
     }
     touch := TouchArea {
@@ -219,20 +221,21 @@ export component Tag inherits Rectangle {
 export component Segment inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
+    in property <float> scale: 1.0;
     callback clicked();
-    min-width: 64px;
+    min-width: 64px * root.scale;
     border-radius: 6px;
     background: root.selected ? Palette.primary : touch.has-hover ? Palette.surface3 : transparent;
     drop-shadow-blur: root.selected ? 10px : 0;
     drop-shadow-color: Palette.primary.transparentize(60%);
     animate background { duration: 120ms; }
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: 14px * root.scale;
+        padding-right: 14px * root.scale;
         Text {
             text: root.text;
             color: root.selected ? Palette.on-primary : Palette.text-mid;
-            font-size: Type.body-sm;
+            font-size: Type.body-sm * root.scale;
             font-weight: root.selected ? 600 : 500;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -251,7 +254,7 @@ export component SearchField inherits Rectangle {
     in-out property <string> text;
     callback edited(string);
     public function focus-input() { input.focus(); }
-    height: Density.compact ? 38px : 44px;
+    height: Density.compact ? 32px : 44px;
     border-radius: Palette.radius-control;
     background: Palette.inset;
     border-width: 1px;
@@ -316,7 +319,7 @@ export component Dropdown inherits Rectangle {
     in property <[string]> options;
     in-out property <int> current-index: 0;
     callback selected(int);
-    height: Density.compact ? 36px : 40px;
+    height: Density.compact ? 32px : 40px;
     min-width: Density.narrow ? 180px : 220px;
     max-width: 260px;
     border-radius: Palette.radius-control;
@@ -412,7 +415,7 @@ export component Field inherits Rectangle {
     in property <bool> read-only: false;
     in property <string> suffix;
     callback edited(string);
-    height: Density.compact ? 40px : 46px;
+    height: Density.compact ? 34px : 46px;
     border-radius: Palette.radius-control;
     background: Palette.inset;
     border-width: 1px;
