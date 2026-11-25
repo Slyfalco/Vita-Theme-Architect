@@ -1072,7 +1072,14 @@ component VitaStage inherits Rectangle {
     property <float> armed-x;
     property <float> armed-y;
 
-    property <bool> home-idle: !root.locked && !root.unlocking && root.la-index < 0 && root.folder-index < 0 && root.notice-at < 0;
+    // On the home screen with nothing open over it (an app may be open but
+    // slid aside, the console's way of keeping it running).
+    property <bool> home-idle: !root.locked && !root.unlocking && (root.la-index < 0 || root.la-home) && root.folder-index < 0 && root.notice-at < 0;
+    // Viewing the home screen while an app's LiveArea stays open to the right.
+    property <bool> la-home: false;
+    // Pages sit 512/544 of the screen apart, so the bubble rows run on evenly
+    // from one page into the next as you scroll (measured on the console).
+    property <length> pitch: root.height * 512 / 544;
     // Live drag: a vertical page swipe on the home screen, the peel when locked.
     property <length> drag-x: ta.pressed ? ta.mouse-x - ta.pressed-x : 0px;
     property <length> drag-y: ta.pressed ? ta.mouse-y - ta.pressed-y : 0px;
@@ -1148,6 +1155,7 @@ component VitaStage inherits Rectangle {
         }
     }
     function open-app(i: int) {
+        root.la-home = false;
         root.launch(i);
         root.la-index = i;
         root.la-at = root.t;
@@ -1187,7 +1195,7 @@ component VitaStage inherits Rectangle {
     }
     // Home page wallpapers, stacked vertically like the Vita's pages.
     pages-strip := Rectangle {
-        y: -root.page * root.height + root.pull;
+        y: -root.page * root.height + root.pull * root.height / root.pitch;
         width: root.width;
         height: root.page-count * root.height;
         // Measured on the console: a fast ease-out with a slight overshoot.
@@ -1208,11 +1216,12 @@ component VitaStage inherits Rectangle {
         background: black;
         opacity: 1 - clamp((root.t - root.wave-fade-at) / 450, 0, 1);
     }
-    // The bubbles, on the same vertical strip as the wallpapers.
+    // The bubbles, on their own strip (page pitch 512/544), moving in step.
     Rectangle {
-        y: pages-strip.y;
+        y: -root.page * root.pitch + root.pull;
+        animate y { duration: ta.pressed ? 0ms : 380ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.04); }
         width: root.width;
-        height: pages-strip.height;
+        height: root.page-count * root.pitch + root.height;
         for b[bi] in root.bubbles: Rectangle {
             // Position on the swaying plane (perspective of a small 3D tilt).
             property <float> px: (root.cxs[b.slot] - root.pivot-x) ;
@@ -1243,9 +1252,9 @@ component VitaStage inherits Rectangle {
                 }
             }
             visible: b.page < root.page-count;
-            opacity: bi == root.la-index ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
+            opacity: bi == root.la-index && !root.la-home ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
             x: self.ccx * 1px - self.d / 2;
-            y: b.page * root.height + self.ccy * 1px - self.d / 2;
+            y: b.page * root.pitch + self.ccy * 1px - self.d / 2;
             width: self.d;
             height: self.d;
             BubbleFace {
@@ -1267,7 +1276,7 @@ component VitaStage inherits Rectangle {
         }
     }
     // Page indicator down the left edge (screen_current / screen_other).
-    if root.page-count > 1 && root.la-index < 0 && root.folder-index < 0: VerticalLayout {
+    if root.page-count > 1 && (root.la-index < 0 || root.la-home) && root.folder-index < 0: VerticalLayout {
         property <length> dot: root.height * 22 / 544;
         x: root.width * 0.006;
         y: root.bar-h + (root.height - root.bar-h - self.preferred-height) / 2;
@@ -1341,8 +1350,11 @@ component VitaStage inherits Rectangle {
             y: (la.fcy - la.lift - la.fd / 2) * 1px;
             opacity: 1 - clamp((root.t - root.la-at - 450) / 150, 0, 1);
         }
-        // The card: grows out of the bubble, peels away to close.
+        // The card: grows out of the bubble, peels away to close, and slides
+        // aside to the right to show the home screen (the app stays open).
         Rectangle {
+            x: root.la-home ? root.width * 0.94 : 0px;
+            animate x { duration: 320ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.0); }
             width: root.width;
             height: root.height;
             opacity: root.card-in;
@@ -1418,6 +1430,18 @@ component VitaStage inherits Rectangle {
                 opacity: la.content;
             }
         }
+    }
+
+    // The open app waits at the right edge; tap or swipe left to go back to it.
+    if root.la-index >= 0 && root.la-home: Path {
+        x: root.width * 0.963;
+        y: root.height * 0.5 - self.height / 2;
+        width: root.width * 0.025;
+        height: self.width * 1.6;
+        viewbox-width: 10;
+        viewbox-height: 16;
+        fill: #ffffffc0;
+        commands: "M0 0 L8 8 L0 16 Z";
     }
 
     // ---- folder: a large glass circle holding the folder's apps.
@@ -1558,7 +1582,7 @@ component VitaStage inherits Rectangle {
         height: root.height * 110 / 544;
         source: root.notice;
         image-fit: contain;
-        opacity: root.la-index >= 0 ? 0 : 1;
+        opacity: root.la-index >= 0 && !root.la-home ? 0 : 1;
     }
 
     // ---- lock screen
@@ -1684,6 +1708,7 @@ component VitaStage inherits Rectangle {
         triggered => {
             root.la-index = -1;
             root.la-close-at = -1;
+            root.la-home = false;
             root.away-at = -1;
             root.intro-at = root.t;
         }
@@ -1753,10 +1778,22 @@ component VitaStage inherits Rectangle {
                         root.notice-close-at = root.t;
                         root.sound("back");
                     }
-                } else if root.la-index >= 0 {
-                    // Peel the card's corner far enough, or tap the left arrow.
-                    if (root.peeling-was && root.released-s > root.w * 0.22) || self.pressed-x < root.width * 0.06 {
+                } else if root.la-index >= 0 && root.la-home && (self.mouse-x - self.pressed-x < -root.width * 0.15
+                        || (abs(self.mouse-x - self.pressed-x) < 8px && self.pressed-x > root.width * 0.93)) {
+                    // Back to the open app: swipe left, or tap the right edge.
+                    root.la-home = false;
+                    root.away-at = root.t;
+                    root.sound("swipe");
+                } else if root.la-index >= 0 && !root.la-home {
+                    if root.peeling-was && root.released-s > root.w * 0.22 {
+                        // Peeled far enough: the app closes.
                         root.close-app();
+                    } else if self.mouse-x - self.pressed-x > root.width * 0.15
+                        || (abs(self.mouse-x - self.pressed-x) < 8px && self.pressed-x < root.width * 0.06) {
+                        // Swipe right, or tap the left arrow: slide across to the home screen.
+                        root.la-home = true;
+                        root.away-at = -1;
+                        root.sound("swipe");
                     }
                 } else if root.folder-index >= 0 {
                     // The back button, or anywhere outside the circle, closes the folder.

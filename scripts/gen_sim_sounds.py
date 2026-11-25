@@ -127,9 +127,13 @@ def open_chime():
 
 
 if __name__ == "__main__":
-    save("tap.wav", tap(), -13)
-    save("back.wav", back(), -19)
-    save("swipe.wav", swipe(), -15)
-    save("peel.wav", peel(), -18)
-    save("open.wav", open_chime(), -19)
+    # Levels (peak dBFS) set so each sound's perceived loudness (ITU-R BS.1770
+    # K-weighted, over its audible part) matches the console's own sound for
+    # the same action: tap -25.7, back -27.2, swipe -23.3, peel -35.4 and
+    # open -34.9 LUFS-style units.
+    save("tap.wav", tap(), -14.7)
+    save("back.wav", back(), -18.4)
+    save("swipe.wav", swipe(), -12.2)
+    save("peel.wav", peel(), -15.9)
+    save("open.wav", open_chime(), -19.8)
     print("wrote", os.path.abspath(OUT))
