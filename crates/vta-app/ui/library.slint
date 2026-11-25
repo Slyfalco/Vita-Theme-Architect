@@ -994,9 +994,13 @@ export component LibraryPage inherits Rectangle {
         spacing: 16px;
         ToolbarRow { }
         filter-row := FilterRow { }
-        HorizontalLayout {
+        body := HorizontalLayout {
             spacing: 0px;
             vertical-stretch: 1;
+            // The list width once the inspector has finished opening/closing. Rows
+            // size from this (not the animating width) so they don't re-lay out on
+            // every frame of the slide.
+            property <length> list-target: self.width - (Library.selected >= 0 ? insp-slot.full : 0px);
             Rectangle {
                 horizontal-stretch: 1;
                 if Library.themes.length == 0: VerticalLayout {
@@ -1032,7 +1036,7 @@ export component LibraryPage inherits Rectangle {
                             theme: row;
                             index: i;
                             selected: i == Library.selected;
-                            avail: list.visible-width - 12px;
+                            avail: body.list-target - 24px;
                         }
                     }
                 }
@@ -1043,8 +1047,9 @@ export component LibraryPage inherits Rectangle {
                 property <bool> open: Library.selected >= 0;
                 property <length> panel-w: Density.narrow ? 340px : 420px;
                 property <length> gap: 20px;
-                width: self.open ? self.panel-w + self.gap : 0px;
-                animate width { duration: 260ms; easing: ease-out; }
+                property <length> full: self.panel-w + self.gap;
+                width: self.open ? self.full : 0px;
+                animate width { duration: 220ms; easing: ease-in-out; }
                 clip: true;
                 Inspector {
                     x: parent.width - self.width;

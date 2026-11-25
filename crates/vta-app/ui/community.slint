@@ -98,7 +98,8 @@ component ThemeTile inherits Rectangle {
     animate background, border-color { duration: 150ms; }
     touch := TouchArea {
         mouse-cursor: pointer;
-        clicked => { Community.select(root.theme.index); }
+        // Clicking the selected card again closes the detail panel.
+        clicked => { Community.select(root.selected ? -1 : root.theme.index); }
         double-clicked => {
             Community.select(root.theme.index);
             Community.download();
@@ -298,16 +299,29 @@ component Inspector inherits Panel {
                     font-weight: 600;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
+                    overflow: elide;
                 }
+                // Close the detail panel (deselect; it slides away).
+                VerticalLayout {
+                    alignment: center;
+                    IconBtn {
+                        icon: Icons.close;
+                        tooltip: "Close";
+                        clicked => { Community.select(-1); }
+                    }
+                }
+            }
+            HorizontalLayout {
                 Rectangle {
                     height: 34px;
+                    horizontal-stretch: 1;
                     border-radius: 8px;
                     background: Palette.inset;
                     HorizontalLayout {
                         padding: 3px;
                         spacing: 2px;
-                        Segment { text: "LiveArea"; selected: Community.d-tab == 0; clicked => { Community.d-tab = 0; } }
-                        Segment { text: "Lockscreen"; selected: Community.d-tab == 1; clicked => { Community.d-tab = 1; } }
+                        Segment { text: "LiveArea"; horizontal-stretch: 1; selected: Community.d-tab == 0; clicked => { Community.d-tab = 0; } }
+                        Segment { text: "Lockscreen"; horizontal-stretch: 1; selected: Community.d-tab == 1; clicked => { Community.d-tab = 1; } }
                     }
                 }
             }
@@ -584,9 +598,13 @@ export component CommunityPage inherits Rectangle {
                 }
             }
         }
-        HorizontalLayout {
-            spacing: 20px;
+        cbody := HorizontalLayout {
+            spacing: 0px;
             vertical-stretch: 1;
+            // Catalog width once the inspector has finished sliding. The grid's
+            // columns and card size come from this (not the animating width), so the
+            // cards don't re-lay out or jump column count during the slide.
+            property <length> grid-target: self.width - (Community.selected >= 0 ? cslot.full : 0px) - 14px;
             VerticalLayout {
                 horizontal-stretch: 1;
                 spacing: 12px;
@@ -616,8 +634,8 @@ export component CommunityPage inherits Rectangle {
                         changed version => { self.content-y = 0; }
                         property <length> gap: 14px;
                         property <length> min-card: 240px;
-                        property <int> cols: max(1, floor((self.visible-width + self.gap) / (self.min-card + self.gap)));
-                        property <length> cell-w: (self.visible-width - (self.cols - 1) * self.gap) / self.cols;
+                        property <int> cols: max(1, floor((cbody.grid-target + self.gap) / (self.min-card + self.gap)));
+                        property <length> cell-w: (cbody.grid-target - (self.cols - 1) * self.gap) / self.cols;
                         property <length> cell-h: self.cell-w * 9 / 16 + self.cell-w * 0.44;
                         property <int> rows: max(1, ceil(Community.themes.length / self.cols));
                         content-width: self.visible-width;
@@ -684,7 +702,22 @@ export component CommunityPage inherits Rectangle {
                     }
                 }
             }
-            Inspector { }
+            // Detail panel slides in from the right only while a theme is selected;
+            // the catalog shrinks to fit (and grows back when it closes).
+            cslot := Rectangle {
+                property <bool> open: Community.selected >= 0;
+                property <length> panel-w: Density.narrow ? 360px : 440px;
+                property <length> gap: 20px;
+                property <length> full: self.panel-w + self.gap;
+                width: self.open ? self.full : 0px;
+                animate width { duration: 220ms; easing: ease-in-out; }
+                clip: true;
+                Inspector {
+                    x: parent.width - self.width;
+                    width: cslot.panel-w;
+                    height: parent.height;
+                }
+            }
         }
     }
 }

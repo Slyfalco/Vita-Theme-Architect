@@ -217,6 +217,11 @@ fn load_previews(app: &AppWindow, urls: Vec<String>, generation: u64) {
 }
 
 fn select(app: &AppWindow, index: i32) {
+    if index < 0 {
+        // Deselect: the detail panel slides away.
+        app.global::<Community>().set_selected(-1);
+        return;
+    }
     let Some(e) = STATE.with(|s| s.borrow().entries.get(index as usize).cloned()) else { return };
     let c = app.global::<Community>();
     c.set_selected(index);
