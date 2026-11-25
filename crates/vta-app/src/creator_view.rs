@@ -105,6 +105,8 @@ thread_local! {
     static WAVE_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
     /// Wave type per simulator page, and the cross-fade between page waves.
     static SIM_WAVES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
+    /// The flat theme icon of each simulator bubble (for the 3D launch spin).
+    static SIM_FLAT: RefCell<Vec<Image>> = const { RefCell::new(Vec::new()) };
     static WAVE_FADE: RefCell<(i32, i32, Option<std::time::Instant>)> = const { RefCell::new((12, 12, None)) };
 }
 
@@ -329,6 +331,12 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
             bubbles.push(sim_bubble(page, slot, Image::default(), &format!("Game {n}"), 4, Vec::new(), Vec::new()));
         }
     }
+    let flat: Vec<Image> = SIM_HOME
+        .iter()
+        .map(|(_, _, id, ..)| icons.get(*id).cloned().unwrap_or_default())
+        .chain(std::iter::repeat_n(Image::default(), bubbles.len().saturating_sub(SIM_HOME.len())))
+        .collect();
+    SIM_FLAT.with(|f| *f.borrow_mut() = flat);
     c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
     c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
     c.set_sim_font_colors(ModelRc::new(VecModel::from(fonts)));
@@ -755,6 +763,15 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     c.on_edited(move || mark_dirty(&a.unwrap()));
 
     c.on_sim_sound(|name| crate::audio::play_sim_sound(&name));
+    // A tapped bubble spins into its LiveArea: render its 3D spin frames now.
+    let a = app.as_weak();
+    c.on_sim_launch(move |i| {
+        let Some(app) = a.upgrade() else { return };
+        let c = app.global::<Creator>();
+        let icon = SIM_FLAT.with(|f| f.borrow().get(i.max(0) as usize).cloned().unwrap_or_default());
+        let frames = crate::sim_art::spin_frames(&icon, 36, 540.0);
+        c.set_sim_spin_frames(ModelRc::new(VecModel::from(frames)));
+    });
 
     // The simulator's background wave: ~30 fps while the creator shows the home
     // screen; cross-fades to the next page's wave type when the page changes.

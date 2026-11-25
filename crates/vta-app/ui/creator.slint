@@ -118,6 +118,8 @@ export global Creator {
     in property <int> page1-wave: 12;           // home page 1's background wave type
     in property <image> sim-wave;               // animated background wave frame
     callback sim-sound(string);
+    in property <[image]> sim-spin-frames;      // the launched bubble spinning in 3D
+    callback sim-launch(int);                   // render those frames for a bubble
     in-out property <int> sim-unlock-request: 0;
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
@@ -1011,6 +1013,8 @@ component VitaStage inherits Rectangle {
     in property <bool> custom-dots;
     in property <image> wave;
     in property <int> unlock-request;   // bumped by the "Home Screen" button
+    in property <[image]> spin-frames;  // the launched bubble spinning in 3D
+    callback launch(int);
     in-out property <int> page;
     in-out property <bool> locked;
     // UI sound to play: tap, open, swipe, peel, back.
@@ -1141,6 +1145,7 @@ component VitaStage inherits Rectangle {
         }
     }
     function open-app(i: int) {
+        root.launch(i);
         root.la-index = i;
         root.la-at = root.t;
         root.la-close-at = -1;
@@ -1308,7 +1313,7 @@ component VitaStage inherits Rectangle {
             height: la.fd * la.squash * 1px;
             x: (la.fcx - la.fd * la.spin / 2) * 1px;
             y: (la.fcy - la.lift - la.fd * la.squash / 2) * 1px;
-            opacity: 1 - clamp((root.t - root.la-at - 450) / 150, 0, 1);
+            opacity: root.spin-frames.length > 0 ? 0 : 1 - clamp((root.t - root.la-at - 450) / 150, 0, 1);
             BubbleFace {
                 b: la.app;
                 unit: root.height;
@@ -1323,6 +1328,15 @@ component VitaStage inherits Rectangle {
                 background: black;
                 opacity: la.shade;
             }
+        }
+        // The real 3D spin (frames rendered when the bubble was tapped).
+        if root.spin-frames.length > 0: Image {
+            source: root.spin-frames[min(root.spin-frames.length - 1, floor(la.fp * root.spin-frames.length))];
+            width: la.fd * 1px;
+            height: la.fd * 1px;
+            x: (la.fcx - la.fd / 2) * 1px;
+            y: (la.fcy - la.lift - la.fd / 2) * 1px;
+            opacity: 1 - clamp((root.t - root.la-at - 450) / 150, 0, 1);
         }
         // The card: grows out of the bubble, peels away to close.
         Rectangle {
@@ -1832,6 +1846,8 @@ component SimPanel inherits Panel {
                 custom-dots: Creator.sim-custom-dots;
                 wave: Creator.sim-wave;
                 unlock-request: Creator.sim-unlock-request;
+                spin-frames: Creator.sim-spin-frames;
+                launch(i) => { Creator.sim-launch(i); }
                 page <=> Creator.sim-page;
                 locked <=> Creator.sim-locked;
                 sound(s) => { Creator.sim-sound(s); }
