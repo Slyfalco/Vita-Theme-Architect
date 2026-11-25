@@ -75,6 +75,16 @@ export global Creator {
     in property <image> prev-thumb;
     in property <[image]> prev-icons;
     in property <int> required-ready: 0;
+    // Validation Engine panel.
+    in property <string> contrast-ratio;     // e.g. "4.8:1"
+    in property <string> contrast-level;     // AAA / AA / AA Large / Low
+    in property <bool> contrast-pass;
+    in property <int> chrome-ready;          // info-bar frame assets present
+    in property <int> chrome-total: 10;
+    in property <string> vram-text;          // e.g. "1.24 MB"
+    in property <float> vram-fraction;       // 0..1 of the budget
+    in property <string> vram-budget;        // e.g. "16.0 MB"
+    in property <bool> validation-pass;
     in-out property <int> selected-page: -1;
     in property <image> selected-page-image;
     in property <string> sim-clock: "12:48";   // updated by the controller
@@ -945,6 +955,92 @@ component PreviewColumn inherits VerticalLayout {
                 color: Palette.text-lo;
                 font-size: Type.body-sm;
                 wrap: word-wrap;
+            }
+        }
+    }
+    // Validation Engine: contrast, UI-chrome readiness, VRAM budget.
+    Panel {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            HorizontalLayout {
+                Icon { source: Icons.check-circle; size: 18px; tint: Creator.validation-pass ? Palette.success-text : Palette.warning; }
+                Text { text: "Validation Engine"; color: Palette.text-hi; font-size: Type.headline-md; font-weight: 600; horizontal-stretch: 1; vertical-alignment: center; }
+                Rectangle {
+                    width: vtxt.preferred-width + 16px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: Creator.validation-pass ? #0f2b1dbf : #3a2a0fbf;
+                    vtxt := Text {
+                        text: Creator.validation-pass ? "ALL PASS" : "REVIEW";
+                        color: Creator.validation-pass ? Palette.success-text : Palette.warning;
+                        font-size: Type.label-sm;
+                        font-weight: 600;
+                        width: parent.width;
+                        height: parent.height;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            // Accent/text contrast.
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle { width: 8px; height: 8px; border-radius: 4px; y: 6px; background: Creator.contrast-pass ? Palette.success : Palette.warning; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    Text { text: "Accent Contrast Ratio"; color: Palette.text-hi; font-size: Type.body-sm; }
+                    Text { text: "Global font over the info bar"; color: Palette.text-lo; font-size: Type.label-sm; }
+                }
+                Text {
+                    text: Creator.contrast-ratio + "  " + Creator.contrast-level;
+                    color: Creator.contrast-pass ? Palette.success-text : Palette.warning;
+                    font-size: Type.body-sm;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+            // UI chrome frames.
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle { width: 8px; height: 8px; border-radius: 4px; y: 6px; background: Creator.chrome-ready > 0 ? Palette.success : Palette.text-lo; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    Text { text: "Home Page Frames"; color: Palette.text-hi; font-size: Type.body-sm; }
+                    Text { text: "Swipeable home-screen pages"; color: Palette.text-lo; font-size: Type.label-sm; }
+                }
+                Text {
+                    text: Creator.chrome-ready + " of " + Creator.chrome-total;
+                    color: Palette.text-hi;
+                    font-size: Type.body-sm;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+            // VRAM budget.
+            VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    Text { text: "VRAM Budget Footprint"; color: Palette.text-hi; font-size: Type.body-sm; horizontal-stretch: 1; }
+                    Text {
+                        text: Creator.vram-text + " / " + Creator.vram-budget;
+                        color: Creator.vram-fraction < 1.0 ? Palette.text-hi : Palette.warning;
+                        font-size: Type.body-sm;
+                        font-weight: 600;
+                    }
+                }
+                Rectangle {
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Palette.surface3;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * min(1.0, Creator.vram-fraction);
+                        border-radius: 3px;
+                        background: Creator.vram-fraction < 0.85 ? Palette.success : Creator.vram-fraction < 1.0 ? Palette.accent : Palette.danger;
+                        animate width { duration: 200ms; }
+                    }
+                }
             }
         }
     }

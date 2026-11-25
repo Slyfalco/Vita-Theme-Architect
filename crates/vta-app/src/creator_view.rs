@@ -170,6 +170,44 @@ fn slot(st: &mut State, id: &str, label: &str, spec: &str, required: bool, group
 }
 
 /// Push the whole state to the UI.
+/// Budget for the VRAM footprint indicator (the Vita's theme asset ceiling is
+/// modest; 16 MB of source imagery is a generous headroom guide).
+const VRAM_BUDGET: u64 = 16 * 1024 * 1024;
+
+/// Populate the creator's Validation Engine panel from the current theme state.
+fn set_validation(c: &Creator, st: &State, required_ready: usize) {
+    // Accent/text contrast: the global font colour over the info-bar background.
+    let font = st.colors.get("m_fontColor").map(String::as_str).unwrap_or("ffffffff");
+    let bar = st.colors.get("m_barColor").map(String::as_str).unwrap_or("ff000000");
+    let ratio = vta_core::validation::contrast_ratio(font, bar);
+    let level = vta_core::validation::contrast_level(ratio);
+    let contrast_pass = ratio >= 4.5;
+    c.set_contrast_ratio(format!("{ratio:.1}:1").into());
+    c.set_contrast_level(level.into());
+    c.set_contrast_pass(contrast_pass);
+
+    // UI chrome: the swipeable home-page frames (page 1 + the additional pages).
+    let home_frames = (1 + st.pages.iter().filter(|p| !p.src.is_empty()).count()).min(10);
+    c.set_chrome_ready(home_frames as i32);
+    c.set_chrome_total(10);
+
+    // VRAM footprint: every image + BGM the theme carries on disk.
+    let mut bytes = 0u64;
+    let size_of = |p: &str| if p.is_empty() { 0 } else { std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) };
+    for p in st.sources.values() {
+        bytes += size_of(p);
+    }
+    for pg in &st.pages {
+        bytes += size_of(&pg.src);
+    }
+    bytes += size_of(&st.bgm);
+    c.set_vram_text(crate::library_view::format_size(bytes).into());
+    c.set_vram_budget(crate::library_view::format_size(VRAM_BUDGET).into());
+    c.set_vram_fraction(bytes as f32 / VRAM_BUDGET as f32);
+
+    c.set_validation_pass(required_ready == 5 && contrast_pass && bytes <= VRAM_BUDGET);
+}
+
 fn refresh(app: &AppWindow) {
     let c = app.global::<Creator>();
     let search = c.get_icon_search().to_lowercase();
@@ -249,6 +287,7 @@ fn refresh(app: &AppWindow) {
         c.set_dirty(st.dirty);
         c.set_editing(st.editing.is_some());
         c.set_target(st.target.clone().into());
+        set_validation(&c, st, ready);
 
         let prev = |st: &mut State, id: &str| {
             st.sources.get(id).cloned().filter(|p| !p.is_empty()).map(|p| thumb(st, &p).0).unwrap_or_default()

@@ -12,6 +12,7 @@ pub mod paths;
 pub mod settings;
 pub mod theme;
 pub mod updater;
+pub mod validation;
 pub mod vita;
 
 /// The app version (the v2 `CURRENT_VERSION`): must match the release tag and the
