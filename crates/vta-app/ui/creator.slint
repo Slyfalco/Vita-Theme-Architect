@@ -1246,7 +1246,9 @@ component SimPanel inherits Panel {
         HorizontalLayout {
             spacing: 8px;
             Text {
-                text: Creator.sim-locked ? "Peel the top-right corner to unlock." : "Scroll or drag to change pages.";
+                text: Creator.sim-locked ? "Peel the top-right corner to unlock."
+                    : Creator.sim-page >= 2 ? "Extra page: shown once the owner's apps fill more than the 2 stock pages."
+                    : "Scroll or drag to change pages.";
                 color: Palette.text-lo;
                 font-size: Type.label-md;
                 wrap: word-wrap;
