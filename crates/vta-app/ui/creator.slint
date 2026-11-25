@@ -1080,6 +1080,15 @@ component VitaStage inherits Rectangle {
     // Pages sit 512/544 of the screen apart, so the bubble rows run on evenly
     // from one page into the next as you scroll (measured on the console).
     property <length> pitch: root.height * 512 / 544;
+    // Wallpaper shown before / after the last page change, and when it changed.
+    property <int> wall-from: 0;
+    property <int> wall-to: 0;
+    property <float> wall-at: -100000;
+    changed page => {
+        self.wall-from = clamp((self.t - self.wall-at - 220) / 280, 0, 1) >= 0.5 ? self.wall-to : self.wall-from;
+        self.wall-to = self.page;
+        self.wall-at = self.t;
+    }
     // Live drag: a vertical page swipe on the home screen, the peel when locked.
     property <length> drag-x: ta.pressed ? ta.mouse-x - ta.pressed-x : 0px;
     property <length> drag-y: ta.pressed ? ta.mouse-y - ta.pressed-y : 0px;
@@ -1193,23 +1202,22 @@ component VitaStage inherits Rectangle {
         source: root.wave;
         image-fit: fill;
     }
-    // Home page wallpapers, stacked vertically like the Vita's pages.
-    pages-strip := Rectangle {
-        y: -root.page * root.height + root.pull * root.height / root.pitch;
+    // The page wallpaper. Unlike the bubbles it doesn't scroll: on the console
+    // the next page's image loads a moment after the page changes, then fades
+    // in over the old one (a page with no wallpaper shows just the wave).
+    Image {
         width: root.width;
-        height: root.page-count * root.height;
-        // Measured on the console: a fast ease-out with a slight overshoot.
-        animate y { duration: ta.pressed ? 0ms : 380ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.04); }
-        // A page with no wallpaper shows just the wave, as on the console.
-        for pg[i] in root.pages: Image {
-            y: i * root.height;
-            width: root.width;
-            height: root.height;
-            source: pg;
-            image-fit: cover;
-        }
+        height: root.height;
+        source: root.wall-from < root.pages.length ? root.pages[root.wall-from] : @image-url("");
+        image-fit: cover;
     }
-    // After unlocking, the home fades up from black.
+    Image {
+        width: root.width;
+        height: root.height;
+        source: root.wall-to < root.pages.length ? root.pages[root.wall-to] : @image-url("");
+        image-fit: cover;
+        opacity: clamp((root.t - root.wall-at - 220) / 280, 0, 1);
+    }    // After unlocking, the home fades up from black.
     Rectangle {
         width: root.width;
         height: root.height;

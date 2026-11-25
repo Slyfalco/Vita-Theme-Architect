@@ -95,9 +95,13 @@ fn normalise(a: [f32; 3]) -> [f32; 3] {
 /// goes edge-on and swings round like the console's. `turn_deg` is the total
 /// turn across all `frames`. A bubble without a theme icon spins as white glass.
 pub fn spin_frames(src: &Image, frames: usize, turn_deg: f32) -> Vec<Image> {
+    spin_frames_px(src.to_rgba8(), frames, turn_deg).into_iter().map(Image::from_rgba8).collect()
+}
+
+/// [`spin_frames`] on raw pixels, so it can run on a background thread.
+pub fn spin_frames_px(buf: Option<SharedPixelBuffer<Rgba8Pixel>>, frames: usize, turn_deg: f32) -> Vec<SharedPixelBuffer<Rgba8Pixel>> {
     const N: u32 = 160;
     const THICK: f32 = 0.34; // lens half-thickness relative to its radius
-    let buf = src.to_rgba8();
     let (sw, sh) = buf.as_ref().map(|b| (b.width() as f32, b.height() as f32)).unwrap_or((0.0, 0.0));
     let sample = |x: f32, y: f32| -> [f32; 4] {
         let Some(b) = buf.as_ref() else { return [236.0, 240.0, 246.0, 255.0] };
@@ -189,7 +193,7 @@ pub fn spin_frames(src: &Image, frames: usize, turn_deg: f32) -> Vec<Image> {
                     o[i] = Rgba8Pixel { r: rgb[0] as u8, g: rgb[1] as u8, b: rgb[2] as u8, a: (255.0 * edge) as u8 };
                 }
             }
-            Image::from_rgba8(out)
+            out
         })
         .collect()
 }

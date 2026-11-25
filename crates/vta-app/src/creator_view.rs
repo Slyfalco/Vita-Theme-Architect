@@ -107,6 +107,12 @@ thread_local! {
     static SIM_WAVES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     /// The flat theme icon of each simulator bubble (for the 3D launch spin).
     static SIM_FLAT: RefCell<Vec<Image>> = const { RefCell::new(Vec::new()) };
+    /// Each bubble's launch-spin frames, rendered ahead of time (bubble index ->
+    /// frames), so tapping starts the animation instantly; and the generation
+    /// they belong to (a newer theme state discards older work).
+    static SIM_SPIN: RefCell<HashMap<usize, Vec<Image>>> = RefCell::new(HashMap::new());
+    static SIM_SPIN_GEN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static SIM_SPIN_KEY: RefCell<String> = const { RefCell::new(String::new()) };
     /// The simulator's BGM stream: what it is playing (path + loop start) and
     /// the player, or a preparation in flight.
     static SIM_BGM: RefCell<(String, Option<crate::audio::Player>, bool)> = const { RefCell::new((String::new(), None, false)) };
@@ -274,6 +280,9 @@ fn sim_bubble(page: i32, slot: i32, icon: Image, label: &str, kind: i32, minis: 
         delay: next() * 150.0,
     }
 }
+/// Frames in a launch spin (60 over the 450 ms flight: smooth at 120+ fps).
+const SPIN_FRAMES: usize = 60;
+
 /// A stock console always has at least this many home pages.
 const SIM_MIN_PAGES: usize = 2;
 
@@ -343,6 +352,38 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
         .map(|(_, _, id, ..)| icons.get(*id).cloned().unwrap_or_default())
         .chain(std::iter::repeat_n(Image::default(), bubbles.len().saturating_sub(SIM_HOME.len())))
         .collect();
+    // Render every themed bubble's launch spin on a worker thread (only the
+    // stock pages; game placeholders spin as plain glass, rendered on demand).
+    // Only when the icons actually changed (refresh runs on every edit).
+    let spin_key: String = SIM_HOME.iter().map(|(_, _, id, ..)| st.sources.get(*id).map(String::as_str).unwrap_or("-")).collect::<Vec<_>>().join("|");
+    let fresh = SIM_SPIN_KEY.with(|k| {
+        let mut k = k.borrow_mut();
+        let changed = *k != spin_key;
+        *k = spin_key;
+        changed
+    });
+    let gen = SIM_SPIN_GEN.with(|g| {
+        if fresh {
+            g.set(g.get() + 1);
+        }
+        g.get()
+    });
+    if fresh {
+        SIM_SPIN.with(|s| s.borrow_mut().clear());
+    }
+    let jobs: Vec<(usize, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>)> =
+        flat.iter().enumerate().take(SIM_HOME.len()).map(|(i, img)| (i, img.to_rgba8())).collect();
+    let jobs = if fresh { jobs } else { Vec::new() };
+    std::thread::spawn(move || {
+        for (i, px) in jobs {
+            let frames = crate::sim_art::spin_frames_px(px, SPIN_FRAMES, 540.0);
+            let _ = slint::invoke_from_event_loop(move || {
+                if SIM_SPIN_GEN.with(|g| g.get()) == gen {
+                    SIM_SPIN.with(|s| s.borrow_mut().insert(i, frames.into_iter().map(Image::from_rgba8).collect()));
+                }
+            });
+        }
+    });
     SIM_FLAT.with(|f| *f.borrow_mut() = flat);
     c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
     c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
@@ -872,8 +913,12 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     c.on_sim_launch(move |i| {
         let Some(app) = a.upgrade() else { return };
         let c = app.global::<Creator>();
-        let icon = SIM_FLAT.with(|f| f.borrow().get(i.max(0) as usize).cloned().unwrap_or_default());
-        let frames = crate::sim_art::spin_frames(&icon, 36, 540.0);
+        // Pre-rendered in the background when the theme loaded; only if that
+        // hasn't finished yet is it rendered here.
+        let frames = SIM_SPIN.with(|s| s.borrow().get(&(i as usize)).cloned()).unwrap_or_else(|| {
+            let icon = SIM_FLAT.with(|f| f.borrow().get(i.max(0) as usize).cloned().unwrap_or_default());
+            crate::sim_art::spin_frames(&icon, SPIN_FRAMES, 540.0)
+        });
         c.set_sim_spin_frames(ModelRc::new(VecModel::from(frames)));
     });
 
@@ -899,12 +944,14 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
                 // Start from wherever the current fade has got to.
                 *f = (f.1, target, Some(std::time::Instant::now()));
             }
-            let fade = f.2.map(|s| s.elapsed().as_secs_f32() / 0.6).unwrap_or(1.0);
+            // The console takes about a second to morph one wave into the next.
+            let fade = f.2.map(|s| s.elapsed().as_secs_f32() / 1.1).unwrap_or(1.0);
             if fade >= 1.0 {
                 f.0 = f.1;
                 f.2 = None;
             }
-            (f.0, f.1, fade.min(1.0))
+            let k = fade.min(1.0);
+            (f.0, f.1, k * k * (3.0 - 2.0 * k))
         });
         c.set_sim_wave(crate::wave::frame(from, to, fade, started.elapsed().as_secs_f32()));
     });

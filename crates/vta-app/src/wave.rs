@@ -78,19 +78,48 @@ fn mix(a: Palette, b: Palette, t: f32) -> Palette {
     }
 }
 
+/// The sheet shapes of a wave type: (offset from the glow line, thickness,
+/// strength, x frequency, speed, phase) for three sheets. Varied per type from a
+/// fixed seed, around the base look.
+fn sheets(kind: i32) -> [(f32, f32, f32, f32, f32, f32); 3] {
+    const BASE: [(f32, f32, f32, f32, f32, f32); 3] = [
+        (0.0, 0.055, 0.85, 0.9, 0.21, 0.0),
+        (-0.07, 0.09, 0.35, 0.6, -0.13, 1.7),
+        (0.06, 0.12, 0.30, 1.3, 0.09, 4.1),
+    ];
+    let mut seed = (kind.clamp(0, 31) as u32 + 1).wrapping_mul(2_654_435_761);
+    let mut r = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        (seed % 10_000) as f32 / 10_000.0 * 2.0 - 1.0
+    };
+    BASE.map(|(o, th, st, fq, sp, ph)| {
+        (o + 0.03 * r(), th * (1.0 + 0.35 * r()), st * (1.0 + 0.2 * r()), fq * (1.0 + 0.45 * r()), sp * (1.0 + 0.4 * r()), ph + 3.0 * r())
+    })
+}
+
+/// How steeply a wave type's sheets rise to the right.
+fn slant_of(kind: i32) -> f32 {
+    0.02 + 0.07 * (((kind.clamp(0, 31) as u32).wrapping_mul(40_503) % 97) as f32 / 96.0)
+}
+
 /// One frame of the wave at `secs`, cross-faded from wave `from` to `to` by `fade` (0..1).
 pub fn frame(from: i32, to: i32, fade: f32, secs: f32) -> Image {
     let p = mix(palette(from), palette(to), fade.clamp(0.0, 1.0));
     let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(W, H);
     let px = buf.make_mut_slice();
-    // Three soft light sheets drifting at different speeds, like the console's.
-    const SHEETS: [(f32, f32, f32, f32, f32, f32); 3] = [
-        // (offset from glow_y, thickness, strength, x frequency, speed, phase)
-        (0.0, 0.055, 0.85, 0.9, 0.21, 0.0),
-        (-0.07, 0.09, 0.35, 0.6, -0.13, 1.7),
-        (0.06, 0.12, 0.30, 1.3, 0.09, 4.1),
-    ];
-    let tau = std::f32::consts::TAU;
+    // Three soft light sheets drifting at different speeds. Each wave type has
+    // its own sheet shapes (not just colours); during a change they morph from
+    // one type's shapes into the next.
+    let (sa, sb) = (sheets(from), sheets(to));
+    let f = fade.clamp(0.0, 1.0);
+    let lerp = |a: f32, b: f32| a + (b - a) * f;
+    let shapes: [(f32, f32, f32, f32, f32, f32); 3] = std::array::from_fn(|i| {
+        let (a, b) = (sa[i], sb[i]);
+        (lerp(a.0, b.0), lerp(a.1, b.1), lerp(a.2, b.2), lerp(a.3, b.3), lerp(a.4, b.4), lerp(a.5, b.5))
+    });
+    let slant = lerp(slant_of(from), slant_of(to));    let tau = std::f32::consts::TAU;
     for y in 0..H {
         let v = y as f32 / (H - 1) as f32;
         // Vertical gradient through the five palette stops.
@@ -101,9 +130,9 @@ pub fn frame(from: i32, to: i32, fade: f32, secs: f32) -> Image {
         for x in 0..W {
             let u = x as f32 / (W - 1) as f32;
             let mut light = 0.0;
-            for (off, thick, strength, freq, speed, phase) in SHEETS {
+            for (off, thick, strength, freq, speed, phase) in shapes {
                 // Sheets slant gently upward to the right, as on the console.
-                let centre = p.glow_y + off - 0.05 * (u - 0.5)
+                let centre = p.glow_y + off - slant * (u - 0.5)
                     + 0.045 * (tau * freq * u + secs * speed * tau * 0.25 + phase).sin()
                     + 0.02 * (tau * freq * 2.3 * u - secs * speed * tau * 0.4 + phase * 2.0).sin();
                 let d = (v - centre) / thick;
