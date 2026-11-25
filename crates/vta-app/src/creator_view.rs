@@ -271,7 +271,16 @@ const SIM_MIN_PAGES: usize = 2;
 /// Feed the Vita simulator: wallpapers, bubbles, label/bar/date colours and the
 /// lock-screen + indicator images, all from the theme being edited.
 fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
-    let img = |id: &str| icons.get(id).cloned().unwrap_or_default();
+    // The bubbles are drawn as the console draws them: wrapped round a glossy
+    // sphere (only in the simulator; the built theme keeps the flat icons).
+    let spheres: HashMap<&str, Image> = SIM_HOME
+        .iter()
+        .map(|(_, _, id, ..)| *id)
+        .chain(SIM_FOLDER.iter().copied())
+        .filter(|id| !id.is_empty())
+        .filter_map(|id| icons.get(id).map(|i| (id, crate::sim_art::sphere(i))))
+        .collect();
+    let img = |id: &str| spheres.get(id).cloned().unwrap_or_default();
     let mut bubbles: Vec<SimBubble> = SIM_HOME
         .iter()
         .map(|&(page, slot, id, label, kind)| {

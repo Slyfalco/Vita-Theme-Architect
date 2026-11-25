@@ -21,6 +21,7 @@ mod settings_view;
 mod submit_view;
 mod updater_view;
 mod wave;
+mod sim_art;
 
 use library_view::{LibraryState, SharedLibrary};
 use slint::winit_030::winit::window::ResizeDirection;
