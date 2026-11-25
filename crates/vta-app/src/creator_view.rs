@@ -217,28 +217,27 @@ fn set_validation(c: &Creator, st: &State, required_ready: usize) {
     c.set_validation_pass(required_ready == 5 && contrast_pass && bytes <= VRAM_BUDGET);
 }
 
-/// The stock apps on the Vita's first two home pages, as the console lays them
-/// out: (page, slot, icon, label, kind). Slots run 0-9 over rows of 3, 4, 3.
-/// kind 0 = theme icon, 1 = folder, 2 = Welcome Park (has no theme icon).
-const SIM_HOME: [(i32, i32, &str, &str, i32); 15] = [
-    (0, 0, "icon_web.png", "Web Browser", 0),
-    (0, 1, "icon_party.png", "Party", 0),
-    (0, 2, "icon_photos.png", "Photos", 0),
-    (0, 3, "icon_music.png", "Music", 0),
-    (0, 4, "", "Folder", 1),
-    (0, 5, "", "Welcome Park", 2),
-    (0, 6, "icon_settings.png", "Settings", 0),
-    (0, 7, "icon_calendar.png", "Calendar", 0),
-    (0, 8, "icon_email.png", "Email", 0),
-    (0, 9, "icon_video.png", "Videos", 0),
-    (1, 0, "icon_near.png", "near", 0),
-    (1, 1, "icon_friend.png", "Friends", 0),
-    (1, 2, "icon_trophy.png", "Trophies", 0),
-    (1, 3, "icon_message.png", "Messages", 0),
-    (1, 4, "icon_cma.png", "Content Manager", 0),
+/// The console's stock home layout, as shown in Sony's PS Vita User's Guide
+/// ("Using the screens"): (page, slot, icon, label, kind). Slots run 0-9 over
+/// rows of 3, 4, 3. kind 0 = theme icon, 1 = folder, 2 = Welcome Park and
+/// 3 = PS Store (neither has a theme icon). The layout is fixed, never edited.
+const SIM_HOME: [(i32, i32, &str, &str, i32); 13] = [
+    (0, 0, "", "Welcome Park", 2),
+    (0, 1, "", "PS Store", 3),
+    (0, 2, "icon_web.png", "Browser", 0),
+    (0, 3, "icon_trophy.png", "Trophies", 0),
+    (0, 4, "icon_friend.png", "Friends", 0),
+    (0, 5, "icon_message.png", "Messages", 0),
+    (0, 6, "icon_party.png", "Party", 0),
+    (0, 7, "icon_ps4link.png", "PS4 Link", 0),
+    (0, 8, "", "Folder", 1),
+    (0, 9, "icon_parental.png", "Parental Controls", 0),
+    (1, 0, "icon_cma.png", "Content Manager", 0),
+    (1, 1, "icon_ps3link.png", "PS3 Remote Play", 0),
+    (1, 2, "icon_near.png", "near", 0),
 ];
-/// The apps shown inside the page-1 folder bubble.
-const SIM_FOLDER: [&str; 4] = ["icon_ps4link.png", "icon_ps3link.png", "icon_parental.png", "icon_power.png"];
+/// The apps inside the page-1 folder (the guide's picture shows six).
+const SIM_FOLDER: [&str; 6] = ["icon_video.png", "icon_music.png", "icon_photos.png", "icon_settings.png", "icon_email.png", "icon_calendar.png"];
 
 /// Feed the Vita simulator: wallpapers, bubbles, label/bar/date colours and the
 /// lock-screen + indicator images, all from the theme being edited.

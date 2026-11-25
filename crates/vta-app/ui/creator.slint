@@ -939,11 +939,12 @@ component VitaStage inherits Rectangle {
                 background: @radial-gradient(circle, #ffffff38 0%, #ffffff14 75%, #ffffff30 100%);
                 border-width: 1px;
                 border-color: #ffffff90;
+                // Up to six minis, three per row, like the console's folder bubble.
                 for m[j] in b.minis: Rectangle {
-                    width: parent.width * 0.3;
+                    width: parent.width * 0.22;
                     height: self.width;
-                    x: parent.width * (mod(j, 2) == 0 ? 0.19 : 0.51);
-                    y: parent.height * (j < 2 ? 0.19 : 0.51);
+                    x: parent.width * (0.16 + mod(j, 3) * 0.235);
+                    y: parent.height * (j < 3 ? 0.26 : 0.5);
                     border-radius: self.width / 2;
                     clip: true;
                     Image {
@@ -952,6 +953,25 @@ component VitaStage inherits Rectangle {
                         height: parent.height;
                         image-fit: cover;
                     }
+                }
+            }
+            // PS Store (not themeable): a blue bubble with a white shopping bag.
+            if b.kind == 3: Rectangle {
+                width: parent.width * 0.9;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                background: @radial-gradient(circle, #ffffff 0%, #e9f1fb 55%, #b9cbe2 100%);
+                Path {
+                    width: parent.width * 0.5;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    fill: #1f6fd6;
+                    commands: "M5 8 H19 L18 21 H6 Z M9 8 V6 A3 3 0 0 1 15 6 V8 H13.5 V6 A1.5 1.5 0 0 0 10.5 6 V8 Z";
                 }
             }
             if b.kind == 2: Rectangle {
