@@ -91,7 +91,7 @@ fn normalise(a: [f32; 3]) -> [f32; 3] {
 }
 
 /// Frames of a bubble spinning in 3D (the launch animation): the icon on a
-/// glossy lens (a flattened sphere) turning about a slightly tilted axis, so it
+/// glossy lens (a flattened sphere) turning about an upright axis, so it
 /// goes edge-on and swings round like the console's. `turn_deg` is the total
 /// turn across all `frames`. A bubble without a theme icon spins as white glass.
 pub fn spin_frames(src: &Image, frames: usize, turn_deg: f32) -> Vec<Image> {
@@ -117,7 +117,8 @@ pub fn spin_frames(src: &Image, frames: usize, turn_deg: f32) -> Vec<Image> {
         let (a, bb, c, d) = (at(x0, y0), at(x0 + 1, y0), at(x0, y0 + 1), at(x0 + 1, y0 + 1));
         std::array::from_fn(|i| (a[i] * (1.0 - fx) + bb[i] * fx) * (1.0 - fy) + (c[i] * (1.0 - fx) + d[i] * fx) * fy)
     };
-    let axis = normalise([0.22, 1.0, 0.18]);
+    // Upright axis: the console's launch spin does not tilt.
+    let axis = [0.0, 1.0, 0.0];
     let light = normalise([-0.45, -0.55, 0.70]);
     let half = N as f32 / 2.0;
     (0..frames)

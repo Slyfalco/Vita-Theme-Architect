@@ -1302,7 +1302,7 @@ component VitaStage inherits Rectangle {
         property <float> spin: max(0.06, abs(cos(self.turn)));
         property <float> squash: 1 - 0.14 * abs(sin(self.turn));
         property <float> shade: 0.55 * abs(sin(self.turn));
-        property <float> lift: sin(self.fp * 180deg) * root.h * 0.04;
+        property <float> lift: 0;
         // The card's contents: shown while open, fading as it starts to peel.
         property <float> content: root.la-close-at < 0 ? 1 : 1 - clamp((root.t - root.la-close-at) / 120, 0, 1);
         width: root.width;
