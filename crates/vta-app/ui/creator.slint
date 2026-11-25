@@ -102,6 +102,7 @@ export global Creator {
     in property <[color]> sim-font-colors;      // bubble label colour per page
     in property <[SimBubble]> sim-bubbles;      // stock app bubbles, by page + slot
     in property <image> sim-lockpaper;
+    in property <bool> sim-has-lockpaper: false;
     in property <color> sim-bar-color: #000000;
     in property <color> sim-indicator-color: #ffffff;
     in property <color> sim-date-color: #ffffff;
@@ -153,11 +154,12 @@ component ReadyPill inherits Rectangle {
     in property <bool> ok;
     in property <string> text: root.ok ? "Ready" : "Missing";
     height: 30px;
-    width: row.preferred-width + 20px;
+    horizontal-stretch: 0;
     border-radius: 6px;
     background: root.ok ? Palette.success.transparentize(85%) : Palette.danger.transparentize(88%);
-    row := HorizontalLayout {
-        x: 10px;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
         spacing: 6px;
         Icon {
             source: root.ok ? Icons.check-circle : Icons.warning;
@@ -231,7 +233,7 @@ component AssetRow inherits Rectangle {
                 spacing: 8px;
                 SpecChip { text: root.slot.spec; }
                 Text {
-                    text: root.slot.file != "" ? root.slot.file + (root.slot.info != "" ? "  (" + root.slot.info + ")" : "") : "Not set — " + (root.slot.required ? "required" : "optional");
+                    text: root.slot.file != "" ? root.slot.file + (root.slot.info != "" && !Density.narrow ? "  (" + root.slot.info + ")" : "") : "Not set — " + (root.slot.required ? "required" : "optional");
                     color: Palette.text-mid;
                     font-size: Type.body-sm;
                     vertical-alignment: center;
@@ -373,17 +375,17 @@ component MainTab inherits VerticalLayout {
         title: "Theme Descriptor & Meta";
         subtitle: "Target: " + Creator.target;
         icon: Icons.description;
+        // The title gets its own full-width row so long names are not cut off.
+        FormRow {
+            label: "THEME TITLE";
+            required: true;
+            Field {
+                text <=> Creator.title;
+                edited => { Creator.edited(); }
+            }
+        }
         HorizontalLayout {
             spacing: 14px;
-            FormRow {
-                label: "THEME TITLE";
-                required: true;
-                horizontal-stretch: 2;
-                Field {
-                    text <=> Creator.title;
-                    edited => { Creator.edited(); }
-                }
-            }
             FormRow {
                 label: "AUTHOR / PROVIDER";
                 horizontal-stretch: 2;
@@ -780,6 +782,7 @@ component VitaStage inherits Rectangle {
     in property <[color]> font-colors;
     in property <[SimBubble]> bubbles;
     in property <image> lockpaper;
+    in property <bool> has-lockpaper;
     in property <string> clock;
     in property <string> ampm;
     in property <string> date;
@@ -798,7 +801,8 @@ component VitaStage inherits Rectangle {
     property <length> bar-h: root.height * 32 / 544;
     property <length> diam: root.height * 128 / 544;
     // Bubble centres (fractions of the screen) for slots 0-9: rows of 3, 4, 3.
-    property <[float]> cxs: [0.26, 0.51, 0.74, 0.142, 0.385, 0.625, 0.844, 0.26, 0.51, 0.74];
+    // Evenly spaced honeycomb: the middle row sits half a step out from the others.
+    property <[float]> cxs: [0.26, 0.5, 0.74, 0.14, 0.38, 0.62, 0.86, 0.26, 0.5, 0.74];
     property <[float]> cys: [0.25, 0.25, 0.25, 0.544, 0.544, 0.544, 0.544, 0.816, 0.816, 0.816];
     // Live drag: a vertical page swipe on the home screen, the peel when locked.
     property <length> drag-x: ta.pressed ? ta.mouse-x - ta.pressed-x : 0px;
@@ -807,6 +811,7 @@ component VitaStage inherits Rectangle {
     property <length> pull: root.locked ? 0px : root.at-edge ? root.drag-y * 0.3 : root.drag-y;
     property <length> peel: root.locked ? max(0px, root.drag-y - root.drag-x) : 0px;
     property <bool> wheel-cool: false;
+    property <bool> floating: !root.locked && !ta.pressed;
 
     background: #0d1117;
     clip: true;
@@ -817,12 +822,18 @@ component VitaStage inherits Rectangle {
         width: root.width;
         height: root.page-count * root.height;
         animate y { duration: ta.pressed ? 0ms : 300ms; easing: ease-out; }
-        for pg[i] in root.pages: Image {
+        for pg[i] in root.pages: Rectangle {
             y: i * root.height;
             width: root.width;
             height: root.height;
-            source: pg;
-            image-fit: cover;
+            // The stock home background until the theme provides a wallpaper.
+            background: @linear-gradient(115deg, #06104a 0%, #0a1f78 45%, #040b3a 100%);
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: pg;
+                image-fit: cover;
+            }
         }
         for b in root.bubbles: Rectangle {
             property <length> cx: root.width * root.cxs[b.slot];
@@ -832,9 +843,11 @@ component VitaStage inherits Rectangle {
             property <bool> hit: ta.pressed && !root.locked && b.page == root.page && abs(root.drag-y) < 8px && self.fx * self.fx + self.fy * self.fy < 0.25;
             property <length> d: self.hit ? root.diam * 0.9 : root.diam;
             animate d { duration: 90ms; }
+            // Bubbles drift gently in place, each on its own phase, like the Vita's.
+            property <angle> phase: root.floating ? animation-tick() / 3.4s * 360deg + (b.slot * 67 + b.page * 29) * 1deg : 0deg;
             visible: b.page < root.page-count;
-            x: self.cx - self.d / 2;
-            y: b.page * root.height + self.cy - self.d / 2;
+            x: self.cx - self.d / 2 + root.width * 0.005 * cos(self.phase * 0.7);
+            y: b.page * root.height + self.cy - self.d / 2 + root.height * 0.012 * sin(self.phase);
             width: self.d;
             height: self.d;
             // The Vita shows every launcher icon as a round bubble.
@@ -948,6 +961,13 @@ component VitaStage inherits Rectangle {
         width: root.width;
         height: root.height;
         background: #000000;
+        // The stock lock-screen blue until the theme provides a lock wallpaper.
+        if !root.has-lockpaper: Rectangle {
+            y: root.bar-h;
+            width: root.width;
+            height: root.height - root.bar-h;
+            background: @radial-gradient(circle, #0a4fa6 0%, #07408f 55%, #052f6e 100%);
+        }
         Image {
             y: root.bar-h;
             width: root.width;
@@ -1091,12 +1111,6 @@ component SimPanel inherits Panel {
                 font-size: Type.body-sm;
                 vertical-alignment: center;
             }
-            IconBtn {
-                icon: Icons.lock;
-                scale: 0.8;
-                tooltip: Creator.sim-locked ? "Show the home screen" : "Show the lock screen";
-                clicked => { Creator.sim-locked = !Creator.sim-locked; }
-            }
         }
         Rectangle {
             height: self.width * 544 / 960;
@@ -1111,6 +1125,7 @@ component SimPanel inherits Panel {
                 font-colors: Creator.sim-font-colors;
                 bubbles: Creator.sim-bubbles;
                 lockpaper: Creator.sim-lockpaper;
+                has-lockpaper: Creator.sim-has-lockpaper;
                 clock: Creator.sim-clock;
                 ampm: Creator.sim-ampm;
                 date: Creator.sim-date;
@@ -1126,11 +1141,25 @@ component SimPanel inherits Panel {
                 locked <=> Creator.sim-locked;
             }
         }
-        Text {
-            text: Creator.sim-locked ? "Drag the top-right corner to peel the lock screen open." : "Scroll or drag up and down to change home pages.";
-            color: Palette.text-lo;
-            font-size: Type.label-md;
-            wrap: word-wrap;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: Creator.sim-locked ? "Peel the top-right corner to unlock." : "Scroll or drag to change pages.";
+                color: Palette.text-lo;
+                font-size: Type.label-md;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            // Back to the lock (splash) screen, or straight to the home screen.
+            Btn {
+                text: Creator.sim-locked ? "Home Screen" : "Lock Screen";
+                icon: Icons.lock;
+                has-icon: true;
+                compact: true;
+                kind: ButtonKind.secondary;
+                clicked => { Creator.sim-locked = !Creator.sim-locked; }
+            }
         }
     }
 }

@@ -276,7 +276,9 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     }
 
     let src = |st: &mut State, id: &str| st.sources.get(id).cloned().filter(|p| !p.is_empty()).map(|p| thumb(st, &p).0);
-    c.set_sim_lockpaper(src(st, "lockpaper.png").unwrap_or_default());
+    let lock = src(st, "lockpaper.png");
+    c.set_sim_has_lockpaper(lock.is_some());
+    c.set_sim_lockpaper(lock.unwrap_or_default());
     c.set_sim_notice(src(st, "noNotice.png").unwrap_or_default());
     let (cur, other) = (src(st, "screen_current.png"), src(st, "screen_other.png"));
     c.set_sim_custom_dots(cur.is_some() && other.is_some());
@@ -427,8 +429,9 @@ fn reset(app: &AppWindow) {
     });
     let c = app.global::<Creator>();
     c.set_tab(0);
+    // Like the console, the simulator wakes on the lock screen.
     c.set_sim_page(0);
-    c.set_sim_locked(false);
+    c.set_sim_locked(true);
     c.set_selected_page(-1);
     c.set_icon_search("".into());
     c.set_icon_filter(0);
