@@ -130,6 +130,20 @@ thread_local! {
     static PENDING: RefCell<Option<(PathBuf, Vec<Entry>)>> = const { RefCell::new(None) };
 }
 
+/// Debug builds: trace the submission flow to %TEMP%/vta-submit.log.
+fn trace(msg: &str) {
+    #[cfg(debug_assertions)]
+    {
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("vta-submit.log")) {
+            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            let _ = writeln!(f, "{t} {msg}");
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = msg;
+}
+
 fn cleanup_zip(path: &Path) {
     let _ = std::fs::remove_file(path);
 }
@@ -278,12 +292,14 @@ fn reveal(s: &mut Session) {
         return;
     }
     s.shown = true;
+    trace("reveal");
     let w = s.window.window();
     crate::center_on_screen(w);
 }
 
 fn hide(s: &mut Session) {
     s.shown = false;
+    trace("hide");
     s.window.window().set_position(slint::PhysicalPosition::new(-20_000, -20_000));
 }
 
@@ -295,6 +311,40 @@ fn run_js(js: &str) {
     });
 }
 
+/// Run a script and call `then` on the UI thread once it has finished running
+/// (scripts are evaluated in order, so earlier `run_js` calls are done too).
+fn run_js_then(js: &str, then: impl FnOnce() + 'static) {
+    let then = std::rc::Rc::new(std::cell::RefCell::new(Some(then)));
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let ok = SESSION.with(|s| {
+        s.borrow().as_ref().and_then(|s| s.webview.as_ref()).is_some_and(|wv| {
+            wv.evaluate_script_with_callback(js, move |_| {
+                let _ = tx.send(());
+            })
+            .is_ok()
+        })
+    });
+    if !ok {
+        if let Some(f) = then.borrow_mut().take() {
+            f();
+        }
+        return;
+    }
+    // The callback arrives on the UI thread's message loop; poll for it.
+    let timer = std::rc::Rc::new(slint::Timer::default());
+    let t2 = timer.clone();
+    let started = std::time::Instant::now();
+    timer.start(slint::TimerMode::Repeated, Duration::from_millis(10), move || {
+        if rx.try_recv().is_ok() || started.elapsed() > Duration::from_secs(5) {
+            t2.stop();
+            if let Some(f) = then.borrow_mut().take() {
+                f();
+            }
+        }
+    });
+    std::mem::forget(timer);
+}
+
 fn close_session() {
     if let Some(s) = SESSION.with(|s| s.borrow_mut().take()) {
         drop(s.webview);
@@ -304,6 +354,7 @@ fn close_session() {
 }
 
 fn on_ipc(message: &str) {
+    trace(&format!("ipc {message}"));
     match message {
         "ready" => SESSION.with(|s| {
             if let Some(s) = s.borrow_mut().as_mut() {
@@ -328,6 +379,7 @@ fn on_ipc(message: &str) {
 }
 
 fn on_page_load(event: PageLoadEvent, url: String) {
+    trace(&format!("{} {url}", if matches!(event, PageLoadEvent::Started) { "started" } else { "finished" }));
     match event {
         // v2 `response_received` (update path): on theme.php, click through to the
         // update form after 1 s.
@@ -358,12 +410,16 @@ fn on_page_load(event: PageLoadEvent, url: String) {
             });
             match first {
                 Some(false) => {
+                    // v2's `run_js` blocks until each script has run, so the
+                    // window only appears once the page is already cleaned up.
+                    // Do the same: show it from the scripts' completion callback.
                     run_js(NAV_REMOVAL);
-                    run_js(PADDING_CHANGE);
-                    SESSION.with(|s| {
-                        if let Some(s) = s.borrow_mut().as_mut() {
-                            reveal(s);
-                        }
+                    run_js_then(PADDING_CHANGE, || {
+                        SESSION.with(|s| {
+                            if let Some(s) = s.borrow_mut().as_mut() {
+                                reveal(s);
+                            }
+                        })
                     });
                 }
                 Some(true) => run_js(NAV_THEME),
