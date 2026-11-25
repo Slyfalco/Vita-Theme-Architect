@@ -219,6 +219,7 @@ const WATCH_NEW_KEY: &str = r#"
 
 /// Debug builds only (`VTA_DEV_SUBMIT_SPY`): log every request the page makes,
 /// with its body and the server's reply, to the submit trace.
+#[cfg(debug_assertions)]
 const XHR_SPY: &str = r#"
 (function () {
     var open = XMLHttpRequest.prototype.open, send = XMLHttpRequest.prototype.send;
@@ -236,6 +237,7 @@ const XHR_SPY: &str = r#"
 /// Debug builds only (`VTA_DEV_FAKE_UKEY=<reply>`): answer the site's user-key
 /// check (POST ukey.php) locally with `<reply>`, to test an accepted key
 /// without a real one. Nothing is sent to the server for that request.
+#[cfg(debug_assertions)]
 const FAKE_UKEY: &str = r#"
 (function () {
     var open = XMLHttpRequest.prototype.open, send = XMLHttpRequest.prototype.send;
