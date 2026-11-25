@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use vta_online::{Entry, Field, Sort, PAGE};
+use vta_online::{Entry, Field, Filter, Sort, PAGE};
 
 #[derive(Default)]
 struct State {
@@ -17,6 +17,7 @@ struct State {
     previews: HashMap<String, Image>,
     search_timer: Option<slint::Timer>,
     extras_root: PathBuf,
+    settings: Option<crate::library_actions::SharedSettings>,
 }
 
 thread_local! {
@@ -28,6 +29,8 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 const FIELDS: [Field; 3] = [Field::Title, Field::Author, Field::Tags];
 const SORTS: [Sort; 5] = [Sort::Newest, Sort::Oldest, Sort::Az, Sort::Za, Sort::Downloads];
+// Matches the category chips in community.slint (All / Verified / Top Rated / Staff Picks).
+const FILTERS: [Filter; 4] = [Filter::All, Filter::Verified, Filter::TopRated, Filter::StaffPicks];
 
 fn compact_count(n: i64) -> String {
     if n >= 1_000_000 {
@@ -140,15 +143,16 @@ pub fn show_page(app: &AppWindow, page: i32, fresh: bool) {
     let search = c.get_search().trim().to_string();
     let field = FIELDS[c.get_field().clamp(0, 2) as usize];
     let sort = SORTS[c.get_sort().clamp(0, 4) as usize];
+    let filter = FILTERS[c.get_filter().clamp(0, 3) as usize];
     c.set_loading(true);
     c.set_error("".into());
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let weak = app.as_weak();
     std::thread::spawn(move || {
-        let result = vta_online::count(&search, field, fresh).and_then(|total| {
+        let result = vta_online::count(&search, field, filter, fresh).and_then(|total| {
             let pages = total.div_ceil(PAGE).max(1) as i32;
             let page = page.clamp(1, pages);
-            vta_online::get(&search, field, sort, page as usize, PAGE, false).map(|list| (total, pages, page, list))
+            vta_online::get(&search, field, filter, sort, page as usize, PAGE, false).map(|list| (total, pages, page, list))
         });
         let _ = weak.upgrade_in_event_loop(move |app| {
             if GENERATION.load(Ordering::SeqCst) != generation {
@@ -327,11 +331,17 @@ fn download(app: &AppWindow, url: String, label: String, name: String, done: imp
 }
 
 fn download_theme(app: &AppWindow) {
-    let index = app.global::<Community>().get_selected();
+    download_and_import(app, app.global::<Community>().get_selected());
+}
+
+/// Download + import the theme at `index`; if "Auto-deploy to Vita" is ticked and
+/// a Vita is configured, send it on afterwards (Quick Install + auto-deploy).
+fn download_and_import(app: &AppWindow, index: i32) {
     let Some(e) = STATE.with(|s| s.borrow().entries.get(index as usize).cloned()) else { return };
     let title = e.str("title");
     let url = vta_online::secure_url(&e.str("zip"));
-    download(app, url, format!("Downloading '{title}'..."), safe_name(&title), |app, path| {
+    let auto_deploy = app.global::<Community>().get_auto_deploy();
+    download(app, url, format!("Downloading '{title}'..."), safe_name(&title), move |app, path| {
         crate::library_actions::with_state(|lib| {
             let root = lib.borrow().root.clone();
             let result = vta_core::import::import_zip(&root, &path);
@@ -339,12 +349,29 @@ fn download_theme(app: &AppWindow) {
             match result {
                 Ok(t) => {
                     crate::library_view::rescan(app, lib);
-                    dialogs::message(app, DialogIcon::Success, "Success", &format!("{t} was downloaded and imported"));
+                    if auto_deploy {
+                        deploy_after_import(app, lib, &t);
+                    } else {
+                        dialogs::message(app, DialogIcon::Success, "Success", &format!("{t} was downloaded and imported"));
+                    }
                 }
                 Err((t, m)) => dialogs::message(app, DialogIcon::Error, &t, &m),
             }
         });
     });
+}
+
+fn deploy_after_import(app: &AppWindow, lib: &crate::library_view::SharedLibrary, title: &str) {
+    let settings = STATE.with(|s| s.borrow().settings.clone());
+    match (settings, crate::library_actions::theme_by_title(lib, title)) {
+        (Some(settings), Some(theme)) => crate::library_actions::deploy_theme(app, &settings, theme),
+        _ => dialogs::message(
+            app,
+            DialogIcon::Success,
+            "Imported",
+            &format!("{title} was downloaded and imported (couldn't auto-deploy; set the Vita connection in Settings)."),
+        ),
+    }
 }
 
 fn download_extra(app: &AppWindow) {
@@ -379,7 +406,8 @@ pub fn opened(app: &AppWindow, extras_root: PathBuf) {
     }
 }
 
-pub fn wire(app: &AppWindow) {
+pub fn wire(app: &AppWindow, settings: &crate::library_actions::SharedSettings) {
+    STATE.with(|s| s.borrow_mut().settings = Some(settings.clone()));
     let c = app.global::<Community>();
     match vta_online::status() {
         Ok(()) => c.set_available(true),
@@ -405,6 +433,8 @@ pub fn wire(app: &AppWindow) {
     let a = app.as_weak();
     c.on_sort_changed(move |_| show_page(&a.unwrap(), 1, false));
     let a = app.as_weak();
+    c.on_filter_changed(move |_| show_page(&a.unwrap(), 1, false));
+    let a = app.as_weak();
     c.on_show_page(move |p| show_page(&a.unwrap(), p, false));
     let a = app.as_weak();
     c.on_reload(move || show_page(&a.unwrap(), 1, true));
@@ -420,6 +450,12 @@ pub fn wire(app: &AppWindow) {
     });
     let a = app.as_weak();
     c.on_download(move || download_theme(&a.unwrap()));
+    let a = app.as_weak();
+    c.on_quick_install(move |i| {
+        let app = a.unwrap();
+        app.global::<Community>().invoke_select(i);
+        download_and_import(&app, i);
+    });
     let a = app.as_weak();
     c.on_download_extra(move || download_extra(&a.unwrap()));
 }

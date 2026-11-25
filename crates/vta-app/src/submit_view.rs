@@ -167,7 +167,7 @@ fn zip_theme(dir: &Path, dest: &Path) -> Result<(), String> {
 fn all_title_matches(title: &str) -> Result<Vec<Entry>, String> {
     let mut out = Vec::new();
     for page in 1.. {
-        let list = vta_online::get(title, Field::Title, Sort::Newest, page, PAGE, false)?;
+        let list = vta_online::get(title, Field::Title, vta_online::Filter::All, Sort::Newest, page, PAGE, false)?;
         let n = list.len();
         out.extend(list);
         if n < PAGE {

@@ -29,7 +29,7 @@ pub fn theme_pages(search: &str, field: Field, sort: Sort, max_pages: Option<usi
     let mut out = Vec::new();
     let mut page = 1;
     while max_pages.is_none_or(|m| page <= m) {
-        let found = vta_online::get(search, field, sort, page, vta_online::PAGE, false)?;
+        let found = vta_online::get(search, field, vta_online::Filter::All, sort, page, vta_online::PAGE, false)?;
         let n = found.len();
         out.extend(found);
         if n < vta_online::PAGE {

@@ -38,6 +38,7 @@ export global Community {
     in-out property <string> search;
     in-out property <int> field: 0;    // title, author, tags
     in-out property <int> sort: 0;     // newest, oldest, az, za, downloads
+    in-out property <int> filter: 0;   // all, verified, top rated, staff picks
     in-out property <string> goto-page: "1";
     in-out property <int> selected: -1;
     // Detail
@@ -65,11 +66,14 @@ export global Community {
     callback search-changed(string);
     callback field-changed(int);
     callback sort-changed(int);
+    callback filter-changed(int);
     callback show-page(int);
     callback reload();
     callback select(int);
     callback tag-clicked(string);
+    in-out property <bool> auto-deploy: false;
     callback download();
+    callback quick-install(int);
     callback download-extra();
 }
 
@@ -204,6 +208,14 @@ component ThemeTile inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
+            Btn {
+                text: Community.auto-deploy ? "Quick Deploy" : "Quick Install";
+                icon: Icons.download;
+                has-icon: true;
+                compact: true;
+                enabled: !Community.loading;
+                clicked => { Community.quick-install(root.theme.index); }
+            }
         }
     }
 }
@@ -415,8 +427,40 @@ component Inspector inherits Panel {
                 has-icon: true;
                 clicked => { Community.download-extra(); }
             }
+            // Auto-deploy: after import, send straight to the connected Vita.
+            Rectangle {
+                height: deploy-row.preferred-height + 20px;
+                border-radius: 10px;
+                background: Palette.inset;
+                deploy-row := HorizontalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    Rectangle {
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 5px;
+                        y: 2px;
+                        background: Community.auto-deploy ? Palette.accent : transparent;
+                        border-width: 1px;
+                        border-color: Community.auto-deploy ? Palette.accent : Palette.outline;
+                        if Community.auto-deploy: Icon { source: Icons.check-circle; size: 16px; tint: #ffffff; }
+                        TouchArea { clicked => { Community.auto-deploy = !Community.auto-deploy; } }
+                    }
+                    VerticalLayout {
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text { text: "Auto-deploy to PS Vita"; color: Palette.text-hi; font-size: Type.body-md; font-weight: 600; }
+                        Text {
+                            text: "After import, send over the active FTP connection.";
+                            color: Palette.text-mid;
+                            font-size: Type.label-md;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
             Btn {
-                text: "Download & Import Theme";
+                text: Community.auto-deploy ? "Download, Import & Deploy" : "Download & Import Theme";
                 icon: Icons.cloud-upload;
                 has-icon: true;
                 kind: ButtonKind.primary;
@@ -498,6 +542,22 @@ export component CommunityPage inherits Rectangle {
                         has-icon: true;
                         enabled: !Community.loading;
                         clicked => { Community.reload(); }
+                    }
+                }
+            }
+        }
+        // Category chips — data-driven (the catalog has no genre tags): All, plus
+        // filters derived from each theme's repository validation.
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for label[i] in ["All Themes", "Verified", "Top Rated", "Staff Picks"]: Segment {
+                text: label;
+                selected: Community.filter == i;
+                clicked => {
+                    if (Community.filter != i) {
+                        Community.filter = i;
+                        Community.filter-changed(i);
                     }
                 }
             }

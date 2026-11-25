@@ -435,7 +435,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 dialogs::wire(&app.window);
                 library_actions::wire(&app.window, &app.library, &app.settings);
                 creator_view::wire(&app.window, &app.library, &app.settings);
-                community_view::wire(&app.window);
+                community_view::wire(&app.window, &app.settings);
                 submit_view::wire(&app.window, &app.library);
                 DATA_DIRS.with(|d| *d.borrow_mut() = Some(app.dirs.clone()));
                 icongen_view::wire(&app.window);

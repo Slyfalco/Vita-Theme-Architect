@@ -187,6 +187,22 @@ pub fn send_to_vita(app: &AppWindow, state: &SharedLibrary, settings: &SharedSet
     probe(app, ip, port, theme, 0);
 }
 
+/// Deploy an arbitrary theme folder to the Vita (used by the Community "Auto-deploy"
+/// option after a download+import). Same probe/confirm/upload flow as send_to_vita.
+pub fn deploy_theme(app: &AppWindow, settings: &SharedSettings, theme: vta_core::library::LibraryTheme) {
+    let (ip, port) = match vita_address(settings) {
+        Ok(a) => a,
+        Err(e) => return dialogs::message(app, DialogIcon::Warning, "Error", &e),
+    };
+    probe(app, ip, port, theme, 0);
+}
+
+/// The library theme whose title (or folder name) matches, if present.
+pub fn theme_by_title(state: &SharedLibrary, title: &str) -> Option<vta_core::library::LibraryTheme> {
+    let s = state.borrow();
+    s.all.iter().find(|t| t.title() == title || t.folder_name == title).cloned()
+}
+
 fn probe(app: &AppWindow, ip: String, port: u16, theme: vta_core::library::LibraryTheme, start: u32) {
     let data = theme.data.clone();
     let (ip2, theme2) = (ip.clone(), theme.clone());
