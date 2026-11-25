@@ -840,6 +840,9 @@ component SimInfoBar inherits Rectangle {
     in property <string> clock;
     in property <string> ampm;
     in property <bool> home: true;
+    // Room kept free at the right for the notice image, so the clock and
+    // battery move left of it instead of being covered (as on the console).
+    in property <length> reserve: 0px;
     background: root.bar-color;
     if root.home: Path {
         width: root.height * 0.62;
@@ -853,7 +856,7 @@ component SimInfoBar inherits Rectangle {
     }
     HorizontalLayout {
         alignment: end;
-        padding-right: root.height * 0.3;
+        padding-right: root.reserve + root.height * 0.3;
         spacing: root.height * 0.22;
         Text {
             text: root.clock;
@@ -1280,19 +1283,39 @@ component VitaStage inherits Rectangle {
         property <float> fcx: root.la-from-x + (root.w * 0.5 - root.la-from-x) * self.fe;
         property <float> fcy: root.la-from-y + (root.h * 0.38 - root.la-from-y) * self.fe;
         property <float> fd: root.diam / 1px * (1 + 0.7 * self.fe);
-        property <float> spin: max(0.08, abs(cos(self.fp * 540deg)));
-        property <float> content: (1 - clamp((root.t - root.la-close-at) / 120, 0, 1));
+        // A 3D spin: the sphere turns about a slightly tilted axis, so it goes
+        // edge-on (narrow), foreshortens a little top-to-bottom, and shades
+        // as it turns away; it also rises toward the viewer as it comes in.
+        property <angle> turn: self.fp * 540deg;
+        property <float> spin: max(0.06, abs(cos(self.turn)));
+        property <float> squash: 1 - 0.14 * abs(sin(self.turn));
+        property <float> shade: 0.55 * abs(sin(self.turn));
+        property <float> lift: sin(self.fp * 180deg) * root.h * 0.04;
+        // The card's contents: shown while open, fading as it starts to peel.
+        property <float> content: root.la-close-at < 0 ? 1 : 1 - clamp((root.t - root.la-close-at) / 120, 0, 1);
         width: root.width;
         height: root.height;
         // The flying, spinning bubble.
-        BubbleFace {
-            b: parent.app;
-            unit: root.height;
-            width: parent.fd * parent.spin * 1px;
-            height: parent.fd * 1px;
-            x: (parent.fcx - parent.fd * parent.spin / 2) * 1px;
-            y: (parent.fcy - parent.fd / 2) * 1px;
+        Rectangle {
+            width: la.fd * la.spin * 1px;
+            height: la.fd * la.squash * 1px;
+            x: (la.fcx - la.fd * la.spin / 2) * 1px;
+            y: (la.fcy - la.lift - la.fd * la.squash / 2) * 1px;
             opacity: 1 - clamp((root.t - root.la-at - 450) / 150, 0, 1);
+            BubbleFace {
+                b: la.app;
+                unit: root.height;
+                width: parent.width;
+                height: parent.height;
+            }
+            // Turning away from the light.
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                border-radius: self.height / 2;
+                background: black;
+                opacity: la.shade;
+            }
         }
         // The card: grows out of the bubble, peels away to close.
         Rectangle {
@@ -1500,6 +1523,7 @@ component VitaStage inherits Rectangle {
         ink: root.indicator-color;
         clock: root.clock;
         ampm: root.ampm;
+        reserve: root.width * 120 / 960 * 0.72;
     }
     // The notice image sits in line with the info bar, over its top-right
     // corner (the console draws it on top of the bar).
