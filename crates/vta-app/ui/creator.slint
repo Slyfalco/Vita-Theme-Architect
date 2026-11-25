@@ -1518,12 +1518,28 @@ component VitaStage inherits Rectangle {
         width: root.width;
         height: root.height;
         background: #000000;
-        // The stock lock-screen blue until the theme provides a lock wallpaper.
+        // The stock lock screen until the theme provides a lock wallpaper
+        // (measured from the console): black, lit by a silvery glow from the
+        // top-right corner, with a faint grey band along the bottom.
         if !root.has-lockpaper: Rectangle {
             y: root.bar-h;
             width: root.width;
             height: root.height - root.bar-h;
-            background: @radial-gradient(circle, #0a4fa6 0%, #07408f 55%, #052f6e 100%);
+            clip: true;
+            Rectangle {
+                width: root.width * 0.92;
+                height: self.width;
+                x: root.width * 0.94 - self.width / 2;
+                y: root.height * 0.02 - self.height / 2;
+                // (the gradient's radius reaches the corners, so it must fade out by 70%)
+                background: @radial-gradient(circle, #e5e6f0 0%, #a9abb3 15%, #686b70 31%, #2c2e32 49%, #121316 61%, #00000000 70%);
+            }
+            Rectangle {
+                y: parent.height * 0.88;
+                width: parent.width;
+                height: parent.height * 0.12;
+                background: @linear-gradient(180deg, #00000000 0%, #3a3a3d 100%);
+            }
         }
         Image {
             y: root.bar-h;
@@ -1573,7 +1589,7 @@ component VitaStage inherits Rectangle {
             height: root.height;
             viewbox-width: root.w;
             viewbox-height: root.h;
-            fill: @radial-gradient(circle, #2cb0ff 0%, #138df5 50%, #0a62d8 100%);
+            fill: @radial-gradient(circle, #2cb0ff 0%, #1580f0 55%, #00239a 100%);
             commands: Peel.gone(root.fl, root.ft, root.fr, root.fb, root.lock-s);
         }
         // The flap folded back over the crease (silver).
