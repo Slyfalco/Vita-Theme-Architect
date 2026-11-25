@@ -110,6 +110,10 @@ thread_local! {
     /// The simulator's BGM stream: what it is playing (path + loop start) and
     /// the player, or a preparation in flight.
     static SIM_BGM: RefCell<(String, Option<crate::audio::Player>, bool)> = const { RefCell::new((String::new(), None, false)) };
+    /// The loop-start text and when it last changed (to wait for typing to stop).
+    static SIM_LOOP_EDIT: RefCell<(String, std::time::Instant)> = RefCell::new((String::new(), std::time::Instant::now()));
+    /// The temporary AT9 made for a non-AT9 BGM (deleted when replaced).
+    static SIM_TEMP_AT9: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static WAVE_FADE: RefCell<(i32, i32, Option<std::time::Instant>)> = const { RefCell::new((12, 12, None)) };
 }
 
@@ -371,13 +375,33 @@ fn tick_clock(c: &Creator) {
 /// Keep the simulator's BGM in step with the console: it streams (looping)
 /// only while unmuted, unlocked and on the Creator. Otherwise the player is
 /// dropped, which stops the AT9 stream outright (no decoding, no audio device).
-/// A BGM that is not AT9 yet is encoded once to a temporary AT9 first, so the
-/// preview plays what the Vita will play.
+///
+/// - An AT9 already in the theme plays as it is, with its own loop points.
+/// - Any other format (WAV, OGG, MP3, FLAC...) is decoded to 16-bit PCM (what a
+///   WAV holds) and encoded once to a temporary AT9, exactly as a build would,
+///   so the preview plays what the Vita will play. With no custom loop start it
+///   loops the whole song; when the loop start is changed (and has stopped
+///   changing for a moment) it is re-encoded with the new loop and restarts.
 fn sync_sim_bgm(app: &AppWindow) {
     let c = app.global::<Creator>();
     let bgm = STATE.with(|s| s.borrow().bgm.clone());
-    let loop_start: Option<u32> = c.get_loop_start().trim().parse().ok().filter(|v| *v > 0);
+    let is_at9 = Path::new(&bgm).extension().is_some_and(|e| e.eq_ignore_ascii_case("at9"));
+    // The loop start only matters when the BGM still has to be encoded; wait
+    // until it has been stable briefly so typing a number doesn't re-encode
+    // on every keystroke.
+    let loop_text = c.get_loop_start().trim().to_string();
+    let settled = SIM_LOOP_EDIT.with(|l| {
+        let mut l = l.borrow_mut();
+        if l.0 != loop_text {
+            *l = (loop_text.clone(), std::time::Instant::now());
+        }
+        l.1.elapsed() >= std::time::Duration::from_millis(700)
+    });
+    let loop_start: Option<u32> = if is_at9 { None } else { loop_text.parse().ok().filter(|v| *v > 0) };
     let want = !c.get_sim_muted() && !c.get_sim_locked() && !bgm.is_empty() && app.global::<Shell>().get_page() == crate::Page::Creator;
+    if want && !is_at9 && !settled {
+        return;
+    }
     let key = if want { format!("{bgm}|{loop_start:?}") } else { String::new() };
     let start = SIM_BGM.with(|s| {
         let mut s = s.borrow_mut();
@@ -398,6 +422,7 @@ fn sync_sim_bgm(app: &AppWindow) {
         let path = if is_at9 {
             Ok(src)
         } else {
+            // Whole-song loop when no custom loop start is set (loop start 0).
             let mut h = std::collections::hash_map::DefaultHasher::new();
             std::hash::Hash::hash(&key, &mut h);
             let dest = std::env::temp_dir().join(format!("vta-sim-bgm-{:x}.at9", std::hash::Hasher::finish(&h)));
@@ -407,6 +432,7 @@ fn sync_sim_bgm(app: &AppWindow) {
                 build::convert_to_at9(&src, &dest, loop_start, &|_, _| {}).map(|_| dest)
             }
         };
+        let temp = if is_at9 { None } else { path.as_ref().ok().cloned() };
         let track = path.and_then(|p| crate::audio::decode_file(&p));
         let _ = slint::invoke_from_event_loop(move || {
             let Some(_app) = weak.upgrade() else { return };
@@ -416,6 +442,17 @@ fn sync_sim_bgm(app: &AppWindow) {
                     return; // muted, locked or changed meanwhile
                 }
                 s.2 = false;
+                // Remember the temporary AT9 (removing the one it replaces).
+                if !is_at9 {
+                    let made = temp.clone();
+                    SIM_TEMP_AT9.with(|t| {
+                        let mut t = t.borrow_mut();
+                        if let Some(old) = t.take().filter(|o| Some(o) != made.as_ref()) {
+                            let _ = std::fs::remove_file(old);
+                        }
+                        *t = made;
+                    });
+                }
                 if let Ok(track) = track {
                     if let Ok(p) = crate::audio::Player::new(std::sync::Arc::new(track), true) {
                         p.play();
