@@ -171,18 +171,31 @@ const WATCH_NEW_KEY: &str = r#"
     var css = document.createElement('style');
     css.textContent = '*{-webkit-user-select:text!important;user-select:text!important}';
     document.head.appendChild(css);
+    // The result page (as seen on the site) shows the new key in a text box,
+    // next to a link to the new theme (theme.php?id=<40 hex>) that must not be
+    // mistaken for it. So: new codes in text boxes first; codes in plain page
+    // text only as a fallback, never ones that are part of a link or URL.
     var re = /[A-Za-z0-9]{16,}/g;
-    function tokens() {
-        var out = {}, text = document.body.innerText || '';
-        document.querySelectorAll('input:not([type=hidden]):not([type=file]), textarea').forEach(function (i) { text += ' ' + (i.value || ''); });
-        (text.match(re) || []).forEach(function (t) { out[t] = true; });
+    function grab(s, out) { (String(s || '').match(re) || []).forEach(function (t) { out[t] = true; }); }
+    function linkTokens() {
+        var out = {};
+        document.querySelectorAll('a').forEach(function (a) { grab(a.href, out); grab(a.textContent, out); });
+        grab((document.body.innerText || '').match(/https?:\/\/\S+/g), out);
         return out;
     }
-    var before = tokens(), sent = {};
+    function inputTokens() {
+        var out = {};
+        document.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=password]), textarea').forEach(function (i) { grab(i.value, out); });
+        return out;
+    }
+    function textTokens() { var out = {}; grab(document.body.innerText, out); return out; }
+    var before = Object.assign({}, inputTokens(), textTokens()), sent = {};
     new MutationObserver(function () {
         if (!/user\s*key/i.test(document.body.innerText || '')) return;
-        var now = tokens();
-        Object.keys(now).forEach(function (t) {
+        var links = linkTokens(), fresh = function (t) { return !before[t] && !links[t]; };
+        var now = Object.keys(inputTokens()).filter(fresh);
+        if (now.length === 0) now = Object.keys(textTokens()).filter(fresh);
+        now.forEach(function (t) {
             if (before[t] || sent[t]) return;
             if (Object.keys(sent).some(function (s) { return t.indexOf(s) === 0; })) return;
             sent[t] = true;
@@ -500,7 +513,9 @@ fn on_ipc(message: &str) {
             #[cfg(debug_assertions)]
             if std::env::var("VTA_DEV_FAKE_DONE").is_ok() {
                 slint::Timer::single_shot(Duration::from_secs(2), || {
-                    run_js("document.getElementById('mainpage').style.display='none'; document.querySelector('.upload').innerHTML = '<h1>Congratulations!</h1><p>Your theme has been submitted. This is your user key: <b>a1b2c3d4e5f60718293a4b5c</b></p>'; document.querySelector('.upload').scrollIntoView();");
+                    // Modelled on the site's result page: a link to the new theme
+                    // (40-hex id) and the new key in a text box below the note.
+                    run_js("document.getElementById('mainpage').style.display='none'; document.querySelector('.upload').innerHTML = '<h1>Congratulations!</h1><p><i>Your custom theme has been uploaded to the repository!</i></p><p>You can find it at this address:<br><a href=\"http://psvt.ovh/theme.php?id=58a5c0919e883513de73d59a65d54eef7211aef8\">http://psvt.ovh/theme.php?id=58a5c0919e883513de73d59a65d54eef7211aef8</a></p><p><b>Note:</b> the Custom Theme has been successfully added but it will appear in repository main page only after a check by the admin. Since you have not attached a user key to the release, a new one has been generated to attach this release to. You can find it here below, please save it and remember to attach it to your next Custom Themes submissions.</p><input type=\"text\" readonly value=\"vtaFAKEkey0123456789abcdefTEST\">'; document.querySelector('.upload').scrollIntoView();");
                 });
             }
         }
