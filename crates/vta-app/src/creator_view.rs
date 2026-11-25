@@ -331,7 +331,9 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     let lock = src(st, "lockpaper.png");
     c.set_sim_has_lockpaper(lock.is_some());
     c.set_sim_lockpaper(lock.unwrap_or_default());
-    c.set_sim_notice(src(st, "noNotice.png").unwrap_or_default());
+    // With no notifications the console shows the image in the "new notice"
+    // slot (m_newNoticeFilePath): the stock theme's blue circle, as recorded.
+    c.set_sim_notice(src(st, "newNotice.png").unwrap_or_default());
     let (cur, other) = (src(st, "screen_current.png"), src(st, "screen_other.png"));
     c.set_sim_custom_dots(cur.is_some() && other.is_some());
     c.set_sim_dot_current(cur.unwrap_or_default());

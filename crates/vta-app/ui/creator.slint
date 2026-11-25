@@ -1041,6 +1041,8 @@ component VitaStage inherits Rectangle {
     property <float> notice-at: -1;
     property <float> notice-close-at: -1;
     property <bool> wheel-cool: false;
+    property <bool> peeling-was: false;
+    property <float> released-s: 0;
     // The idle sway, measured on the console: all the bubbles sit on one plane
     // that slowly tilts in 3D (a 12.55 s cycle, the side-to-side and up-down
     // tilts about a quarter cycle apart), pivoting a little left of and below
@@ -1071,12 +1073,16 @@ component VitaStage inherits Rectangle {
     property <float> ft: root.h * 0.118;
     property <float> fr: root.w * 0.967;
     property <float> fb: root.h * 0.94;
-    property <float> lock-idle: root.w * 0.072 * (1 + 0.12 * sin(root.t / 2600 * 360deg));
+    // The folded corner sits still; it only moves while it is being peeled.
+    property <float> lock-idle: root.w * 0.072;
+    // While peeling, the crease follows the pointer (a press that starts on the corner).
+    property <bool> peeling: ta.pressed && ta.pressed-x > root.width * 0.7 && ta.pressed-y < root.height * 0.45;
+    property <float> grab: (root.fr - ta.mouse-x / 1px) + (ta.mouse-y / 1px - root.ft);
     property <float> lock-end: (root.fr - root.fl) + (root.fb - root.ft) + root.w * 0.25;
     property <float> sweep: root.unlocking ? clamp((root.t - root.unlock-at) / 550, 0, 1) : 0;
     property <float> lock-s: root.unlocking
         ? root.peel-from + (root.lock-end - root.peel-from) * (1 - (1 - root.sweep) * (1 - root.sweep))
-        : root.lock-idle + max(0, (root.drag-y - root.drag-x) / 1px) * 0.9;
+        : root.peeling ? max(root.lock-idle, root.grab) : root.lock-idle;
     property <float> blackout: root.unlocking ? clamp((root.t - root.unlock-at - 700) / 250, 0, 1) : 0;
 
     // ---- LiveArea card geometry
@@ -1086,9 +1092,10 @@ component VitaStage inherits Rectangle {
     property <float> cb: root.h;
     property <float> card-in: root.la-index < 0 ? 0 : clamp((root.t - root.la-at - 400) / 300, 0, 1);
     property <float> card-close: root.la-close-at < 0 ? 0 : clamp((root.t - root.la-close-at) / 480, 0, 1);
+    property <float> card-from: 0;
     property <float> card-s: root.la-close-at >= 0
-        ? root.w * 0.045 + ((root.cr - root.cl) + (root.cb - root.ct) + root.w * 0.2) * root.card-close * root.card-close
-        : root.w * 0.045 + max(0, (root.drag-y - root.drag-x) / 1px) * 0.9;
+        ? root.card-from + ((root.cr - root.cl) + (root.cb - root.ct) + root.w * 0.2 - root.card-from) * (1 - (1 - root.card-close) * (1 - root.card-close))
+        : root.peeling ? max(root.w * 0.045, (root.cr - ta.mouse-x / 1px) + (ta.mouse-y / 1px - root.ct)) : root.w * 0.045;
 
     // ---- folder
     property <float> folder-in: root.folder-index < 0 ? 0
@@ -1140,6 +1147,7 @@ component VitaStage inherits Rectangle {
     }
     function close-app() {
         if root.la-index >= 0 && root.la-close-at < 0 && root.card-in >= 1 {
+            root.card-from = root.peeling-was ? max(root.w * 0.045, root.released-s) : root.w * 0.045;
             root.la-close-at = root.t;
             root.sound("peel");
         }
@@ -1245,16 +1253,6 @@ component VitaStage inherits Rectangle {
                 overflow: elide;
             }
         }
-    }
-    // The notice image (noNotice.png) in the top-right corner of the home screen.
-    Image {
-        x: root.width * (1 - 120 / 960);
-        y: 0;
-        width: root.width * 120 / 960;
-        height: root.height * 110 / 544;
-        source: root.notice;
-        image-fit: contain;
-        opacity: root.la-index >= 0 ? 0 : 1;
     }
     // Page indicator down the left edge (screen_current / screen_other).
     if root.page-count > 1 && root.la-index < 0 && root.folder-index < 0: VerticalLayout {
@@ -1509,6 +1507,17 @@ component VitaStage inherits Rectangle {
         clock: root.clock;
         ampm: root.ampm;
     }
+    // The notice image sits in line with the info bar, over its top-right
+    // corner (the console draws it on top of the bar).
+    Image {
+        x: root.width * (1 - 120 / 960);
+        y: 0;
+        width: root.width * 120 / 960;
+        height: root.height * 110 / 544;
+        source: root.notice;
+        image-fit: contain;
+        opacity: root.la-index >= 0 ? 0 : 1;
+    }
 
     // ---- lock screen
     if root.locked: Rectangle {
@@ -1666,13 +1675,19 @@ component VitaStage inherits Rectangle {
                 root.armed = false;
             }
             if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                root.peeling-was = self.pressed-x > root.width * 0.7 && self.pressed-y < root.height * 0.45;
+                root.released-s = root.locked
+                    ? (root.fr - self.mouse-x / 1px) + (self.mouse-y / 1px - root.ft)
+                    : (root.cr - self.mouse-x / 1px) + (self.mouse-y / 1px - root.ct);
                 if root.unlocking {
                     // The unlock sequence plays out on its own.
                 } else if root.locked {
-                    // A drag toward the bottom-left, or a tap on the corner, peels it open.
-                    if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.18
-                        || (self.pressed-x > root.width * 0.8 && self.pressed-y < root.height * 0.4) {
-                        root.start-unlock();
+                    // Peeled far enough, the page comes away; otherwise it falls back.
+                    if root.peeling-was && root.released-s > root.w * 0.25 {
+                        root.peel-from = root.released-s;
+                        root.unlock-at = root.t;
+                        root.unlocking = true;
+                        root.sound("peel");
                     }
                 } else if root.notice-at >= 0 {
                     // Any tap closes the notification bubble.
@@ -1681,10 +1696,8 @@ component VitaStage inherits Rectangle {
                         root.sound("back");
                     }
                 } else if root.la-index >= 0 {
-                    // Peel the card's corner (drag or tap), or tap the left arrow.
-                    if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.15
-                        || (self.pressed-x > root.width * 0.82 && self.pressed-y < root.height * 0.3)
-                        || self.pressed-x < root.width * 0.06 {
+                    // Peel the card's corner far enough, or tap the left arrow.
+                    if (root.peeling-was && root.released-s > root.w * 0.22) || self.pressed-x < root.width * 0.06 {
                         root.close-app();
                     }
                 } else if root.folder-index >= 0 {
