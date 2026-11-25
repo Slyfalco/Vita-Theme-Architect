@@ -274,7 +274,8 @@ component ThemeCard inherits Rectangle {
 
     touch := TouchArea {
         mouse-cursor: pointer;
-        clicked => { Library.select(root.index); }
+        // Clicking the selected theme again closes the inspector.
+        clicked => { Library.select(root.selected ? -1 : root.index); }
         double-clicked => { Library.edit(root.index); }
     }
     // Selection accent bar
@@ -657,7 +658,7 @@ component Inspector inherits Panel {
             spacing: 16px;
             // Stage header
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px;
                 Icon {
                     source: Icons.visibility;
                     size: 22px;
@@ -665,45 +666,61 @@ component Inspector inherits Panel {
                 }
                 VerticalLayout {
                     alignment: center;
+                    horizontal-stretch: 1;
+                    min-width: 0px;
                     Text {
                         text: "LiveArea Stage";
                         color: Palette.text-hi;
                         font-size: Type.body-md;
                         font-weight: 600;
+                        overflow: elide;
                     }
                     Text {
                         text: "960×544";
                         color: Palette.text-lo;
                         font-family: Palette.mono-font;
                         font-size: Type.label-sm;
+                        overflow: elide;
                     }
                 }
-                Rectangle { horizontal-stretch: 1; }
-                Rectangle {
-                    height: 36px;
-                    border-radius: 8px;
-                    background: Palette.inset;
-                    HorizontalLayout {
-                        padding: 3px;
-                        spacing: 2px;
-                        Segment {
-                            text: "Home";
-                            min-width: Density.narrow ? 44px : 52px;
-                            selected: Library.stage-tab == 0;
-                            clicked => { Library.stage-tab = 0; }
-                        }
-                        Segment {
-                            text: "Lock";
-                            min-width: Density.narrow ? 44px : 52px;
-                            selected: Library.stage-tab == 1;
-                            clicked => { Library.stage-tab = 1; }
-                        }
-                        Segment {
-                            text: "Icons";
-                            min-width: Density.narrow ? 44px : 52px;
-                            selected: Library.stage-tab == 2;
-                            clicked => { Library.stage-tab = 2; }
-                        }
+                // Close the inspector (deselect; the panel slides away).
+                VerticalLayout {
+                    alignment: center;
+                    IconBtn {
+                        icon: Icons.close;
+                        tooltip: "Close";
+                        clicked => { Library.select(-1); }
+                    }
+                }
+            }
+            // Stage view tabs on their own full-width row so the header never crowds.
+            Rectangle {
+                height: 36px;
+                border-radius: 8px;
+                background: Palette.inset;
+                HorizontalLayout {
+                    padding: 3px;
+                    spacing: 2px;
+                    Segment {
+                        text: "Home";
+                        min-width: 40px;
+                        horizontal-stretch: 1;
+                        selected: Library.stage-tab == 0;
+                        clicked => { Library.stage-tab = 0; }
+                    }
+                    Segment {
+                        text: "Lock";
+                        min-width: 40px;
+                        horizontal-stretch: 1;
+                        selected: Library.stage-tab == 1;
+                        clicked => { Library.stage-tab = 1; }
+                    }
+                    Segment {
+                        text: "Icons";
+                        min-width: 40px;
+                        horizontal-stretch: 1;
+                        selected: Library.stage-tab == 2;
+                        clicked => { Library.stage-tab = 2; }
                     }
                 }
             }
@@ -978,7 +995,7 @@ export component LibraryPage inherits Rectangle {
         ToolbarRow { }
         filter-row := FilterRow { }
         HorizontalLayout {
-            spacing: 20px;
+            spacing: 0px;
             vertical-stretch: 1;
             Rectangle {
                 horizontal-stretch: 1;
@@ -1020,7 +1037,21 @@ export component LibraryPage inherits Rectangle {
                     }
                 }
             }
-            Inspector { }
+            // The inspector slides in from the right only while a theme is
+            // selected; its slot's width animates, so the list shrinks to fit.
+            insp-slot := Rectangle {
+                property <bool> open: Library.selected >= 0;
+                property <length> panel-w: Density.narrow ? 340px : 420px;
+                property <length> gap: 20px;
+                width: self.open ? self.panel-w + self.gap : 0px;
+                animate width { duration: 260ms; easing: ease-out; }
+                clip: true;
+                Inspector {
+                    x: parent.width - self.width;
+                    width: insp-slot.panel-w;
+                    height: parent.height;
+                }
+            }
         }
         StatusBar { }
     }
