@@ -92,7 +92,12 @@ This app is built on open-source components that keep their own licenses, which
 govern those components:
 
 - **Slint** (user interface) — see the Slint project's licensing terms (https://slint.dev).
-- **at9codec** (AT9 audio) — the project's own codec library; see its repository.
+- **at9codec** (AT9 audio) — uses at9codec, an independent clean-room AT9 codec
+  implementation written by Slyfalco (https://github.com/Slyfalco/at9codec); MIT
+  with an attribution requirement. Its license, including the notices of the
+  projects it was developed from, ships with the app as
+  `licenses/at9codec-LICENSE.txt`. at9codec is not affiliated with the owners of
+  the AT9 format.
 - **wry** (repository submission window) and other Rust crates such as **cpal**,
   **image**, **zip** and **ureq** — under their respective permissive open-source
   licenses (MIT / Apache-2.0 and similar).

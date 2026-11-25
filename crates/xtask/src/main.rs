@@ -98,6 +98,10 @@ fn stage_data(root: &Path, dest: &Path, ai: bool) -> Result<(), String> {
         (ui.join("fonts/LICENSE-JetBrainsMono.txt"), "JetBrainsMono-OFL.txt"),
         (ui.join("icons/LICENSE-MaterialSymbols.txt"), "MaterialSymbols-Apache-2.0.txt"),
         (root.join("LICENSE"), "VitaThemeArchitect-LICENSE.txt"),
+        // at9codec's licence requires credit (an independent AT9 codec
+        // implementation written by Slyfalco) in the notices that ship with any
+        // program using it, plus its reference notices.
+        (root.join("third_party/at9codec-LICENSE.txt"), "at9codec-LICENSE.txt"),
     ] {
         if src.is_file() {
             std::fs::copy(&src, lic.join(name)).map_err(|e| e.to_string())?;
