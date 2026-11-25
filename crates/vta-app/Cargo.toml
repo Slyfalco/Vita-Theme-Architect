@@ -25,6 +25,7 @@ arboard = { version = "3", default-features = false }
 wry = "0.57"
 base64 = "0.23"
 ureq = "3"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [build-dependencies]

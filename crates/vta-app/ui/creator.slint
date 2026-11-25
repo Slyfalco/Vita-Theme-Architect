@@ -30,6 +30,17 @@ export struct PageSlot {
     color-value: color,
 }
 
+// One launcher bubble on the simulated home screen. kind: 0 theme icon,
+// 1 folder (minis inside), 2 Welcome Park (not themeable).
+export struct SimBubble {
+    page: int,
+    slot: int,
+    icon: image,
+    label: string,
+    kind: int,
+    minis: [image],
+}
+
 export struct IconGroup {
     name: string,
     items: [AssetSlot],
@@ -69,11 +80,6 @@ export global Creator {
     in property <bool> bgm-encodes: false;
     in-out property <string> loop-start: "0";
     // Preview + validation
-    in-out property <int> preview-tab: 0;   // 0 LiveArea, 1 Lock Screen, 2 Icon Grid, 3 Thumbnail
-    in property <image> prev-livearea;
-    in property <image> prev-lock;
-    in property <image> prev-thumb;
-    in property <[image]> prev-icons;
     in property <int> required-ready: 0;
     // Validation Engine panel.
     in property <string> contrast-ratio;     // e.g. "4.8:1"
@@ -86,14 +92,24 @@ export global Creator {
     in property <string> vram-budget;        // e.g. "16.0 MB"
     in property <bool> validation-pass;
     in-out property <int> selected-page: -1;
-    in property <image> selected-page-image;
-    in property <string> sim-clock: "12:48";   // updated by the controller
-    in-out property <bool> sim-chrome: true;    // show/hide the Vita UI overlay
+    // Vita simulator (the same live console view on every tab).
+    in property <string> sim-clock: "12:48";   // local time, updated by the controller
+    in property <string> sim-ampm: "PM";
+    in property <string> sim-date;             // e.g. "25 November (Wednesday)"
     in-out property <int> sim-page: 0;          // which home page the simulator shows
-    in property <[image]> sim-pages;            // every home-page wallpaper
-    in-out property <int> sim-mode: 0;          // 0 grid, 1 peel, 2 folder deck
-    in-out property <bool> sim-swiping: false;  // Test Swipe animation running
-    callback test-swipe();
+    in-out property <bool> sim-locked: false;   // showing the lock screen
+    in property <[image]> sim-pages;            // every home-page wallpaper (page 1 first)
+    in property <[color]> sim-font-colors;      // bubble label colour per page
+    in property <[SimBubble]> sim-bubbles;      // stock app bubbles, by page + slot
+    in property <image> sim-lockpaper;
+    in property <color> sim-bar-color: #000000;
+    in property <color> sim-indicator-color: #ffffff;
+    in property <color> sim-date-color: #ffffff;
+    in property <color> sim-notify-border: #cccccc;
+    in property <image> sim-notice;             // noNotice.png (top-right of home)
+    in property <image> sim-dot-current;        // screen_current.png
+    in property <image> sim-dot-other;          // screen_other.png
+    in property <bool> sim-custom-dots: false;
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
     in-out property <int> icon-filter: 0;   // 0 all, 1 customised, 2 default
@@ -203,24 +219,25 @@ component AssetRow inherits Rectangle {
             alignment: center;
             spacing: 4px;
             horizontal-stretch: 1;
+            Text {
+                text: root.slot.label + (root.slot.required ? "  *" : "");
+                color: Palette.text-hi;
+                font-size: Type.body-lg;
+                font-weight: 600;
+                overflow: elide;
+            }
+            // Size spec beside the file name, so the title keeps the full width.
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px;
+                SpecChip { text: root.slot.spec; }
                 Text {
-                    text: root.slot.label + (root.slot.required ? "  *" : "");
-                    color: Palette.text-hi;
-                    font-size: Type.body-lg;
-                    font-weight: 600;
+                    text: root.slot.file != "" ? root.slot.file + (root.slot.info != "" ? "  (" + root.slot.info + ")" : "") : "Not set — " + (root.slot.required ? "required" : "optional");
+                    color: Palette.text-mid;
+                    font-size: Type.body-sm;
                     vertical-alignment: center;
+                    horizontal-stretch: 1;
                     overflow: elide;
                 }
-                SpecChip { text: root.slot.spec; }
-                Rectangle { horizontal-stretch: 1; }
-            }
-            Text {
-                text: root.slot.file != "" ? root.slot.file + (root.slot.info != "" ? "  (" + root.slot.info + ")" : "") : "Not set — " + (root.slot.required ? "required" : "optional");
-                color: Palette.text-mid;
-                font-size: Type.body-sm;
-                overflow: elide;
             }
         }
         VerticalLayout {
@@ -229,11 +246,16 @@ component AssetRow inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            Btn {
+            if !Density.narrow: Btn {
                 text: "Browse...";
                 icon: Icons.folder-open;
                 has-icon: true;
                 compact: true;
+                clicked => { Creator.browse(root.slot.id); }
+            }
+            if Density.narrow: IconBtn {
+                icon: Icons.folder-open;
+                tooltip: "Browse...";
                 clicked => { Creator.browse(root.slot.id); }
             }
         }
@@ -404,12 +426,18 @@ component PagesTab inherits VerticalLayout {
         for p[i] in Creator.pages: Rectangle {
             height: Density.compact ? 96px : 112px;
             border-radius: 12px;
-            background: i == Creator.selected-page ? Palette.surface3 : Palette.surface2;
+            // The row of the page the simulator is showing is highlighted;
+            // clicking a row shows that page in the simulator.
+            background: i + 1 == Creator.sim-page && !Creator.sim-locked ? Palette.surface3 : Palette.surface2;
             border-width: 1px;
-            border-color: i == Creator.selected-page ? Palette.accent.transparentize(40%) : Palette.outline.transparentize(40%);
+            border-color: i + 1 == Creator.sim-page && !Creator.sim-locked ? Palette.accent.transparentize(40%) : Palette.outline.transparentize(40%);
             TouchArea {
                 mouse-cursor: pointer;
-                clicked => { Creator.selected-page = i; }
+                clicked => {
+                    Creator.selected-page = i;
+                    Creator.sim-page = i + 1;
+                    Creator.sim-locked = false;
+                }
             }
             HorizontalLayout {
                 padding: 12px;
@@ -527,14 +555,6 @@ component IconsTab inherits VerticalLayout {
         badge: Creator.icons-custom + " of 17 Customised";
         HorizontalLayout {
             spacing: 12px;
-            if Creator.ai-available: Btn {
-                text: "Launch AI Icon Generator";
-                icon: Icons.auto-awesome;
-                has-icon: true;
-                kind: ButtonKind.primary;
-                hotkey: "Ctrl+G";
-                clicked => { Creator.open-icon-generator(); }
-            }
             SearchField {
                 placeholder: "Search icons…";
                 text <=> Creator.icon-search;
@@ -542,15 +562,15 @@ component IconsTab inherits VerticalLayout {
                 edited => { Creator.icon-filter-changed(); }
             }
             Rectangle {
-                height: 44px;
+                height: Density.compact ? 36px : 44px;
                 border-radius: 10px;
                 background: Palette.inset;
                 HorizontalLayout {
-                    padding: 4px;
+                    padding: 3px;
                     spacing: 2px;
-                    Segment { text: "All (17)"; selected: Creator.icon-filter == 0; clicked => { Creator.icon-filter = 0; Creator.icon-filter-changed(); } }
-                    Segment { text: "Customised (" + Creator.icons-custom + ")"; selected: Creator.icon-filter == 1; clicked => { Creator.icon-filter = 1; Creator.icon-filter-changed(); } }
-                    Segment { text: "Default (" + (17 - Creator.icons-custom) + ")"; selected: Creator.icon-filter == 2; clicked => { Creator.icon-filter = 2; Creator.icon-filter-changed(); } }
+                    Segment { min-width: 0px; text: Density.narrow ? "All 17" : "All (17)"; selected: Creator.icon-filter == 0; clicked => { Creator.icon-filter = 0; Creator.icon-filter-changed(); } }
+                    Segment { min-width: 0px; text: (Density.narrow ? "Custom " : "Customised (") + Creator.icons-custom + (Density.narrow ? "" : ")"); selected: Creator.icon-filter == 1; clicked => { Creator.icon-filter = 1; Creator.icon-filter-changed(); } }
+                    Segment { min-width: 0px; text: (Density.narrow ? "Default " : "Default (") + (17 - Creator.icons-custom) + (Density.narrow ? "" : ")"); selected: Creator.icon-filter == 2; clicked => { Creator.icon-filter = 2; Creator.icon-filter-changed(); } }
                 }
             }
         }
@@ -690,314 +710,433 @@ component ColorsTab inherits VerticalLayout {
 
 // ---------------------------------------------------------------- right column
 
-// Interactive Vita LiveArea simulator: the active wallpaper with the theme's
-// launcher-icon bubbles laid out in the home grid, a status bar, and page dots.
-component VitaStage inherits Rectangle {
-    in property <image> wallpaper;
-    in property <[image]> pages;        // all home-page wallpapers (for Test Swipe)
-    in property <[image]> bubbles;
-    in property <string> page-label: "Home";
-    in property <string> clock: "12:48";
-    in property <int> page-count: 1;
-    in property <int> current-page: 0;
-    in property <bool> chrome: true;
-    in property <int> mode: 0;          // 0 grid, 1 peel, 2 folder deck
-    border-radius: 12px;
-    background: #05070a;
-    clip: true;
-    // Icon labels (the Vita's default launcher apps), used only as placeholders
-    // beneath each bubble so the layout reads as a real home screen.
-    property <[string]> labels: ["VitaShell", "Browser", "Trophies", "Settings", "Content", "Photos", "Music", "Games"];
+// The Vita's info bar: theme bar colour, indicators in the indicator colour,
+// the home icon in the middle (home screen only), clock + battery on the right.
+component SimInfoBar inherits Rectangle {
+    in property <color> bar-color;
+    in property <color> ink;
+    in property <string> clock;
+    in property <string> ampm;
+    in property <bool> home: true;
+    background: root.bar-color;
+    if root.home: Path {
+        width: root.height * 0.62;
+        height: self.width;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        fill: root.ink;
+        commands: "M12 3 L1.5 12.5 H4.5 V21.5 H10 V15.5 H14 V21.5 H19.5 V12.5 H22.5 Z";
+    }
+    HorizontalLayout {
+        alignment: end;
+        padding-right: root.height * 0.3;
+        spacing: root.height * 0.22;
+        Text {
+            text: root.clock;
+            color: root.ink;
+            font-size: root.height * 0.6;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.ampm;
+            color: root.ink;
+            font-size: root.height * 0.36;
+            vertical-alignment: center;
+        }
+        Text {
+            text: "100%";
+            color: root.ink;
+            font-size: root.height * 0.5;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: root.height * 0.95;
+                height: root.height * 0.46;
+                border-radius: 2px;
+                border-width: 1px;
+                border-color: root.ink;
+                Rectangle {
+                    x: 2px;
+                    y: 2px;
+                    width: parent.width - 4px;
+                    height: parent.height - 4px;
+                    background: root.ink;
+                }
+            }
+        }
+    }
+}
 
-    // A horizontal strip of every page wallpaper; sliding it is the Test Swipe.
-    if root.pages.length > 0: Rectangle {
-        width: root.pages.length * root.width;
-        height: root.height;
-        x: -root.current-page * root.width;
-        animate x { duration: 340ms; easing: ease-in-out; }
+// The PS Vita simulator: the real home-screen layout (bubbles in rows of 3, 4
+// and 3, the info bar, the page indicator down the left edge, the notice image
+// top-right) and the lock screen with its peel corner. It is used directly:
+// scroll or drag up/down to change home pages, peel the lock screen's corner.
+component VitaStage inherits Rectangle {
+    in property <[image]> pages;
+    in property <[color]> font-colors;
+    in property <[SimBubble]> bubbles;
+    in property <image> lockpaper;
+    in property <string> clock;
+    in property <string> ampm;
+    in property <string> date;
+    in property <color> bar-color;
+    in property <color> indicator-color;
+    in property <color> date-color;
+    in property <color> notify-border;
+    in property <image> notice;
+    in property <image> dot-current;
+    in property <image> dot-other;
+    in property <bool> custom-dots;
+    in-out property <int> page;
+    in-out property <bool> locked;
+
+    property <int> page-count: max(1, root.pages.length);
+    property <length> bar-h: root.height * 32 / 544;
+    property <length> diam: root.height * 128 / 544;
+    // Bubble centres (fractions of the screen) for slots 0-9: rows of 3, 4, 3.
+    property <[float]> cxs: [0.26, 0.51, 0.74, 0.142, 0.385, 0.625, 0.844, 0.26, 0.51, 0.74];
+    property <[float]> cys: [0.25, 0.25, 0.25, 0.544, 0.544, 0.544, 0.544, 0.816, 0.816, 0.816];
+    // Live drag: a vertical page swipe on the home screen, the peel when locked.
+    property <length> drag-x: ta.pressed ? ta.mouse-x - ta.pressed-x : 0px;
+    property <length> drag-y: ta.pressed ? ta.mouse-y - ta.pressed-y : 0px;
+    property <bool> at-edge: (root.drag-y > 0 && root.page == 0) || (root.drag-y < 0 && root.page >= root.page-count - 1);
+    property <length> pull: root.locked ? 0px : root.at-edge ? root.drag-y * 0.3 : root.drag-y;
+    property <length> peel: root.locked ? max(0px, root.drag-y - root.drag-x) : 0px;
+    property <bool> wheel-cool: false;
+
+    background: #0d1117;
+    clip: true;
+
+    // Home pages, stacked vertically like the Vita's.
+    Rectangle {
+        y: -root.page * root.height + root.pull;
+        width: root.width;
+        height: root.page-count * root.height;
+        animate y { duration: ta.pressed ? 0ms : 300ms; easing: ease-out; }
         for pg[i] in root.pages: Image {
-            x: i * root.width;
+            y: i * root.height;
             width: root.width;
             height: root.height;
             source: pg;
             image-fit: cover;
         }
-    }
-    if root.pages.length == 0: Image {
-        source: root.wallpaper;
-        width: 100%;
-        height: 100%;
-        image-fit: cover;
-    }
-    // Peel Simulation: the Vita's top-right corner lifts to reveal the layer beneath.
-    if root.mode == 1: peel := Path {
-        width: 100%;
-        height: 100%;
-        fill: @linear-gradient(135deg, #0b1220f0 0%, #1e293bc0 60%, #00000000 60%);
-        MoveTo { x: 1; y: 0; }
-        LineTo { x: 1; y: 0.42; }
-        LineTo { x: 0.58; y: 0; }
-        Close { }
-    }
-    if root.mode == 1: Text {
-        x: root.width - self.width - root.width * 0.03;
-        y: root.height * 0.03;
-        text: "PEEL";
-        color: Palette.accent;
-        font-size: max(8px, root.width * 0.016);
-        font-weight: 700;
-    }
-    // Top + bottom scrims for status-bar / page-dot legibility.
-    if root.chrome: Rectangle {
-        y: 0;
-        width: 100%;
-        height: root.height * 0.16;
-        background: @linear-gradient(180deg, #000000a0 0%, #00000000 100%);
-    }
-    // Status bar.
-    if root.chrome: HorizontalLayout {
-        x: root.width * 0.04;
-        y: root.height * 0.04;
-        width: root.width * 0.92;
-        spacing: 8px;
-        Text { text: "PlayStation"; color: #ffffffe0; font-size: max(8px, root.width * 0.018); font-weight: 600; vertical-alignment: center; }
-        // wifi arcs (simple dot).
-        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: #ffffffc0; y: parent.height / 2 - 3px; }
-        Text { text: root.page-label; color: #ffffffb0; font-size: max(8px, root.width * 0.016); vertical-alignment: center; }
-        Rectangle { horizontal-stretch: 1; }
-        Text { text: root.clock; color: #ffffffe0; font-size: max(8px, root.width * 0.018); font-weight: 600; vertical-alignment: center; }
-        // battery.
-        Rectangle {
-            y: parent.height / 2 - 5px;
-            width: root.width * 0.03;
-            height: 10px;
-            border-radius: 2px;
-            border-width: 1px;
-            border-color: #ffffffd0;
-            Rectangle { x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px; border-radius: 1px; background: Palette.success; }
-        }
-    }
-    // Grid mode (and under the peel): up to 8 launcher bubbles in a 4×2 grid,
-    // sized to the stage height so two rows + labels never collide with the bar.
-    if root.mode != 2: Rectangle {
-        property <length> diam: root.height * 0.23;
-        property <length> gap-x: (root.width - 4 * self.diam) / 5;
-        property <length> row0: root.height * 0.3;
-        property <length> row1: root.height * 0.6;
-        for ic[i] in root.bubbles: Rectangle {
-            property <int> bcol: mod(i, 4);
-            property <int> brow: floor(i / 4);
-            visible: i < 8;
-            x: parent.gap-x + self.bcol * (parent.diam + parent.gap-x);
-            y: self.brow == 0 ? parent.row0 : parent.row1;
-            width: parent.diam;
-            height: parent.diam;
-            Rectangle {
+        for b in root.bubbles: Rectangle {
+            property <length> cx: root.width * root.cxs[b.slot];
+            property <length> cy: root.height * root.cys[b.slot];
+            property <float> fx: (ta.pressed-x - self.cx) / root.diam;
+            property <float> fy: (ta.pressed-y - self.cy) / root.diam;
+            property <bool> hit: ta.pressed && !root.locked && b.page == root.page && abs(root.drag-y) < 8px && self.fx * self.fx + self.fy * self.fy < 0.25;
+            property <length> d: self.hit ? root.diam * 0.9 : root.diam;
+            animate d { duration: 90ms; }
+            visible: b.page < root.page-count;
+            x: self.cx - self.d / 2;
+            y: b.page * root.height + self.cy - self.d / 2;
+            width: self.d;
+            height: self.d;
+            // The Vita shows every launcher icon as a round bubble.
+            if b.kind == 0: Rectangle {
                 width: parent.width;
                 height: parent.height;
                 border-radius: self.width / 2;
-                background: #0b1220c0;
-                border-width: 1.5px;
-                border-color: #ffffff2a;
                 clip: true;
-                drop-shadow-blur: 8px;
-                drop-shadow-color: #000000a0;
                 Image {
-                    source: ic;
-                    width: 100%;
-                    height: 100%;
+                    source: b.icon;
+                    width: parent.width;
+                    height: parent.height;
                     image-fit: cover;
                 }
             }
-            if root.chrome && i < root.labels.length: Text {
-                y: parent.height + root.height * 0.015;
+            if b.kind == 1: Rectangle {
                 width: parent.width;
-                text: root.labels[i];
-                color: #ffffffd0;
-                font-size: max(6px, root.height * 0.035);
+                height: parent.height;
+                border-radius: self.width / 2;
+                background: @radial-gradient(circle, #ffffff38 0%, #ffffff14 75%, #ffffff30 100%);
+                border-width: 1px;
+                border-color: #ffffff90;
+                for m[j] in b.minis: Rectangle {
+                    width: parent.width * 0.3;
+                    height: self.width;
+                    x: parent.width * (mod(j, 2) == 0 ? 0.19 : 0.51);
+                    y: parent.height * (j < 2 ? 0.19 : 0.51);
+                    border-radius: self.width / 2;
+                    clip: true;
+                    Image {
+                        source: m;
+                        width: parent.width;
+                        height: parent.height;
+                        image-fit: cover;
+                    }
+                }
+            }
+            if b.kind == 2: Rectangle {
+                width: parent.width * 0.9;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                background: @radial-gradient(circle, #ffffff 0%, #f1f1f1 55%, #c4c4c4 100%);
+                Text {
+                    text: "123";
+                    color: #d23c3c;
+                    font-size: root.height * 0.055;
+                    font-weight: 800;
+                }
+            }
+            Text {
+                y: parent.height / 2 + root.height * 0.128 - self.height / 2;
+                x: (parent.width - self.width) / 2;
+                width: root.width * 0.24;
+                text: b.label;
+                color: b.page < root.font-colors.length ? root.font-colors[b.page] : #ffffff;
+                font-size: root.height * 0.034;
                 horizontal-alignment: center;
                 overflow: elide;
             }
         }
     }
-    // Folder Deck mode: the bubbles fan out as an overlapping card deck, centre
-    // one largest — the Vita's folder/deck view.
-    if root.mode == 2: Rectangle {
-        property <length> diam: root.height * 0.42;
-        property <length> step: root.width * 0.14;
-        for ic[i] in root.bubbles: Rectangle {
-            property <int> off: i - 3;    // fan around the middle
-            visible: i < 7;
-            x: root.width / 2 - self.width / 2 + self.off * parent.step;
-            y: root.height / 2 - self.height / 2 + (self.off * self.off) * root.height * 0.018;
-            width: parent.diam * (self.off == 0 ? 1.0 : 0.82);
-            height: self.width;
-            Rectangle {
+    // The notice image (noNotice.png) in the top-right corner of the home screen.
+    Image {
+        x: root.width * (1 - 120 / 960);
+        y: root.bar-h * 0.5;
+        width: root.width * 120 / 960;
+        height: root.height * 110 / 544;
+        source: root.notice;
+        image-fit: contain;
+    }
+    // Page indicator down the left edge (screen_current / screen_other).
+    if root.page-count > 1: VerticalLayout {
+        property <length> dot: root.height * 22 / 544;
+        x: root.width * 0.006;
+        y: root.bar-h + (root.height - root.bar-h - self.preferred-height) / 2;
+        spacing: root.height * 0.006;
+        for i in root.page-count: Rectangle {
+            width: parent.dot;
+            height: parent.dot;
+            if root.custom-dots: Image {
+                source: i == root.page ? root.dot-current : root.dot-other;
                 width: parent.width;
                 height: parent.height;
+                image-fit: contain;
+            }
+            if !root.custom-dots: Rectangle {
+                width: parent.width * (i == root.page ? 0.5 : 0.36);
+                height: self.width;
                 border-radius: self.width / 2;
-                background: #0b1220e0;
-                border-width: 2px;
-                border-color: parent.off == 0 ? Palette.accent.transparentize(30%) : #ffffff33;
-                clip: true;
-                drop-shadow-blur: 14px;
-                drop-shadow-color: #000000c0;
-                Image {
-                    source: ic;
-                    width: 100%;
-                    height: 100%;
-                    image-fit: cover;
+                background: i == root.page ? #ffffff : #ffffff80;
+            }
+        }
+    }
+    SimInfoBar {
+        y: 0;
+        width: root.width;
+        height: root.bar-h;
+        bar-color: root.bar-color;
+        ink: root.indicator-color;
+        clock: root.clock;
+        ampm: root.ampm;
+    }
+
+    // Lock screen: slides away to the bottom-left once peeled open.
+    Rectangle {
+        x: root.locked ? 0 : -root.width;
+        y: root.locked ? 0 : root.height;
+        animate x, y { duration: 320ms; easing: ease-in-out; }
+        width: root.width;
+        height: root.height;
+        background: #000000;
+        Image {
+            y: root.bar-h;
+            width: root.width;
+            height: root.height - root.bar-h;
+            source: root.lockpaper;
+            image-fit: cover;
+        }
+        Rectangle {
+            x: root.width * 0.033;
+            y: root.height * 0.118;
+            width: root.width * 0.934;
+            height: root.height * 0.822;
+            border-radius: root.width * 0.018;
+            border-width: 1px;
+            border-color: root.notify-border.transparentize(40%);
+        }
+        Text {
+            x: root.width * 0.0625;
+            y: root.height * 0.6;
+            text: root.date;
+            color: root.date-color;
+            font-size: root.height * 0.05;
+        }
+        lock-time := Text {
+            x: root.width * 0.058;
+            y: root.height * 0.66;
+            text: root.clock;
+            color: root.date-color;
+            font-size: root.height * 0.2;
+        }
+        Text {
+            x: lock-time.x + lock-time.width + root.width * 0.012;
+            y: lock-time.y + lock-time.height - self.height - root.height * 0.035;
+            text: root.ampm;
+            color: root.date-color;
+            font-size: root.height * 0.07;
+        }
+        // The peel corner: grows as it is dragged toward the bottom-left.
+        Rectangle {
+            property <length> s: min(root.width * 0.7, root.width * 0.1 + root.peel * 0.9);
+            x: root.width * 0.967 - self.s;
+            y: root.height * 0.118;
+            width: self.s;
+            height: self.s;
+            Path {
+                width: parent.width;
+                height: parent.height;
+                viewbox-width: 1;
+                viewbox-height: 1;
+                fill: @linear-gradient(45deg, #1d4fae 0%, #3f7be0 100%);
+                commands: "M 0 0 L 1 0 L 1 1 Z";
+            }
+            Path {
+                width: parent.width;
+                height: parent.height;
+                viewbox-width: 1;
+                viewbox-height: 1;
+                fill: @linear-gradient(225deg, #f4f8ef 0%, #c9d6c2 100%);
+                commands: "M 0 0 L 1 1 L 0 1 Z";
+            }
+        }
+        SimInfoBar {
+            y: 0;
+            width: root.width;
+            height: root.bar-h;
+            bar-color: root.bar-color;
+            ink: root.indicator-color;
+            clock: root.clock;
+            ampm: root.ampm;
+            home: false;
+        }
+    }
+
+    Timer {
+        interval: 260ms;
+        running: root.wheel-cool;
+        triggered => { root.wheel-cool = false; }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.locked ? MouseCursor.pointer : self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        scroll-event(e) => {
+            if root.locked || root.wheel-cool {
+                return accept;
+            }
+            if e.delta-y < 0 && root.page < root.page-count - 1 {
+                root.page += 1;
+                root.wheel-cool = true;
+            } else if e.delta-y > 0 && root.page > 0 {
+                root.page -= 1;
+                root.wheel-cool = true;
+            }
+            accept
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                if root.locked {
+                    // A drag toward the bottom-left, or a tap on the corner, peels it open.
+                    if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.18 {
+                        root.locked = false;
+                    } else if self.pressed-x > root.width * 0.8 && self.pressed-y < root.height * 0.4 {
+                        root.locked = false;
+                    }
+                } else if self.mouse-y - self.pressed-y < -root.height * 0.12 && root.page < root.page-count - 1 {
+                    root.page += 1;
+                } else if self.mouse-y - self.pressed-y > root.height * 0.12 && root.page > 0 {
+                    root.page -= 1;
                 }
             }
         }
     }
-    // Page dots.
-    if root.chrome && root.page-count > 1: HorizontalLayout {
-        x: root.width / 2 - self.preferred-width / 2;
-        y: root.height - root.height * 0.08;
-        spacing: 6px;
-        for d[i] in root.page-count: Rectangle {
-            width: 6px;
-            height: 6px;
-            border-radius: 3px;
-            background: i == root.current-page ? Palette.accent : #ffffff60;
+}
+
+// The simulator panel, pinned above the right column on every tab.
+component SimPanel inherits Panel {
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Palette.success;
+                }
+            }
+            Text {
+                text: "PS Vita Simulator";
+                color: Palette.text-hi;
+                font-size: Type.body-md;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            Text {
+                text: Creator.sim-locked ? "Lock screen" : "Page " + (Creator.sim-page + 1) + " of " + max(1, Creator.sim-pages.length);
+                color: Palette.text-mid;
+                font-size: Type.body-sm;
+                vertical-alignment: center;
+            }
+            IconBtn {
+                icon: Icons.lock;
+                scale: 0.8;
+                tooltip: Creator.sim-locked ? "Show the home screen" : "Show the lock screen";
+                clicked => { Creator.sim-locked = !Creator.sim-locked; }
+            }
+        }
+        Rectangle {
+            height: self.width * 544 / 960;
+            border-radius: 10px;
+            border-width: 1px;
+            border-color: Palette.outline;
+            clip: true;
+            VitaStage {
+                width: parent.width;
+                height: parent.height;
+                pages: Creator.sim-pages;
+                font-colors: Creator.sim-font-colors;
+                bubbles: Creator.sim-bubbles;
+                lockpaper: Creator.sim-lockpaper;
+                clock: Creator.sim-clock;
+                ampm: Creator.sim-ampm;
+                date: Creator.sim-date;
+                bar-color: Creator.sim-bar-color;
+                indicator-color: Creator.sim-indicator-color;
+                date-color: Creator.sim-date-color;
+                notify-border: Creator.sim-notify-border;
+                notice: Creator.sim-notice;
+                dot-current: Creator.sim-dot-current;
+                dot-other: Creator.sim-dot-other;
+                custom-dots: Creator.sim-custom-dots;
+                page <=> Creator.sim-page;
+                locked <=> Creator.sim-locked;
+            }
+        }
+        Text {
+            text: Creator.sim-locked ? "Drag the top-right corner to peel the lock screen open." : "Scroll or drag up and down to change home pages.";
+            color: Palette.text-lo;
+            font-size: Type.label-md;
+            wrap: word-wrap;
         }
     }
 }
 
 component PreviewColumn inherits VerticalLayout {
     spacing: 16px;
-    Panel {
-        VerticalLayout {
-            padding: 16px;
-            spacing: 12px;
-            HorizontalLayout {
-                spacing: 10px;
-                Rectangle {
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 5px;
-                    background: Palette.success;
-                    drop-shadow-blur: 6px;
-                    drop-shadow-color: Palette.success;
-                }
-                Text {
-                    text: "Live Display Canvas";
-                    color: Palette.text-hi;
-                    font-size: Type.body-md;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                }
-                SpecChip { text: "960×544"; }
-            }
-            screen := Rectangle {
-                height: self.width * 544 / 960;
-                border-radius: 12px;
-                background: #05070a;
-                border-width: 1px;
-                border-color: Palette.outline;
-                clip: true;
-                property <bool> homepage-view: Creator.tab == 1 && Creator.selected-page >= 0;
-                // The LiveArea tab (and the home-page view) render the interactive
-                // Vita simulator; Lock/Thumb show a flat image; Icons shows the grid.
-                property <bool> sim: screen.homepage-view || Creator.preview-tab == 0;
-                property <image> flat: Creator.preview-tab == 1 ? Creator.prev-lock : Creator.prev-thumb;
-                if screen.sim: VitaStage {
-                    width: parent.width;
-                    height: parent.height;
-                    wallpaper: screen.homepage-view ? Creator.selected-page-image : Creator.prev-livearea;
-                    pages: screen.homepage-view ? [] : Creator.sim-pages;
-                    bubbles: Creator.prev-icons;
-                    page-label: screen.homepage-view ? "Home " + (Creator.selected-page + 2)
-                        : Creator.sim-page == 0 ? "Home" : "Home " + (Creator.sim-page + 1);
-                    clock: Creator.sim-clock;
-                    page-count: Creator.pages.length + 1;
-                    current-page: screen.homepage-view ? Creator.selected-page + 1 : Creator.sim-page;
-                    mode: screen.homepage-view ? 0 : Creator.sim-mode;
-                    chrome: Creator.sim-chrome;
-                }
-                if !screen.sim && Creator.preview-tab != 2: Image {
-                    source: screen.flat;
-                    width: parent.width;
-                    height: parent.height;
-                    image-fit: contain;
-                }
-                if !screen.sim && Creator.preview-tab == 2: Rectangle {
-                    property <length> cell: min((parent.width - 16px) / 6, (parent.height - 16px) / 3);
-                    for icon[i] in Creator.prev-icons: Image {
-                        source: icon;
-                        x: (parent.width - 6 * parent.cell) / 2 + mod(i, 6) * parent.cell + (parent.cell - self.width) / 2;
-                        y: (parent.height - 3 * parent.cell) / 2 + floor(i / 6) * parent.cell + (parent.cell - self.height) / 2;
-                        width: parent.cell * 0.84;
-                        height: self.width;
-                    }
-                }
-                // Hide/Show the Vita UI overlay (mockup's "Hide Vita UI").
-                if screen.sim: Rectangle {
-                    x: parent.width - self.width - 8px;
-                    y: parent.height - self.height - 8px;
-                    width: hide-txt.preferred-width + 18px;
-                    height: 24px;
-                    border-radius: 12px;
-                    background: #0b1220cc;
-                    hide-txt := Text {
-                        text: Creator.sim-chrome ? "Hide Vita UI" : "Show Vita UI";
-                        color: #ffffffe0;
-                        font-size: Type.label-md;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        width: parent.width;
-                        height: parent.height;
-                    }
-                    TouchArea { clicked => { Creator.sim-chrome = !Creator.sim-chrome; } }
-                }
-            }
-            if !(Creator.tab == 1 && Creator.selected-page >= 0): Rectangle {
-                height: 40px;
-                border-radius: 8px;
-                background: Palette.inset;
-                HorizontalLayout {
-                    padding: 3px;
-                    spacing: 2px;
-                    Segment { text: "LiveArea"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 0; clicked => { Creator.preview-tab = 0; } }
-                    Segment { text: "Lock"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 1; clicked => { Creator.preview-tab = 1; } }
-                    Segment { text: "Icons"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 2; clicked => { Creator.preview-tab = 2; } }
-                    Segment { text: "Thumb"; min-width: 40px; horizontal-stretch: 1; selected: Creator.preview-tab == 3; clicked => { Creator.preview-tab = 3; } }
-                }
-            }
-            // Interactive canvas controls (LiveArea simulator only).
-            if Creator.preview-tab == 0 && !(Creator.tab == 1 && Creator.selected-page >= 0): HorizontalLayout {
-                spacing: 8px;
-                Rectangle {
-                    height: 36px;
-                    horizontal-stretch: 1;
-                    border-radius: 8px;
-                    background: Palette.inset;
-                    HorizontalLayout {
-                        padding: 3px;
-                        spacing: 2px;
-                        Segment { text: "Grid"; min-width: 36px; horizontal-stretch: 1; selected: Creator.sim-mode == 0; clicked => { Creator.sim-mode = 0; } }
-                        Segment { text: "Peel"; min-width: 36px; horizontal-stretch: 1; selected: Creator.sim-mode == 1; clicked => { Creator.sim-mode = 1; } }
-                        Segment { text: "Folder Deck"; min-width: 36px; horizontal-stretch: 1; selected: Creator.sim-mode == 2; clicked => { Creator.sim-mode = 2; } }
-                    }
-                }
-                Btn {
-                    text: Creator.sim-swiping ? "Swiping…" : "Test Swipe";
-                    icon: Icons.sync;
-                    has-icon: true;
-                    compact: true;
-                    enabled: !Creator.sim-swiping && Creator.sim-pages.length > 1;
-                    clicked => { Creator.test-swipe(); }
-                }
-            }
-            if Creator.tab == 1 && Creator.selected-page >= 0: Text {
-                text: "Showing Home Page " + (Creator.selected-page + 2) + " (click a page to preview it)";
-                color: Palette.text-mid;
-                font-size: Type.body-sm;
-            }
-        }
-    }
     Panel {
         VerticalLayout {
             padding: 16px;
@@ -1233,18 +1372,20 @@ component CreatorTab inherits Rectangle {
     in property <string> badge;
     in property <bool> selected;
     callback clicked();
-    height: 48px;
-    width: row.preferred-width + 28px;
+    height: Density.compact ? 40px : 48px;
+    horizontal-stretch: 0;
     border-radius: 10px;
     background: root.selected ? Palette.primary : touch.has-hover ? Palette.surface3 : transparent;
     drop-shadow-blur: root.selected ? 14px : 0;
     drop-shadow-color: Palette.primary.transparentize(55%);
-    row := HorizontalLayout {
-        x: 14px;
-        spacing: 10px;
+    // The layout sizes the tab, so the highlight always wraps the whole label.
+    HorizontalLayout {
+        padding-left: Density.narrow ? 10px : 14px;
+        padding-right: Density.narrow ? 10px : 14px;
+        spacing: Density.narrow ? 6px : 10px;
         Icon {
             source: root.icon;
-            size: 20px;
+            size: Density.narrow ? 18px : 20px;
             tint: root.selected ? Palette.on-primary : Palette.text-mid;
         }
         Text {
@@ -1324,9 +1465,9 @@ export component CreatorPage inherits Rectangle {
         }
         // Tab bar
         Panel {
-            height: 64px;
+            height: Density.compact ? 52px : 64px;
             HorizontalLayout {
-                padding: 8px;
+                padding: Density.compact ? 6px : 8px;
                 spacing: 6px;
                 CreatorTab {
                     text: "Main";
@@ -1336,9 +1477,9 @@ export component CreatorPage inherits Rectangle {
                     clicked => { Creator.tab = 0; }
                 }
                 CreatorTab {
-                    text: "Home Pages (2-10)";
+                    text: Density.narrow ? "Home Pages" : "Home Pages (2-10)";
                     icon: Icons.wallpaper;
-                    badge: Creator.pages.length + " set";
+                    badge: Creator.pages.length + "/9";
                     selected: Creator.tab == 1;
                     clicked => { Creator.tab = 1; }
                 }
@@ -1350,7 +1491,7 @@ export component CreatorPage inherits Rectangle {
                     clicked => { Creator.tab = 2; }
                 }
                 CreatorTab {
-                    text: "Colors & UI Images";
+                    text: Density.narrow ? "Colors & UI" : "Colors & UI Images";
                     icon: Icons.palette;
                     selected: Creator.tab == 3;
                     clicked => { Creator.tab = 3; }
@@ -1359,9 +1500,11 @@ export component CreatorPage inherits Rectangle {
                 if Creator.ai-available: VerticalLayout {
                     alignment: center;
                     Btn {
-                        text: "AI Icon Generator";
+                        text: Density.narrow ? "AI Icons" : "AI Icon Generator";
+                        hotkey: Density.narrow ? "" : "Ctrl+G";
                         icon: Icons.auto-awesome;
                         has-icon: true;
+                        compact: Density.compact;
                         clicked => { Creator.open-icon-generator(); }
                     }
                 }
@@ -1382,11 +1525,22 @@ export component CreatorPage inherits Rectangle {
                     if Creator.tab == 3: ColorsTab { }
                 }
             }
-            ScrollView {
+            // The simulator stays pinned (and interactive) on every tab; the
+            // validation panels scroll beneath it.
+            VerticalLayout {
                 width: Density.narrow ? 340px : 420px;
-                content-width: self.visible-width;
-                PreviewColumn {
+                spacing: 12px;
+                HorizontalLayout {
                     padding-right: 10px;
+                    vertical-stretch: 0;
+                    SimPanel { vertical-stretch: 0; }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    content-width: self.visible-width;
+                    PreviewColumn {
+                        padding-right: 10px;
+                    }
                 }
             }
         }

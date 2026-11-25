@@ -345,8 +345,11 @@ fn dev_preselect(app: &App) {
     if std::env::var("VTA_DEV_ICONGEN").is_ok() {
         app.window.global::<Creator>().invoke_open_icon_generator();
     }
-    if let Some(m) = std::env::var("VTA_DEV_SIMMODE").ok().and_then(|v| v.parse().ok()) {
-        app.window.global::<Creator>().set_sim_mode(m);
+    if let Some(p) = std::env::var("VTA_DEV_SIMPAGE").ok().and_then(|v| v.parse().ok()) {
+        app.window.global::<Creator>().set_sim_page(p);
+    }
+    if std::env::var("VTA_DEV_SIMLOCK").is_ok() {
+        app.window.global::<Creator>().set_sim_locked(true);
     }
     if std::env::var("VTA_DEV_BGM").is_ok() {
         // Select a theme, then play its BGM once decoded (smoke-tests streaming).

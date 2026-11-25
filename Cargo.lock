@@ -432,7 +432,6 @@ dependencies = [
 [[package]]
 name = "at9codec"
 version = "0.1.0"
-source = "git+https://github.com/Slyfalco/at9codec?tag=v1#93d3b17ed2171e52ea7326277b3e9f130d6ec0f1"
 
 [[package]]
 name = "atk"
@@ -6394,6 +6393,7 @@ dependencies = [
  "arboard",
  "at9codec",
  "base64 0.23.1",
+ "chrono",
  "cpal",
  "image",
  "rfd",

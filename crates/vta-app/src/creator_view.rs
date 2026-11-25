@@ -4,9 +4,8 @@
 use crate::dialogs;
 use crate::library_actions::SharedSettings;
 use crate::library_view::{rescan, select, SharedLibrary};
-use crate::{AppWindow, AssetSlot, ColorPicker, ColorSlot, Creator, DialogIcon, IconGroup, Library, PageSlot, Shell};
-use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
-use std::rc::Rc;
+use crate::{AppWindow, AssetSlot, ColorPicker, ColorSlot, Creator, DialogIcon, IconGroup, Library, PageSlot, Shell, SimBubble};
+use slint::{ComponentHandle, Image, ModelRc, VecModel};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -98,8 +97,8 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
-    /// Keeps the Test Swipe timer alive while it runs.
-    static SWIPE_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    /// Keeps the simulator clock ticking.
+    static CLOCK_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
 }
 
 fn image_from_png(bytes: &[u8]) -> Image {
@@ -211,6 +210,105 @@ fn set_validation(c: &Creator, st: &State, required_ready: usize) {
     c.set_validation_pass(required_ready == 5 && contrast_pass && bytes <= VRAM_BUDGET);
 }
 
+/// The stock apps on the Vita's first two home pages, as the console lays them
+/// out: (page, slot, icon, label, kind). Slots run 0-9 over rows of 3, 4, 3.
+/// kind 0 = theme icon, 1 = folder, 2 = Welcome Park (has no theme icon).
+const SIM_HOME: [(i32, i32, &str, &str, i32); 15] = [
+    (0, 0, "icon_web.png", "Web Browser", 0),
+    (0, 1, "icon_party.png", "Party", 0),
+    (0, 2, "icon_photos.png", "Photos", 0),
+    (0, 3, "icon_music.png", "Music", 0),
+    (0, 4, "", "Folder", 1),
+    (0, 5, "", "Welcome Park", 2),
+    (0, 6, "icon_settings.png", "Settings", 0),
+    (0, 7, "icon_calendar.png", "Calendar", 0),
+    (0, 8, "icon_email.png", "Email", 0),
+    (0, 9, "icon_video.png", "Videos", 0),
+    (1, 0, "icon_near.png", "near", 0),
+    (1, 1, "icon_friend.png", "Friends", 0),
+    (1, 2, "icon_trophy.png", "Trophies", 0),
+    (1, 3, "icon_message.png", "Messages", 0),
+    (1, 4, "icon_cma.png", "Content Manager", 0),
+];
+/// The apps shown inside the page-1 folder bubble.
+const SIM_FOLDER: [&str; 4] = ["icon_ps4link.png", "icon_ps3link.png", "icon_parental.png", "icon_power.png"];
+
+/// Feed the Vita simulator: wallpapers, bubbles, label/bar/date colours and the
+/// lock-screen + indicator images, all from the theme being edited.
+fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
+    let img = |id: &str| icons.get(id).cloned().unwrap_or_default();
+    let bubbles: Vec<SimBubble> = SIM_HOME
+        .iter()
+        .map(|&(page, slot, id, label, kind)| SimBubble {
+            page,
+            slot,
+            icon: img(id),
+            label: label.into(),
+            kind,
+            minis: ModelRc::new(VecModel::from(if kind == 1 { SIM_FOLDER.iter().map(|m| img(m)).collect() } else { Vec::new() })),
+        })
+        .collect();
+    c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
+
+    let col = |st: &State, id: &str, def: &str| parse_argb(st.colors.get(id).map(String::as_str).unwrap_or(def));
+    c.set_sim_bar_color(col(st, "m_barColor", "ff000000"));
+    c.set_sim_indicator_color(col(st, "m_indicatorColor", "ffffffff"));
+    c.set_sim_date_color(col(st, "m_dateColor", "ffffffff"));
+    c.set_sim_notify_border(col(st, "m_notifyBorderColor", "ffcccccc"));
+
+    // Page 1 (br1) then every additional page; a page with no wallpaper stays dark.
+    // Labels use the global font colour, or each page's own when that is enabled.
+    let font = st.colors.get("m_fontColor").cloned().unwrap_or_else(|| "ffffffff".into());
+    let mut srcs = vec![st.sources.get("br1.png").cloned().unwrap_or_default()];
+    let mut fonts = vec![parse_argb(&font)];
+    for p in &st.pages {
+        srcs.push(p.src.clone());
+        fonts.push(parse_argb(if st.use_global || p.color.is_empty() { &font } else { &p.color }));
+    }
+    srcs.truncate(10);
+    fonts.truncate(10);
+    let pages: Vec<Image> = srcs.iter().map(|p| if p.is_empty() { Image::default() } else { thumb(st, p).0 }).collect();
+    let count = pages.len() as i32;
+    c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
+    c.set_sim_font_colors(ModelRc::new(VecModel::from(fonts)));
+    if c.get_sim_page() >= count {
+        c.set_sim_page(count - 1);
+    }
+
+    let src = |st: &mut State, id: &str| st.sources.get(id).cloned().filter(|p| !p.is_empty()).map(|p| thumb(st, &p).0);
+    c.set_sim_lockpaper(src(st, "lockpaper.png").unwrap_or_default());
+    c.set_sim_notice(src(st, "noNotice.png").unwrap_or_default());
+    let (cur, other) = (src(st, "screen_current.png"), src(st, "screen_other.png"));
+    c.set_sim_custom_dots(cur.is_some() && other.is_some());
+    c.set_sim_dot_current(cur.unwrap_or_default());
+    c.set_sim_dot_other(other.unwrap_or_default());
+}
+
+/// Keep the simulator's clock + date on local time (the Vita's 12-hour clock).
+fn tick_clock(c: &Creator) {
+    let now = chrono::Local::now();
+    c.set_sim_clock(now.format("%-I:%M").to_string().into());
+    c.set_sim_ampm(now.format("%p").to_string().into());
+    c.set_sim_date(now.format("%-d %B (%A)").to_string().into());
+}
+
+/// After an asset is picked, turn the simulator to where that asset shows.
+fn show_in_simulator(c: &Creator, id: &str) {
+    match id {
+        "lockpaper.png" => c.set_sim_locked(true),
+        "br1.png" | "noNotice.png" | "newNotice.png" | "screen_current.png" | "screen_other.png" => {
+            c.set_sim_locked(false);
+            c.set_sim_page(0);
+        }
+        _ if id.starts_with("icon_") => {
+            c.set_sim_locked(false);
+            let page = SIM_HOME.iter().find(|(_, _, i, ..)| *i == id).map(|(p, ..)| *p).unwrap_or(0);
+            c.set_sim_page(page);
+        }
+        _ => {}
+    }
+}
+
 fn refresh(app: &AppWindow) {
     let c = app.global::<Creator>();
     let search = c.get_icon_search().to_lowercase();
@@ -277,7 +375,7 @@ fn refresh(app: &AppWindow) {
         c.set_required_ready(ready as i32);
         c.set_ui_slots(ModelRc::new(VecModel::from(ui)));
         c.set_icons_custom(custom as i32);
-        c.set_prev_icons(ModelRc::new(VecModel::from(icons.iter().map(|s| s.thumb.clone()).collect::<Vec<_>>())));
+        let icon_imgs: HashMap<String, Image> = icons.iter().map(|s| (s.id.to_string(), s.thumb.clone())).collect();
         c.set_icons(ModelRc::new(VecModel::from(icons)));
         c.set_icon_groups(ModelRc::new(VecModel::from(groups)));
         c.set_pages(ModelRc::new(VecModel::from(pages)));
@@ -292,25 +390,8 @@ fn refresh(app: &AppWindow) {
         c.set_target(st.target.clone().into());
         set_validation(&c, st, ready);
 
-        let prev = |st: &mut State, id: &str| {
-            st.sources.get(id).cloned().filter(|p| !p.is_empty()).map(|p| thumb(st, &p).0).unwrap_or_default()
-        };
-        c.set_prev_livearea(prev(st, "preview_livearea.png"));
-        c.set_prev_lock(prev(st, "preview_lockscreen.png"));
-        c.set_prev_thumb(prev(st, "preview_thumbnail.png"));
+        set_simulator(&c, st, &icon_imgs);
         let sel = c.get_selected_page();
-        let sel_img = usize::try_from(sel).ok().and_then(|i| st.pages.get(i)).map(|p| p.src.clone());
-        c.set_selected_page_image(sel_img.map(|p| thumb(st, &p).0).unwrap_or_default());
-
-        // Every home-page wallpaper (page 1 + the additional pages), so the Vita
-        // simulator's Test Swipe can cycle through them.
-        let page1 = st.sources.get("br1.png").cloned().filter(|p| !p.is_empty());
-        let page_srcs: Vec<String> = page1.into_iter().chain(st.pages.iter().map(|p| p.src.clone())).filter(|p| !p.is_empty()).collect();
-        let sim_pages: Vec<Image> = page_srcs.iter().map(|p| thumb(st, p).0).collect();
-        c.set_sim_pages(ModelRc::new(VecModel::from(sim_pages)));
-        if c.get_sim_page() >= page_srcs.len().max(1) as i32 {
-            c.set_sim_page(0);
-        }
         if sel >= st.pages.len() as i32 {
             c.set_selected_page(st.pages.len() as i32 - 1);
         }
@@ -346,7 +427,8 @@ fn reset(app: &AppWindow) {
     });
     let c = app.global::<Creator>();
     c.set_tab(0);
-    c.set_preview_tab(0);
+    c.set_sim_page(0);
+    c.set_sim_locked(false);
     c.set_selected_page(-1);
     c.set_icon_search("".into());
     c.set_icon_filter(0);
@@ -604,42 +686,22 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
     let a = app.as_weak();
     c.on_edited(move || mark_dirty(&a.unwrap()));
 
-    // Test Swipe: cycle the simulator through every home page, then stop.
+    // The simulator's clock follows local time.
+    tick_clock(&c);
     let a = app.as_weak();
-    c.on_test_swipe(move || {
-        let app = a.unwrap();
-        let c = app.global::<Creator>();
-        let count = c.get_sim_pages().row_count().max(1);
-        if count < 2 || c.get_sim_swiping() {
-            return;
+    let clock = slint::Timer::default();
+    clock.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(10), move || {
+        if let Some(app) = a.upgrade() {
+            tick_clock(&app.global::<Creator>());
         }
-        c.set_sim_swiping(true);
-        c.set_sim_page(0);
-        let steps = Rc::new(RefCell::new(0usize));
-        let weak = app.as_weak();
-        let t = slint::Timer::default();
-        t.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(650), move || {
-            let Some(app) = weak.upgrade() else { return };
-            let c = app.global::<Creator>();
-            let count = c.get_sim_pages().row_count().max(1);
-            let mut s = steps.borrow_mut();
-            *s += 1;
-            if *s >= count {
-                c.set_sim_page(0);
-                c.set_sim_swiping(false);
-                SWIPE_TIMER.with(|t| *t.borrow_mut() = None);
-            } else {
-                c.set_sim_page(*s as i32);
-            }
-        });
-        SWIPE_TIMER.with(|slot| *slot.borrow_mut() = Some(t));
     });
-
+    CLOCK_TIMER.with(|slot| *slot.borrow_mut() = Some(clock));
     let a = app.as_weak();
     c.on_browse(move |id| {
         let app = a.unwrap();
         if let Some(p) = pick_image(&format!("Select {id}")) {
             STATE.with(|s| s.borrow_mut().sources.insert(id.to_string(), p));
+            show_in_simulator(&app.global::<Creator>(), &id);
             mark_dirty(&app);
             refresh(&app);
         }
@@ -667,6 +729,9 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
             app.global::<Creator>().set_selected_page(n as i32 - 2);
             mark_dirty(&app);
             refresh(&app);
+            let c = app.global::<Creator>();
+            c.set_sim_locked(false);
+            c.set_sim_page(n as i32 - 1);
         }
     });
     let a = app.as_weak();
@@ -680,6 +745,9 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
             });
             mark_dirty(&app);
             refresh(&app);
+            let c = app.global::<Creator>();
+            c.set_sim_locked(false);
+            c.set_sim_page(page - 1);
         }
     });
     let a = app.as_weak();
