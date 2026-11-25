@@ -17,6 +17,8 @@ use vta_online::{Entry, Field, Sort, PAGE};
 use wry::{PageLoadEvent, Rect, WebView, WebViewBuilder};
 
 const NEW_URL: &str = "https://psvt.ovh/index.php#submit";
+/// After a successful upload the result page stays up this long, then closes.
+const CLOSE_AFTER_SECS: u64 = 12;
 const SUBMIT_PREFIX: &str = "https://psvt.ovh/submit.php";
 
 // --- submit.php scripts: verbatim from v2 (that page is unchanged) ----------
@@ -205,11 +207,19 @@ const WATCH_NEW_KEY: &str = r#"
             while ((n = walker.nextNode())) { if (n.nodeValue.indexOf(t) >= 0) { host = n.parentElement; break; } }
             if (!host) document.querySelectorAll('input, textarea').forEach(function (i) { if ((i.value || '').indexOf(t) >= 0) host = i; });
             if (!host) return;
-            var b = document.createElement('button');
-            b.type = 'button';
+            // Styled as the site's own buttons (jQuery Mobile, like its
+            // "Return to the submit form" button). It only copies to the clipboard.
+            var b = document.createElement('a');
+            b.href = '#';
+            b.setAttribute('data-role', 'none');
+            b.className = 'ui-btn ui-btn-inline ui-corner-all ui-shadow ui-mini';
             b.textContent = 'Copy key';
-            b.style.cssText = 'margin:0.5em;padding:0.4em 1.2em;font-weight:bold;border-radius:6px;border:1px solid #2a7;background:#2a7;color:#fff;cursor:pointer';
-            b.addEventListener('click', function (e) { e.preventDefault(); window.ipc.postMessage('copykey:' + t); b.textContent = 'Copied'; });
+            b.addEventListener('click', function (e) {
+                e.preventDefault();
+                window.ipc.postMessage('copykey:' + t);
+                b.textContent = 'Copied';
+                b.classList.add('ui-icon-check', 'ui-btn-icon-left');
+            });
             host.insertAdjacentElement('afterend', b);
             host.insertAdjacentText('afterend', ' ');
         });
@@ -318,6 +328,8 @@ const UPLOAD_KEY: &str = r#"
             try {
                 var r = JSON.parse(x.responseText);
                 if (r && typeof r.ukey === 'string' && r.ukey) window.ipc.postMessage('newkey:' + r.ukey);
+                // A theme id in the reply means the upload went through.
+                if (r && r.id) window.ipc.postMessage('uploaded');
             } catch (_) {}
         });
         return send.apply(this, arguments);
@@ -582,11 +594,39 @@ fn on_ipc(message: &str) {
                 slint::Timer::single_shot(Duration::from_secs(2), || {
                     // Modelled on the site's result page: a link to the new theme
                     // (40-hex id) and the new key in a text box below the note.
-                    run_js("document.getElementById('mainpage').style.display='none'; document.querySelector('.upload').innerHTML = '<h1>Congratulations!</h1><p><i>Your custom theme has been uploaded to the repository!</i></p><p>You can find it at this address:<br><a href=\"http://psvt.ovh/theme.php?id=58a5c0919e883513de73d59a65d54eef7211aef8\">http://psvt.ovh/theme.php?id=58a5c0919e883513de73d59a65d54eef7211aef8</a></p><p><b>Note:</b> the Custom Theme has been successfully added but it will appear in repository main page only after a check by the admin. Since you have not attached a user key to the release, a new one has been generated to attach this release to. You can find it here below, please save it and remember to attach it to your next Custom Themes submissions.</p><input type=\"text\" readonly value=\"vtaFAKEkey0123456789abcdefTEST\">'; document.querySelector('.upload').scrollIntoView();");
+                    run_js("document.getElementById('mainpage').style.display='none'; document.querySelector('.upload').innerHTML = '<h1>Congratulations!</h1><p><i>Your custom theme has been uploaded to the repository!</i></p><p>You can find it at this address:<br><a href=\"http://psvt.ovh/theme.php?id=58a5c0919e883513de73d59a65d54eef7211aef8\">http://psvt.ovh/theme.php?id=58a5c0919e883513de73d59a65d54eef7211aef8</a></p><p><b>Note:</b> the Custom Theme has been successfully added but it will appear in repository main page only after a check by the admin. Since you have not attached a user key to the release, a new one has been generated to attach this release to. You can find it here below, please save it and remember to attach it to your next Custom Themes submissions.</p><input type=\"text\" readonly value=\"vtaFAKEkey0123456789abcdefTEST\">'; document.querySelector('.upload').scrollIntoView(); window.ipc.postMessage('uploaded');");
                 });
             }
         }
         "cancel" => close_session(),
+        // The final upload succeeded (after validation and the site's Submit).
+        // Wait until the result screen is actually showing (the link to the new
+        // theme), then count down on it; the page reports back to start the close.
+        "uploaded" => {
+            run_js(&format!(
+                r#"(function wait(tries) {{
+                    var box = document.querySelector('.upload');
+                    if (!box || !box.querySelector('a[href*="theme.php?id="]')) {{
+                        if (tries > 0) setTimeout(function () {{ wait(tries - 1); }}, 250);
+                        return;
+                    }}
+                    var n = {CLOSE_AFTER_SECS}, el = document.createElement('p');
+                    el.style.cssText = 'text-align:center;font-style:italic;color:#666;margin-top:1.5em';
+                    box.appendChild(el);
+                    (function tick() {{ el.textContent = 'This window will close in ' + n + ' s.'; if (n-- > 0) setTimeout(tick, 1000); }})();
+                    window.ipc.postMessage('countdown');
+                }})(240);"#
+            ));
+        }
+        "countdown" => {
+            // Only this submission's window (not a new one opened meanwhile).
+            let mine = SESSION.with(|s| s.borrow().as_ref().map(|s| s.zip.clone()));
+            slint::Timer::single_shot(Duration::from_secs(CLOSE_AFTER_SECS), move || {
+                if SESSION.with(|s| s.borrow().as_ref().map(|s| s.zip.clone())) == mine {
+                    close_session();
+                }
+            });
+        }
         m if m.starts_with("copykey:") => {
             let key = m["copykey:".len()..].trim().to_string();
             let _ = arboard::Clipboard::new().and_then(|mut c| c.set_text(key));
@@ -822,15 +862,33 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
 fn offer_new_key(app: &AppWindow, key: String) {
     let copied = arboard::Clipboard::new().and_then(|mut c| c.set_text(key.clone())).is_ok();
     let status = if copied { "It has been copied to the clipboard." } else { "The clipboard could not be used, so please copy it from this message." };
+    // Compare with the key already saved in Settings.
+    let stored = SETTINGS
+        .with(|s| s.borrow().as_ref().map(|s| s.borrow().str_or("psvt_user_key", "").trim().to_string()))
+        .unwrap_or_default();
+    if stored == key {
+        return crate::show_toast(app, "The repository's user key matches the one saved in Settings.", false);
+    }
+    let (title, body, save) = if stored.is_empty() {
+        (
+            "Your new repository user key",
+            format!("The repository created a user key for you:\n\n{key}\n\n{status} Save it to Settings to have it attached to your future submissions automatically. Keep it safe like a password: the repository cannot recover it if lost."),
+            "Save to Settings",
+        )
+    } else {
+        (
+            "Replace your saved user key?",
+            format!("The repository created a new user key for this submission:\n\n{key}\n\nIt is different from the key saved in Settings:\n\n{stored}\n\n{status} Replace the saved key with the new one? Keep whichever you use safe like a password: the repository cannot recover it if lost."),
+            "Replace saved key",
+        )
+    };
     dialogs::ask(
         app,
         DialogIcon::Success,
-        "Your new repository user key",
-        &format!(
-            "The repository created a user key for you:\n\n{key}\n\n{status} Save it to Settings to have it attached to your future submissions automatically. Keep it safe like a password: the repository cannot recover it if lost."
-        ),
+        title,
+        &body,
         "",
-        &[("Don't save", dialogs::Kind::Secondary), ("Save to Settings", dialogs::Kind::Primary)],
+        &[(if stored.is_empty() { "Don't save" } else { "Keep current" }, dialogs::Kind::Secondary), (save, dialogs::Kind::Primary)],
         move |app, choice| {
             if choice != 1 {
                 return;

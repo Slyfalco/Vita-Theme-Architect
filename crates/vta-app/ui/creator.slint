@@ -1747,7 +1747,14 @@ component VitaStage inherits Rectangle {
         triggered => { root.wheel-cool = false; }
     }
     ta := TouchArea {
-        mouse-cursor: root.locked ? MouseCursor.pointer : root.home-idle ? (self.pressed ? MouseCursor.grabbing : MouseCursor.grab) : MouseCursor.pointer;
+        // A normal arrow, like a touch screen; a hand only over what can be
+        // pressed, and the grab hand only while actually dragging.
+        mouse-cursor: self.pressed && (abs(root.drag-y) > 8px || abs(root.drag-x) > 8px) ? MouseCursor.grabbing
+            : root.locked ? (self.mouse-x > root.width * 0.8 && self.mouse-y < root.height * 0.4 ? MouseCursor.pointer : MouseCursor.default)
+            : root.la-index >= 0 && !root.la-home ? (self.mouse-x < root.width * 0.06 || (self.mouse-x > root.width * 0.82 && self.mouse-y < root.height * 0.3) ? MouseCursor.pointer : MouseCursor.default)
+            : root.la-home ? (self.mouse-x > root.width * 0.93 ? MouseCursor.pointer : MouseCursor.default)
+            : root.home-idle && self.mouse-x > root.width * 0.88 && self.mouse-y < root.height * 0.2 ? MouseCursor.pointer
+            : MouseCursor.default;
         scroll-event(e) => {
             if !root.home-idle || root.wheel-cool {
                 return accept;
