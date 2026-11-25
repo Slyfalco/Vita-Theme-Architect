@@ -915,11 +915,18 @@ component BubbleFace inherits Rectangle {
         border-width: 1px;
         border-color: #ffffff90;
         // Up to six minis, three per row, like the console's folder bubble.
+        // Sizes and steps are whole physical pixels from one origin, so the
+        // minis move together as the bubble sways instead of each snapping
+        // to the pixel grid at a different moment.
+        property <length> mini: round(self.width * 0.22 / 1phx) * 1phx;
+        property <length> step: round(self.width * 0.235 / 1phx) * 1phx;
+        property <length> ox: round(self.width * 0.16 / 1phx) * 1phx;
+        property <length> oy: round(self.height * 0.26 / 1phx) * 1phx;
         for m[j] in root.b.minis: Rectangle {
-            width: parent.width * 0.22;
-            height: self.width;
-            x: parent.width * (0.16 + mod(j, 3) * 0.235);
-            y: parent.height * (j < 3 ? 0.26 : 0.5);
+            width: parent.mini;
+            height: parent.mini;
+            x: parent.ox + mod(j, 3) * parent.step;
+            y: parent.oy + (j < 3 ? 0px : parent.step);
             border-radius: self.width / 2;
             clip: true;
             Image {
