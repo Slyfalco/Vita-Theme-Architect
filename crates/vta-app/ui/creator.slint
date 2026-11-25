@@ -896,22 +896,28 @@ component SimInfoBar inherits Rectangle {
 }
 
 // One bubble's face: the theme icon (round), the folder glass with its minis,
-// or the stand-ins for bubbles a theme can't change.
+// or the stand-ins for bubbles a theme can't change. Fading is applied to each
+// drawn piece (`alpha`), never to a group: a translucent group is drawn into
+// its own layer every frame, which made the zoom-in/out stutter.
 component BubbleFace inherits Rectangle {
     in property <SimBubble> b;
     in property <length> unit;   // the stage height, for text sizes
-    if root.b.kind == 0: Rectangle {
+    in property <float> alpha: 1;
+    // Theme icon: already a lit, round sphere (sim_art), so no clipping needed.
+    if root.b.kind == 0: Image {
+        source: root.b.icon;
         width: parent.width;
         height: parent.height;
-        border-radius: self.width / 2;
-        clip: true;
-        Image {
-            source: root.b.icon;
-            width: parent.width;
-            height: parent.height;
-            image-fit: cover;
-        }
+        image-fit: contain;
+        opacity: root.alpha;
     }
+    // Folder: the glass circle, and up to six minis (three per row) on top.
+    // Sizes and steps are whole physical pixels from one origin, so the minis
+    // move together as the bubble sways.
+    property <length> mini: round(self.width * 0.22 / 1phx) * 1phx;
+    property <length> step: round(self.width * 0.235 / 1phx) * 1phx;
+    property <length> ox: round(self.width * 0.16 / 1phx) * 1phx;
+    property <length> oy: round(self.height * 0.26 / 1phx) * 1phx;
     if root.b.kind == 1: Rectangle {
         width: parent.width;
         height: parent.height;
@@ -919,72 +925,54 @@ component BubbleFace inherits Rectangle {
         background: @radial-gradient(circle, #ffffff38 0%, #ffffff14 75%, #ffffff30 100%);
         border-width: 1px;
         border-color: #ffffff90;
-        // Up to six minis, three per row, like the console's folder bubble.
-        // Sizes and steps are whole physical pixels from one origin, so the
-        // minis move together as the bubble sways instead of each snapping
-        // to the pixel grid at a different moment.
-        property <length> mini: round(self.width * 0.22 / 1phx) * 1phx;
-        property <length> step: round(self.width * 0.235 / 1phx) * 1phx;
-        property <length> ox: round(self.width * 0.16 / 1phx) * 1phx;
-        property <length> oy: round(self.height * 0.26 / 1phx) * 1phx;
-        for m[j] in root.b.minis: Rectangle {
-            width: parent.mini;
-            height: parent.mini;
-            x: parent.ox + mod(j, 3) * parent.step;
-            y: parent.oy + (j < 3 ? 0px : parent.step);
-            border-radius: self.width / 2;
-            clip: true;
-            Image {
-                source: m;
-                width: parent.width;
-                height: parent.height;
-                image-fit: cover;
-            }
+        opacity: root.alpha;
+    }
+    if root.b.kind == 1: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        for m[j] in root.b.minis: Image {
+            source: m;
+            width: root.mini;
+            height: root.mini;
+            x: root.ox + mod(j, 3) * root.step;
+            y: root.oy + (j < 3 ? 0px : root.step);
+            image-fit: contain;
+            opacity: root.alpha;
         }
     }
-    // PS Store (not themeable): a white bubble with a blue shopping bag.
-    if root.b.kind == 3: Rectangle {
+    // Stand-ins for bubbles a theme can't change: a white glass disc, with the
+    // PS Store bag or Welcome Park's "123" on top (kind 4 = a game placeholder).
+    if root.b.kind >= 2: Rectangle {
         width: parent.width * 0.9;
         height: self.width;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         border-radius: self.width / 2;
-        background: @radial-gradient(circle, #ffffff 0%, #e9f1fb 55%, #b9cbe2 100%);
-        Path {
-            width: parent.width * 0.5;
-            height: self.width;
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            viewbox-width: 24;
-            viewbox-height: 24;
-            fill: #1f6fd6;
-            commands: "M5 8 H19 L18 21 H6 Z M9 8 V6 A3 3 0 0 1 15 6 V8 H13.5 V6 A1.5 1.5 0 0 0 10.5 6 V8 Z";
-        }
+        background: root.b.kind == 3 ? @radial-gradient(circle, #ffffff 0%, #e9f1fb 55%, #b9cbe2 100%)
+            : @radial-gradient(circle, #ffffff 0%, #f2f2f2 55%, #c9c9c9 100%);
+        opacity: root.alpha;
     }
-    // A placeholder for one of the owner's games (extra pages): a plain white
-    // bubble, like the console's own placeholder icon.
-    if root.b.kind == 4: Rectangle {
-        width: parent.width * 0.9;
+    if root.b.kind == 3: Path {
+        width: parent.width * 0.45;
         height: self.width;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        border-radius: self.width / 2;
-        background: @radial-gradient(circle, #ffffff 0%, #f3f3f3 55%, #cfcfcf 100%);
+        viewbox-width: 24;
+        viewbox-height: 24;
+        fill: #1f6fd6;
+        commands: "M5 8 H19 L18 21 H6 Z M9 8 V6 A3 3 0 0 1 15 6 V8 H13.5 V6 A1.5 1.5 0 0 0 10.5 6 V8 Z";
+        opacity: root.alpha;
     }
-    // Welcome Park (not themeable).
-    if root.b.kind == 2: Rectangle {
-        width: parent.width * 0.9;
-        height: self.width;
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        border-radius: self.width / 2;
-        background: @radial-gradient(circle, #ffffff 0%, #f1f1f1 55%, #c4c4c4 100%);
-        Text {
-            text: "123";
-            color: #d23c3c;
-            font-size: parent.width * 0.32;
-            font-weight: 800;
-        }
+    if root.b.kind == 2: Text {
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        text: "123";
+        color: #d23c3c;
+        font-size: parent.width * 0.29;
+        font-weight: 800;
+        opacity: root.alpha;
     }
 }
 
@@ -1261,8 +1249,10 @@ component VitaStage inherits Rectangle {
                     root.sound("tap");
                 }
             }
-            visible: b.page < root.page-count;
-            opacity: bi == root.la-index && !root.la-home ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
+            // Faded per piece (face, label), not as a group: a translucent
+            // group is redrawn into its own layer every frame.
+            property <float> alpha: bi == root.la-index && !root.la-home ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
+            visible: b.page < root.page-count && self.alpha > 0.001;
             x: self.ccx * 1px - self.d / 2;
             y: b.page * root.pitch + self.ccy * 1px - self.d / 2;
             width: self.d;
@@ -1272,8 +1262,10 @@ component VitaStage inherits Rectangle {
                 height: parent.height;
                 b: b;
                 unit: root.height;
+                alpha: parent.alpha;
             }
             Text {
+                opacity: parent.alpha;
                 y: parent.height / 2 + root.height * 0.128 - self.height / 2;
                 x: (parent.width - self.width) / 2;
                 width: root.width * 0.24;
@@ -1367,7 +1359,9 @@ component VitaStage inherits Rectangle {
             animate x { duration: 320ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.0); }
             width: root.width;
             height: root.height;
-            opacity: root.card-in;
+            // Faded per piece, not as one full-screen group (a translucent
+            // group is redrawn into its own layer every frame).
+            visible: root.card-in > 0;
             Path {
                 width: root.width;
                 height: root.height;
@@ -1375,6 +1369,7 @@ component VitaStage inherits Rectangle {
                 viewbox-height: root.h;
                 fill: @linear-gradient(180deg, #2a3550 0%, #151c2e 55%, #0b1020 100%);
                 commands: Peel.remain(root.cl, root.ct, root.cr, root.cb, root.card-s);
+                opacity: root.card-in;
             }
             // App name, top left.
             Text {
@@ -1383,7 +1378,7 @@ component VitaStage inherits Rectangle {
                 text: la.app.label;
                 color: #ffffffd0;
                 font-size: root.height * 0.04;
-                opacity: la.content;
+                opacity: la.content * root.card-in;
             }
             // The gate: the app's bubble and a Start button.
             Rectangle {
@@ -1395,7 +1390,7 @@ component VitaStage inherits Rectangle {
                 background: #ffffff14;
                 border-width: 1px;
                 border-color: #ffffff70;
-                opacity: la.content;
+                opacity: la.content * root.card-in;
                 BubbleFace {
                     b: la.app;
                     unit: root.height;
@@ -1426,6 +1421,7 @@ component VitaStage inherits Rectangle {
                 viewbox-height: root.h;
                 fill: @linear-gradient(135deg, #5a6a8c 0%, #2c3650 100%);
                 commands: Peel.flap(root.cl, root.ct, root.cr, root.cb, root.card-s);
+                opacity: root.card-in;
             }
             // Back to the home screen (the arrow on the left edge).
             Path {
@@ -1437,7 +1433,7 @@ component VitaStage inherits Rectangle {
                 viewbox-height: 16;
                 fill: #ffffffc0;
                 commands: "M8 0 L0 8 L8 16 Z";
-                opacity: la.content;
+                opacity: la.content * root.card-in;
             }
         }
     }
