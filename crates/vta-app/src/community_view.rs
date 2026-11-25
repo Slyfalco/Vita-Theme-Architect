@@ -417,7 +417,10 @@ pub fn opened(app: &AppWindow, extras_root: PathBuf) {
 pub fn wire(app: &AppWindow, settings: &crate::library_actions::SharedSettings) {
     STATE.with(|s| s.borrow_mut().settings = Some(settings.clone()));
     let c = app.global::<Community>();
-    match vta_online::status() {
+    let online = vta_online::status();
+    // Also gates "Submit to Repository" in the Library (inspector + row menu).
+    app.global::<crate::Shell>().set_online_available(online.is_ok());
+    match online {
         Ok(()) => c.set_available(true),
         Err(reason) => {
             c.set_available(false);

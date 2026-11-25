@@ -12,9 +12,45 @@ import { Library, ThemeRow, Shell } from "state.slint";
 // Import menus on the right. (Replaces the old two-row toolbar + filter row;
 // every action and shortcut is kept — Import and the folder actions moved into
 // menus, the theme count lives in the status bar.)
-component MenuItem inherits Btn {
-    kind: ButtonKind.ghost;
-    has-icon: true;
+// A popup-menu row: icon + label left-aligned, shortcut chip pinned right.
+component MenuItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <string> hotkey;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    property <color> fg: !root.enabled ? Palette.text-lo : root.danger ? Palette.danger : Palette.text-hi;
+    height: 36px;
+    border-radius: 6px;
+    background: touch.has-hover && root.enabled ? (root.danger ? Palette.danger.transparentize(88%) : Palette.surface3) : transparent;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 10px;
+        Icon {
+            source: root.icon;
+            size: 18px;
+            tint: root.fg;
+        }
+        Text {
+            text: root.text;
+            color: root.fg;
+            font-size: Type.body-md;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        if root.hotkey != "": VerticalLayout {
+            alignment: center;
+            KeyChip { text: root.hotkey; }
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
 }
 
 component LibraryBar inherits Panel {
@@ -149,9 +185,9 @@ component LibraryBar inherits Panel {
         }
     }
     import-menu := PopupWindow {
-        x: root.width - 300px;
+        x: root.width - 350px;
         y: root.height + 6px;
-        width: 290px;
+        width: 340px;
         Rectangle {
             background: Palette.surface1;
             border-radius: Palette.radius-control;
@@ -421,27 +457,22 @@ component ThemeCard inherits Rectangle {
             VerticalLayout {
                 padding: 6px;
                 spacing: 2px;
-                Btn {
+                MenuItem {
                     text: "Extract BGM";
                     icon: Icons.download;
-                    has-icon: true;
-                    kind: ButtonKind.ghost;
                     enabled: root.theme.has-bgm;
                     clicked => { Library.extract-bgm(root.index); }
                 }
-                Btn {
+                MenuItem {
                     text: "Submit to Repository";
                     icon: Icons.cloud-upload;
-                    has-icon: true;
-                    kind: ButtonKind.ghost;
                     enabled: Shell.online-available;
                     clicked => { Library.submit(root.index); }
                 }
-                Btn {
+                MenuItem {
                     text: "Delete Theme";
                     icon: Icons.delete;
-                    has-icon: true;
-                    kind: ButtonKind.danger;
+                    danger: true;
                     clicked => { Library.delete(root.index); }
                 }
             }
@@ -869,7 +900,7 @@ component Inspector inherits Panel {
                     text: "Submit to Repository";
                     icon: Icons.cloud-upload;
                     has-icon: true;
-                    kind: ButtonKind.ghost;
+                    kind: ButtonKind.secondary;   // a real outlined button, not ghost text
                     enabled: Shell.online-available;
                     horizontal-stretch: 1;
                     clicked => { Library.submit(Library.selected); }
