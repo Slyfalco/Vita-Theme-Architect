@@ -816,47 +816,38 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
     std::mem::forget(timer);
 }
 
-/// The repository issued a brand-new user key after a submission: save it to
-/// Settings (so it is attached next time) and copy it to the clipboard right
-/// away, then tell the user in the app.
+/// The repository issued a brand-new user key after a submission: copy it to
+/// the clipboard right away, then ask in the app whether to save it to Settings
+/// (so it is attached to future submissions).
 fn offer_new_key(app: &AppWindow, key: String) {
-    let copy = |key: &str| arboard::Clipboard::new().and_then(|mut c| c.set_text(key.to_string())).is_ok();
-    let copied = copy(&key);
-    // Debug test runs with a made-up result page never touch the real settings.
-    #[allow(unused_mut)]
-    let mut persist = true;
-    #[cfg(debug_assertions)]
-    if std::env::var("VTA_DEV_FAKE_DONE").is_ok() {
-        persist = false;
-    }
-    let saved = persist
-        && SETTINGS.with(|s| {
-            s.borrow().as_ref().is_some_and(|s| {
-                let mut s = s.borrow_mut();
-                s.set("psvt_user_key", key.clone());
-                s.save().is_ok()
-            })
-        });
-    let status = match (saved, copied) {
-        (true, true) => "It has been saved to Settings and copied to the clipboard.",
-        (true, false) => "It has been saved to Settings (the clipboard could not be used).",
-        (false, true) => "It has been copied to the clipboard (it could not be saved to Settings).",
-        (false, false) => "It could not be saved or copied automatically, so please copy it from this message.",
-    };
+    let copied = arboard::Clipboard::new().and_then(|mut c| c.set_text(key.clone())).is_ok();
+    let status = if copied { "It has been copied to the clipboard." } else { "The clipboard could not be used, so please copy it from this message." };
     dialogs::ask(
         app,
         DialogIcon::Success,
         "Your new repository user key",
         &format!(
-            "The repository created a user key for you:\n\n{key}\n\n{status} It will be attached to your future submissions automatically. Keep it safe like a password: the repository cannot recover it if lost."
+            "The repository created a user key for you:\n\n{key}\n\n{status} Save it to Settings to have it attached to your future submissions automatically. Keep it safe like a password: the repository cannot recover it if lost."
         ),
         "",
-        &[("Copy again", dialogs::Kind::Secondary), ("OK", dialogs::Kind::Primary)],
+        &[("Don't save", dialogs::Kind::Secondary), ("Save to Settings", dialogs::Kind::Primary)],
         move |app, choice| {
-            if choice == 0 {
-                let ok = copy(&key);
-                crate::show_toast(app, if ok { "User key copied to the clipboard." } else { "Could not access the clipboard." }, !ok);
+            if choice != 1 {
+                return;
             }
+            // Debug test runs with a made-up result page never touch the real settings.
+            #[cfg(debug_assertions)]
+            if std::env::var("VTA_DEV_FAKE_DONE").is_ok() {
+                return crate::show_toast(app, "Test run: the key was not saved.", false);
+            }
+            let saved = SETTINGS.with(|s| {
+                s.borrow().as_ref().is_some_and(|s| {
+                    let mut s = s.borrow_mut();
+                    s.set("psvt_user_key", key.clone());
+                    s.save().is_ok()
+                })
+            });
+            crate::show_toast(app, if saved { "User key saved to Settings." } else { "Could not save the user key to Settings." }, !saved);
         },
     );
 }
