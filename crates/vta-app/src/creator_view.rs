@@ -241,6 +241,30 @@ const SIM_HOME: [(i32, i32, &str, &str, i32); 15] = [
 ];
 /// The apps inside the page-1 folder: the remaining themeable apps.
 const SIM_FOLDER: [&str; 4] = ["icon_photos.png", "icon_email.png", "icon_calendar.png", "icon_near.png"];
+const SIM_FOLDER_LABELS: [&str; 4] = ["Photos", "Email", "Calendar", "near"];
+
+/// One simulator bubble. (The idle sway is one tilting plane shared by all the
+/// bubbles, drawn in the UI; each bubble only gets its own zoom-in stagger.)
+fn sim_bubble(page: i32, slot: i32, icon: Image, label: &str, kind: i32, minis: Vec<Image>, mini_labels: Vec<&str>) -> SimBubble {
+    // A small deterministic generator, so each bubble keeps its own stagger.
+    let mut seed = (page as u32).wrapping_mul(7919) ^ (slot as u32).wrapping_mul(104_729) ^ 0x9e37_79b9;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        (seed % 10_000) as f32 / 10_000.0
+    };
+    SimBubble {
+        page,
+        slot,
+        icon,
+        label: label.into(),
+        kind,
+        minis: ModelRc::new(VecModel::from(minis)),
+        mini_labels: ModelRc::new(VecModel::from(mini_labels.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())),
+        delay: next() * 150.0,
+    }
+}
 /// A stock console always has at least this many home pages.
 const SIM_MIN_PAGES: usize = 2;
 
@@ -250,13 +274,13 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     let img = |id: &str| icons.get(id).cloned().unwrap_or_default();
     let mut bubbles: Vec<SimBubble> = SIM_HOME
         .iter()
-        .map(|&(page, slot, id, label, kind)| SimBubble {
-            page,
-            slot,
-            icon: img(id),
-            label: label.into(),
-            kind,
-            minis: ModelRc::new(VecModel::from(if kind == 1 { SIM_FOLDER.iter().map(|m| img(m)).collect() } else { Vec::new() })),
+        .map(|&(page, slot, id, label, kind)| {
+            let (minis, labels) = if kind == 1 {
+                (SIM_FOLDER.iter().map(|m| img(m)).collect(), SIM_FOLDER_LABELS.to_vec())
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            sim_bubble(page, slot, img(id), label, kind, minis, labels)
         })
         .collect();
 
@@ -293,14 +317,7 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     for page in SIM_MIN_PAGES as i32..count {
         for slot in 0..10 {
             let n = (page - SIM_MIN_PAGES as i32) * 10 + slot + 1;
-            bubbles.push(SimBubble {
-                page,
-                slot,
-                icon: Image::default(),
-                label: format!("Game {n}").into(),
-                kind: 4,
-                minis: ModelRc::default(),
-            });
+            bubbles.push(sim_bubble(page, slot, Image::default(), &format!("Game {n}"), 4, Vec::new(), Vec::new()));
         }
     }
     c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));

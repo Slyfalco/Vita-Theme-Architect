@@ -40,6 +40,9 @@ export struct SimBubble {
     label: string,
     kind: int,
     minis: [image],
+    mini-labels: [string],
+    // Stagger (ms) when the bubbles zoom in.
+    delay: float,
 }
 
 export struct IconGroup {
@@ -115,6 +118,7 @@ export global Creator {
     in property <int> page1-wave: 12;           // home page 1's background wave type
     in property <image> sim-wave;               // animated background wave frame
     callback sim-sound(string);
+    in-out property <int> sim-unlock-request: 0;
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
     in-out property <int> icon-filter: 0;   // 0 all, 1 customised, 2 default
@@ -767,6 +771,67 @@ component ColorsTab inherits VerticalLayout {
 
 // ---------------------------------------------------------------- right column
 
+// A page being peeled from its top-right corner (the lock screen and the
+// LiveArea both close this way). The sheet is the rectangle (l, t)-(r, b) in
+// stage pixels; `s` is how far the crease has travelled from the corner
+// (measured along each edge). These build the outlines as path commands:
+// the part of the sheet still in place, the part already peeled away, and the
+// flap (the peeled part folded back over the crease).
+global Peel {
+    pure function pt(x: float, y: float) -> string {
+        return " " + x + " " + y;
+    }
+    // The sheet minus the peeled corner.
+    public pure function remain(l: float, t: float, r: float, b: float, s: float) -> string {
+        if s <= 0 {
+            return "M" + pt(l, t) + " L" + pt(r, t) + " L" + pt(r, b) + " L" + pt(l, b) + " Z";
+        }
+        if s <= b - t {
+            return "M" + pt(l, t) + " L" + pt(r - s, t) + " L" + pt(r, t + s) + " L" + pt(r, b) + " L" + pt(l, b) + " Z";
+        }
+        if s <= r - l {
+            return "M" + pt(l, t) + " L" + pt(r - s, t) + " L" + pt(r - (s - (b - t)), b) + " L" + pt(l, b) + " Z";
+        }
+        if s < (r - l) + (b - t) {
+            return "M" + pt(l, t + s - (r - l)) + " L" + pt(r - (s - (b - t)), b) + " L" + pt(l, b) + " Z";
+        }
+        return "M 0 0 Z";
+    }
+    // The region already peeled away (what shows underneath).
+    public pure function gone(l: float, t: float, r: float, b: float, s: float) -> string {
+        if s <= 0 {
+            return "M 0 0 Z";
+        }
+        if s <= b - t {
+            return "M" + pt(r - s, t) + " L" + pt(r, t) + " L" + pt(r, t + s) + " Z";
+        }
+        if s <= r - l {
+            return "M" + pt(r - s, t) + " L" + pt(r, t) + " L" + pt(r, b) + " L" + pt(r - (s - (b - t)), b) + " Z";
+        }
+        if s < (r - l) + (b - t) {
+            return "M" + pt(l, t) + " L" + pt(r, t) + " L" + pt(r, b) + " L" + pt(r - (s - (b - t)), b) + " L" + pt(l, t + s - (r - l)) + " Z";
+        }
+        return "M" + pt(l, t) + " L" + pt(r, t) + " L" + pt(r, b) + " L" + pt(l, b) + " Z";
+    }
+    // The flap: the peeled region reflected over the crease, (a, b) -> (s - b, s - a)
+    // in corner coordinates (a leftward from r, b downward from t).
+    public pure function flap(l: float, t: float, r: float, b: float, s: float) -> string {
+        if s <= 0 {
+            return "M 0 0 Z";
+        }
+        if s <= b - t {
+            return "M" + pt(r - s, t + s) + " L" + pt(r - s, t) + " L" + pt(r, t + s) + " Z";
+        }
+        if s <= r - l {
+            return "M" + pt(r - s, t + s) + " L" + pt(r - s, t) + " L" + pt(r - (s - (b - t)), t + (b - t)) + " L" + pt(r - (s - (b - t)), t + s) + " Z";
+        }
+        if s < (r - l) + (b - t) {
+            return "M" + pt(r - s, t + s) + " L" + pt(r - s, t + s - (r - l)) + " L" + pt(l, t + s - (r - l)) + " L" + pt(r - (s - (b - t)), b) + " L" + pt(r - (s - (b - t)), t + s) + " Z";
+        }
+        return "M" + pt(r - s, t + s) + " L" + pt(r - s, t + s - (r - l)) + " L" + pt(r - (s - (b - t)), t + s - (r - l)) + " L" + pt(r - (s - (b - t)), t + s) + " Z";
+    }
+}
+
 // The Vita's info bar: theme bar colour, indicators in the indicator colour,
 // the home icon in the middle (home screen only), clock + battery on the right.
 component SimInfoBar inherits Rectangle {
@@ -828,10 +893,101 @@ component SimInfoBar inherits Rectangle {
     }
 }
 
-// The PS Vita simulator: the real home-screen layout (bubbles in rows of 3, 4
-// and 3, the info bar, the page indicator down the left edge, the notice image
-// top-right) and the lock screen with its peel corner. It is used directly:
-// scroll or drag up/down to change home pages, peel the lock screen's corner.
+// One bubble's face: the theme icon (round), the folder glass with its minis,
+// or the stand-ins for bubbles a theme can't change.
+component BubbleFace inherits Rectangle {
+    in property <SimBubble> b;
+    in property <length> unit;   // the stage height, for text sizes
+    if root.b.kind == 0: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: self.width / 2;
+        clip: true;
+        Image {
+            source: root.b.icon;
+            width: parent.width;
+            height: parent.height;
+            image-fit: cover;
+        }
+    }
+    if root.b.kind == 1: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: self.width / 2;
+        background: @radial-gradient(circle, #ffffff38 0%, #ffffff14 75%, #ffffff30 100%);
+        border-width: 1px;
+        border-color: #ffffff90;
+        // Up to six minis, three per row, like the console's folder bubble.
+        for m[j] in root.b.minis: Rectangle {
+            width: parent.width * 0.22;
+            height: self.width;
+            x: parent.width * (0.16 + mod(j, 3) * 0.235);
+            y: parent.height * (j < 3 ? 0.26 : 0.5);
+            border-radius: self.width / 2;
+            clip: true;
+            Image {
+                source: m;
+                width: parent.width;
+                height: parent.height;
+                image-fit: cover;
+            }
+        }
+    }
+    // PS Store (not themeable): a white bubble with a blue shopping bag.
+    if root.b.kind == 3: Rectangle {
+        width: parent.width * 0.9;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: @radial-gradient(circle, #ffffff 0%, #e9f1fb 55%, #b9cbe2 100%);
+        Path {
+            width: parent.width * 0.5;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            fill: #1f6fd6;
+            commands: "M5 8 H19 L18 21 H6 Z M9 8 V6 A3 3 0 0 1 15 6 V8 H13.5 V6 A1.5 1.5 0 0 0 10.5 6 V8 Z";
+        }
+    }
+    // A placeholder for one of the owner's games (extra pages): a plain white
+    // bubble, like the console's own placeholder icon.
+    if root.b.kind == 4: Rectangle {
+        width: parent.width * 0.9;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: @radial-gradient(circle, #ffffff 0%, #f3f3f3 55%, #cfcfcf 100%);
+    }
+    // Welcome Park (not themeable).
+    if root.b.kind == 2: Rectangle {
+        width: parent.width * 0.9;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: @radial-gradient(circle, #ffffff 0%, #f1f1f1 55%, #c4c4c4 100%);
+        Text {
+            text: "123";
+            color: #d23c3c;
+            font-size: parent.width * 0.32;
+            font-weight: 800;
+        }
+    }
+}
+
+// The PS Vita simulator, modelled on a screen recording of the console:
+// - home: bubbles in rows of 3, 4, 3, each drifting on its own slow loop
+//   (~12.5 s) and gently breathing; pages scroll vertically (fast ease-out);
+// - lock screen: the corner breathes; peeling sweeps a silver flap across,
+//   the blue underneath fades to black and the bubbles zoom in;
+// - a tapped bubble spins to the middle and becomes its LiveArea, which peels
+//   away to close; the folder opens into a large glass circle; the notice
+//   circle (top right) opens a speech bubble over a dimmed screen.
+// Times are in milliseconds from `t` (the animation clock).
 component VitaStage inherits Rectangle {
     in property <[image]> pages;
     in property <[color]> font-colors;
@@ -850,31 +1006,156 @@ component VitaStage inherits Rectangle {
     in property <image> dot-other;
     in property <bool> custom-dots;
     in property <image> wave;
+    in property <int> unlock-request;   // bumped by the "Home Screen" button
     in-out property <int> page;
     in-out property <bool> locked;
     // UI sound to play: tap, open, swipe, peel, back.
     callback sound(string);
-    // A bubble was pressed and the touch has not turned into a swipe.
-    property <bool> armed: false;
 
+    property <float> t: animation-tick() / 1ms;
+    property <float> w: root.width / 1px;
+    property <float> h: root.height / 1px;
     property <int> page-count: max(1, root.pages.length);
     property <length> bar-h: root.height * 32 / 544;
     property <length> diam: root.height * 128 / 544;
-    // Bubble centres (fractions of the screen) for slots 0-9: rows of 3, 4, 3.
-    // Evenly spaced honeycomb: the middle row sits half a step out from the others.
+    // Bubble centres (fractions of the screen) for slots 0-9: rows of 3, 4, 3,
+    // the middle row half a step out from the others.
     property <[float]> cxs: [0.26, 0.5, 0.74, 0.14, 0.38, 0.62, 0.86, 0.26, 0.5, 0.74];
     property <[float]> cys: [0.25, 0.25, 0.25, 0.544, 0.544, 0.544, 0.544, 0.816, 0.816, 0.816];
+
+    // ---- state (times in ms; -1 = not happening)
+    property <float> intro-at: -100000;     // home bubbles zooming in
+    property <float> wave-fade-at: -100000; // home fading up from black (after unlock)
+    property <bool> unlocking: false;
+    property <float> unlock-at: -1;
+    property <float> peel-from: 0;          // crease position when the sweep began
+    property <float> away-at: -1;           // home bubbles zoomed away (app/folder open)
+    property <int> la-index: -1;            // the bubble whose LiveArea is open
+    property <float> la-at: -1;
+    property <float> la-close-at: -1;
+    property <float> la-from-x;             // where the launched bubble started
+    property <float> la-from-y;
+    property <int> folder-index: -1;
+    property <float> folder-at: -1;
+    property <float> folder-close-at: -1;
+    property <float> notice-at: -1;
+    property <float> notice-close-at: -1;
+    property <bool> wheel-cool: false;
+    // The idle sway, measured on the console: all the bubbles sit on one plane
+    // that slowly tilts in 3D (a 12.55 s cycle, the side-to-side and up-down
+    // tilts about a quarter cycle apart), pivoting a little left of and below
+    // the centre. Under perspective, bubbles away from the pivot shift and
+    // grow/shrink the most. Tilts are per screen width; shift in screen widths.
+    property <angle> sway: root.t / 12550 * 360deg;
+    property <float> tilt-x: 0.129 * cos(root.sway + 180deg);
+    property <float> tilt-y: 0.148 * cos(root.sway + 78deg);
+    property <float> shift-x: 0.0034 * cos(root.sway + 6deg);
+    property <float> shift-y: 0.0027 * cos(root.sway + 75deg);
+    property <float> pivot-x: 0.479;
+    property <float> pivot-y: 0.593;
+    // A bubble was pressed and the touch has not turned into a swipe.
+    property <bool> armed: false;
+    property <int> armed-index: -1;
+    property <float> armed-x;
+    property <float> armed-y;
+
+    property <bool> home-idle: !root.locked && !root.unlocking && root.la-index < 0 && root.folder-index < 0 && root.notice-at < 0;
     // Live drag: a vertical page swipe on the home screen, the peel when locked.
     property <length> drag-x: ta.pressed ? ta.mouse-x - ta.pressed-x : 0px;
     property <length> drag-y: ta.pressed ? ta.mouse-y - ta.pressed-y : 0px;
     property <bool> at-edge: (root.drag-y > 0 && root.page == 0) || (root.drag-y < 0 && root.page >= root.page-count - 1);
-    property <length> pull: root.locked ? 0px : root.at-edge ? root.drag-y * 0.3 : root.drag-y;
-    property <length> peel: root.locked ? max(0px, root.drag-y - root.drag-x) : 0px;
-    property <bool> wheel-cool: false;
-    property <bool> floating: !root.locked && !ta.pressed;
+    property <length> pull: !root.home-idle ? 0px : root.at-edge ? root.drag-y * 0.3 : root.drag-y;
+
+    // ---- lock screen geometry: the framed sheet and its crease
+    property <float> fl: root.w * 0.033;
+    property <float> ft: root.h * 0.118;
+    property <float> fr: root.w * 0.967;
+    property <float> fb: root.h * 0.94;
+    property <float> lock-idle: root.w * 0.072 * (1 + 0.12 * sin(root.t / 2600 * 360deg));
+    property <float> lock-end: (root.fr - root.fl) + (root.fb - root.ft) + root.w * 0.25;
+    property <float> sweep: root.unlocking ? clamp((root.t - root.unlock-at) / 550, 0, 1) : 0;
+    property <float> lock-s: root.unlocking
+        ? root.peel-from + (root.lock-end - root.peel-from) * (1 - (1 - root.sweep) * (1 - root.sweep))
+        : root.lock-idle + max(0, (root.drag-y - root.drag-x) / 1px) * 0.9;
+    property <float> blackout: root.unlocking ? clamp((root.t - root.unlock-at - 700) / 250, 0, 1) : 0;
+
+    // ---- LiveArea card geometry
+    property <float> cl: root.w * 0.06;
+    property <float> ct: root.bar-h / 1px;
+    property <float> cr: root.w * 0.94;
+    property <float> cb: root.h;
+    property <float> card-in: root.la-index < 0 ? 0 : clamp((root.t - root.la-at - 400) / 300, 0, 1);
+    property <float> card-close: root.la-close-at < 0 ? 0 : clamp((root.t - root.la-close-at) / 480, 0, 1);
+    property <float> card-s: root.la-close-at >= 0
+        ? root.w * 0.045 + ((root.cr - root.cl) + (root.cb - root.ct) + root.w * 0.2) * root.card-close * root.card-close
+        : root.w * 0.045 + max(0, (root.drag-y - root.drag-x) / 1px) * 0.9;
+
+    // ---- folder
+    property <float> folder-in: root.folder-index < 0 ? 0
+        : root.folder-close-at >= 0 ? 1 - clamp((root.t - root.folder-close-at) / 250, 0, 1)
+        : clamp((root.t - root.folder-at) / 300, 0, 1);
+
+    // ---- notification bubble
+    property <float> notice-in: root.notice-at < 0 ? 0
+        : root.notice-close-at >= 0 ? 1 - clamp((root.t - root.notice-close-at) / 180, 0, 1)
+        : clamp((root.t - root.notice-at) / 200, 0, 1);
 
     background: #0d1117;
     clip: true;
+
+    changed locked => {
+        if self.locked {
+            // Locking drops whatever was open, as the console does.
+            self.unlocking = false;
+            self.la-index = -1;
+            self.la-close-at = -1;
+            self.folder-index = -1;
+            self.folder-close-at = -1;
+            self.notice-at = -1;
+            self.notice-close-at = -1;
+            self.away-at = -1;
+        } else {
+            self.intro-at = self.t;
+        }
+    }
+    changed unlock-request => {
+        self.start-unlock();
+    }
+    function start-unlock() {
+        if root.locked && !root.unlocking {
+            root.peel-from = root.lock-s;
+            root.unlock-at = root.t;
+            root.unlocking = true;
+            root.sound("peel");
+        }
+    }
+    function open-app(i: int) {
+        root.la-index = i;
+        root.la-at = root.t;
+        root.la-close-at = -1;
+        root.la-from-x = root.armed-x;
+        root.la-from-y = root.armed-y;
+        root.away-at = root.t;
+        root.sound("open");
+    }
+    function close-app() {
+        if root.la-index >= 0 && root.la-close-at < 0 && root.card-in >= 1 {
+            root.la-close-at = root.t;
+            root.sound("peel");
+        }
+    }
+    function open-folder(i: int) {
+        root.folder-index = i;
+        root.folder-at = root.t;
+        root.folder-close-at = -1;
+        root.away-at = root.t;
+    }
+    function close-folder() {
+        if root.folder-index >= 0 && root.folder-close-at < 0 {
+            root.folder-close-at = root.t;
+            root.sound("back");
+        }
+    }
 
     // The animated background wave, behind every page; it shows through any
     // transparent parts of the wallpapers, as on the console.
@@ -884,13 +1165,13 @@ component VitaStage inherits Rectangle {
         source: root.wave;
         image-fit: fill;
     }
-
-    // Home pages, stacked vertically like the Vita's.
-    Rectangle {
+    // Home page wallpapers, stacked vertically like the Vita's pages.
+    pages-strip := Rectangle {
         y: -root.page * root.height + root.pull;
         width: root.width;
         height: root.page-count * root.height;
-        animate y { duration: ta.pressed ? 0ms : 300ms; easing: ease-out; }
+        // Measured on the console: a fast ease-out with a slight overshoot.
+        animate y { duration: ta.pressed ? 0ms : 380ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.04); }
         // A page with no wallpaper shows just the wave, as on the console.
         for pg[i] in root.pages: Image {
             y: i * root.height;
@@ -899,105 +1180,59 @@ component VitaStage inherits Rectangle {
             source: pg;
             image-fit: cover;
         }
-        for b in root.bubbles: Rectangle {
-            property <length> cx: root.width * root.cxs[b.slot];
-            property <length> cy: root.height * root.cys[b.slot];
-            property <float> fx: (ta.pressed-x - self.cx) / root.diam;
-            property <float> fy: (ta.pressed-y - self.cy) / root.diam;
-            property <bool> hit: ta.pressed && !root.locked && b.page == root.page && abs(root.drag-y) < 8px && self.fx * self.fx + self.fy * self.fy < 0.25;
-            property <length> d: self.hit ? root.diam * 0.9 : root.diam;
-            animate d { duration: 90ms; }
+    }
+    // After unlocking, the home fades up from black.
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        background: black;
+        opacity: 1 - clamp((root.t - root.wave-fade-at) / 450, 0, 1);
+    }
+    // The bubbles, on the same vertical strip as the wallpapers.
+    Rectangle {
+        y: pages-strip.y;
+        width: root.width;
+        height: pages-strip.height;
+        for b[bi] in root.bubbles: Rectangle {
+            // Position on the swaying plane (perspective of a small 3D tilt).
+            property <float> px: (root.cxs[b.slot] - root.pivot-x) ;
+            property <float> py: (root.cys[b.slot] - root.pivot-y) * root.h / root.w;
+            property <float> depth: root.tilt-x * self.px - root.tilt-y * self.py;
+            property <float> dx: root.w * (self.px * self.depth + root.shift-x);
+            property <float> dy: root.w * (self.py * self.depth + root.shift-y);
+            property <float> breathe: 1 + self.depth;
+            // Zooming in (after unlock / closing an app) and away (opening one).
+            property <float> ip: clamp((root.t - root.intro-at - b.delay) / 380, 0, 1);
+            property <float> ie: 1 - (1 - self.ip) * (1 - self.ip) * (1 - self.ip);
+            property <float> zo: root.away-at < 0 ? 0 : clamp((root.t - root.away-at) / 220, 0, 1);
+            property <float> spread: (1 - self.ie) * 0.6 + self.zo * 0.5;
+            property <float> ccx: root.w / 2 + (root.w * root.cxs[b.slot] + self.dx - root.w / 2) * (1 + self.spread);
+            property <float> ccy: root.h / 2 + (root.h * root.cys[b.slot] + self.dy - root.h / 2) * (1 + self.spread);
+            property <float> fx: (ta.pressed-x / 1px - self.ccx) / (root.diam / 1px);
+            property <float> fy: (ta.pressed-y / 1px - self.ccy) / (root.diam / 1px);
+            property <bool> hit: ta.pressed && root.home-idle && b.page == root.page && abs(root.drag-y) < 8px
+                && self.fx * self.fx + self.fy * self.fy < 0.25;
+            property <length> d: root.diam * self.breathe * (1 + self.spread) * (self.hit ? 0.9 : 1.0);
             changed hit => {
                 if self.hit {
                     root.armed = true;
+                    root.armed-index = bi;
+                    root.armed-x = self.ccx;
+                    root.armed-y = self.ccy;
                     root.sound("tap");
                 }
             }
-            // Bubbles drift gently in place, each on its own phase, like the Vita's.
-            property <angle> phase: root.floating ? animation-tick() / 3.4s * 360deg + (b.slot * 67 + b.page * 29) * 1deg : 0deg;
             visible: b.page < root.page-count;
-            x: self.cx - self.d / 2 + root.width * 0.005 * cos(self.phase * 0.7);
-            y: b.page * root.height + self.cy - self.d / 2 + root.height * 0.012 * sin(self.phase);
+            opacity: bi == root.la-index ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
+            x: self.ccx * 1px - self.d / 2;
+            y: b.page * root.height + self.ccy * 1px - self.d / 2;
             width: self.d;
             height: self.d;
-            // The Vita shows every launcher icon as a round bubble.
-            if b.kind == 0: Rectangle {
+            BubbleFace {
                 width: parent.width;
                 height: parent.height;
-                border-radius: self.width / 2;
-                clip: true;
-                Image {
-                    source: b.icon;
-                    width: parent.width;
-                    height: parent.height;
-                    image-fit: cover;
-                }
-            }
-            if b.kind == 1: Rectangle {
-                width: parent.width;
-                height: parent.height;
-                border-radius: self.width / 2;
-                background: @radial-gradient(circle, #ffffff38 0%, #ffffff14 75%, #ffffff30 100%);
-                border-width: 1px;
-                border-color: #ffffff90;
-                // Up to six minis, three per row, like the console's folder bubble.
-                for m[j] in b.minis: Rectangle {
-                    width: parent.width * 0.22;
-                    height: self.width;
-                    x: parent.width * (0.16 + mod(j, 3) * 0.235);
-                    y: parent.height * (j < 3 ? 0.26 : 0.5);
-                    border-radius: self.width / 2;
-                    clip: true;
-                    Image {
-                        source: m;
-                        width: parent.width;
-                        height: parent.height;
-                        image-fit: cover;
-                    }
-                }
-            }
-            // PS Store (not themeable): a blue bubble with a white shopping bag.
-            if b.kind == 3: Rectangle {
-                width: parent.width * 0.9;
-                height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                border-radius: self.width / 2;
-                background: @radial-gradient(circle, #ffffff 0%, #e9f1fb 55%, #b9cbe2 100%);
-                Path {
-                    width: parent.width * 0.5;
-                    height: self.width;
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    viewbox-width: 24;
-                    viewbox-height: 24;
-                    fill: #1f6fd6;
-                    commands: "M5 8 H19 L18 21 H6 Z M9 8 V6 A3 3 0 0 1 15 6 V8 H13.5 V6 A1.5 1.5 0 0 0 10.5 6 V8 Z";
-                }
-            }
-            // A placeholder for one of the owner's games (extra pages): a plain
-            // white bubble, like the console's own placeholder icon.
-            if b.kind == 4: Rectangle {
-                width: parent.width * 0.9;
-                height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                border-radius: self.width / 2;
-                background: @radial-gradient(circle, #ffffff 0%, #f3f3f3 55%, #cfcfcf 100%);
-            }
-            if b.kind == 2: Rectangle {
-                width: parent.width * 0.9;
-                height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                border-radius: self.width / 2;
-                background: @radial-gradient(circle, #ffffff 0%, #f1f1f1 55%, #c4c4c4 100%);
-                Text {
-                    text: "123";
-                    color: #d23c3c;
-                    font-size: root.height * 0.055;
-                    font-weight: 800;
-                }
+                b: b;
+                unit: root.height;
             }
             Text {
                 y: parent.height / 2 + root.height * 0.128 - self.height / 2;
@@ -1014,14 +1249,15 @@ component VitaStage inherits Rectangle {
     // The notice image (noNotice.png) in the top-right corner of the home screen.
     Image {
         x: root.width * (1 - 120 / 960);
-        y: root.bar-h * 0.5;
+        y: 0;
         width: root.width * 120 / 960;
         height: root.height * 110 / 544;
         source: root.notice;
         image-fit: contain;
+        opacity: root.la-index >= 0 ? 0 : 1;
     }
     // Page indicator down the left edge (screen_current / screen_other).
-    if root.page-count > 1: VerticalLayout {
+    if root.page-count > 1 && root.la-index < 0 && root.folder-index < 0: VerticalLayout {
         property <length> dot: root.height * 22 / 544;
         x: root.width * 0.006;
         y: root.bar-h + (root.height - root.bar-h - self.preferred-height) / 2;
@@ -1043,6 +1279,227 @@ component VitaStage inherits Rectangle {
             }
         }
     }
+
+    // ---- LiveArea: the tapped bubble spins to the middle and becomes the card.
+    if root.la-index >= 0 && root.la-index < root.bubbles.length: la := Rectangle {
+        property <SimBubble> app: root.bubbles[root.la-index];
+        property <float> fp: clamp((root.t - root.la-at) / 450, 0, 1);
+        property <float> fe: self.fp * self.fp * (3 - 2 * self.fp);
+        property <float> fcx: root.la-from-x + (root.w * 0.5 - root.la-from-x) * self.fe;
+        property <float> fcy: root.la-from-y + (root.h * 0.38 - root.la-from-y) * self.fe;
+        property <float> fd: root.diam / 1px * (1 + 0.7 * self.fe);
+        property <float> spin: max(0.08, abs(cos(self.fp * 540deg)));
+        property <float> content: (1 - clamp((root.t - root.la-close-at) / 120, 0, 1));
+        width: root.width;
+        height: root.height;
+        // The flying, spinning bubble.
+        BubbleFace {
+            b: parent.app;
+            unit: root.height;
+            width: parent.fd * parent.spin * 1px;
+            height: parent.fd * 1px;
+            x: (parent.fcx - parent.fd * parent.spin / 2) * 1px;
+            y: (parent.fcy - parent.fd / 2) * 1px;
+            opacity: 1 - clamp((root.t - root.la-at - 450) / 150, 0, 1);
+        }
+        // The card: grows out of the bubble, peels away to close.
+        Rectangle {
+            width: root.width;
+            height: root.height;
+            opacity: root.card-in;
+            Path {
+                width: root.width;
+                height: root.height;
+                viewbox-width: root.w;
+                viewbox-height: root.h;
+                fill: @linear-gradient(180deg, #2a3550 0%, #151c2e 55%, #0b1020 100%);
+                commands: Peel.remain(root.cl, root.ct, root.cr, root.cb, root.card-s);
+            }
+            // App name, top left.
+            Text {
+                x: (root.cl + root.w * 0.02) * 1px;
+                y: (root.ct + root.h * 0.015) * 1px;
+                text: la.app.label;
+                color: #ffffffd0;
+                font-size: root.height * 0.04;
+                opacity: la.content;
+            }
+            // The gate: the app's bubble and a Start button.
+            Rectangle {
+                width: root.width * 0.3;
+                height: root.height * 0.3;
+                x: (root.width - self.width) / 2;
+                y: root.height * 0.38 - self.height / 2;
+                border-radius: root.height * 0.02;
+                background: #ffffff14;
+                border-width: 1px;
+                border-color: #ffffff70;
+                opacity: la.content;
+                BubbleFace {
+                    b: la.app;
+                    unit: root.height;
+                    width: parent.height * 0.62;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height * 0.08;
+                }
+                Rectangle {
+                    width: parent.width * 0.42;
+                    height: parent.height * 0.17;
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height * 0.76;
+                    border-radius: self.height / 2;
+                    background: #1f7ae0;
+                    Text {
+                        text: "Start";
+                        color: white;
+                        font-size: root.height * 0.035;
+                    }
+                }
+            }
+            // The flap of the peel.
+            Path {
+                width: root.width;
+                height: root.height;
+                viewbox-width: root.w;
+                viewbox-height: root.h;
+                fill: @linear-gradient(135deg, #5a6a8c 0%, #2c3650 100%);
+                commands: Peel.flap(root.cl, root.ct, root.cr, root.cb, root.card-s);
+            }
+            // Back to the home screen (the arrow on the left edge).
+            Path {
+                x: root.width * 0.012;
+                y: root.height * 0.5 - self.height / 2;
+                width: root.width * 0.025;
+                height: self.width * 1.6;
+                viewbox-width: 10;
+                viewbox-height: 16;
+                fill: #ffffffc0;
+                commands: "M8 0 L0 8 L8 16 Z";
+                opacity: la.content;
+            }
+        }
+    }
+
+    // ---- folder: a large glass circle holding the folder's apps.
+    if root.folder-index >= 0 && root.folder-index < root.bubbles.length: fv := Rectangle {
+        property <SimBubble> fold: root.bubbles[root.folder-index];
+        property <float> fe: 1 - (1 - root.folder-in) * (1 - root.folder-in);
+        width: root.width;
+        height: root.height;
+        opacity: root.folder-in;
+        Rectangle {
+            property <length> r: root.width * 0.45 * (0.85 + 0.15 * parent.fe);
+            x: root.width * 0.48 - self.r;
+            y: root.height * 0.92 - self.r;
+            width: self.r * 2;
+            height: self.r * 2;
+            border-radius: self.r;
+            background: @radial-gradient(circle, #ffffff00 55%, #ffffff18 92%, #ffffff40 100%);
+            border-width: 1px;
+            border-color: #ffffff70;
+        }
+        Text {
+            x: root.width * 0.48 - self.width / 2;
+            y: root.height * 0.075;
+            text: "Folder";
+            color: #ffffffe0;
+            font-size: root.height * 0.04;
+        }
+        for m[j] in fv.fold.minis: Rectangle {
+            property <length> md: root.diam * 0.72 * (0.85 + 0.15 * fv.fe);
+            x: root.width * root.cxs[j] - self.md / 2;
+            y: root.height * (root.cys[j] + 0.04) - self.md / 2;
+            width: self.md;
+            height: self.md;
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                border-radius: self.width / 2;
+                clip: true;
+                Image {
+                    source: m;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: cover;
+                }
+            }
+            Text {
+                y: parent.height + root.height * 0.005;
+                x: (parent.width - self.width) / 2;
+                width: root.width * 0.2;
+                text: j < fv.fold.mini-labels.length ? fv.fold.mini-labels[j] : "";
+                color: #ffffffe0;
+                font-size: root.height * 0.03;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+        // Back button, bottom left.
+        Rectangle {
+            x: root.width * 0.01;
+            y: root.height * 0.88;
+            width: root.height * 0.1;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: #00000060;
+            border-width: 1px;
+            border-color: #ffffff90;
+            Path {
+                width: parent.width * 0.55;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                fill: white;
+                commands: "M9 5 L3 10 L9 15 V11.5 H14 A4 4 0 0 1 14 19.5 H10 V21.5 H14 A6 6 0 0 0 14 9.5 H9 Z";
+            }
+        }
+    }
+
+    // ---- notifications: the screen dims and a speech bubble grows from the corner.
+    if root.notice-at >= 0: Rectangle {
+        property <float> ne: 1 - (1 - root.notice-in) * (1 - root.notice-in);
+        width: root.width;
+        height: root.height;
+        Rectangle {
+            width: root.width;
+            height: root.height;
+            background: black;
+            opacity: 0.38 * root.notice-in;
+        }
+        Rectangle {
+            property <length> bw: root.width * 0.36 * parent.ne;
+            property <length> bh: root.height * 0.105 * parent.ne;
+            x: root.width * 0.915 - self.bw;
+            y: root.height * 0.075;
+            width: self.bw;
+            height: self.bh;
+            border-radius: root.height * 0.02;
+            background: white;
+            drop-shadow-blur: 6px;
+            drop-shadow-color: #00000060;
+            Text {
+                text: "There are no notifications.";
+                color: #3a3a3a;
+                font-size: root.height * 0.034;
+                opacity: root.notice-close-at >= 0 ? 0 : clamp((root.t - root.notice-at - 280) / 150, 0, 1);
+            }
+        }
+        // The tail, pointing at the notice circle.
+        Path {
+            x: root.width * 0.9;
+            y: root.height * 0.05;
+            width: root.width * 0.035 * parent.ne;
+            height: root.height * 0.05 * parent.ne;
+            viewbox-width: 10;
+            viewbox-height: 10;
+            fill: white;
+            commands: "M0 10 L10 0 L4 10 Z";
+        }
+    }
+
     SimInfoBar {
         y: 0;
         width: root.width;
@@ -1053,11 +1510,8 @@ component VitaStage inherits Rectangle {
         ampm: root.ampm;
     }
 
-    // Lock screen: slides away to the bottom-left once peeled open.
-    Rectangle {
-        x: root.locked ? 0 : -root.width;
-        y: root.locked ? 0 : root.height;
-        animate x, y { duration: 320ms; easing: ease-in-out; }
+    // ---- lock screen
+    if root.locked: Rectangle {
         width: root.width;
         height: root.height;
         background: #000000;
@@ -1076,20 +1530,23 @@ component VitaStage inherits Rectangle {
             image-fit: cover;
         }
         Rectangle {
-            x: root.width * 0.033;
-            y: root.height * 0.118;
-            width: root.width * 0.934;
-            height: root.height * 0.822;
+            x: root.fl * 1px;
+            y: root.ft * 1px;
+            width: (root.fr - root.fl) * 1px;
+            height: (root.fb - root.ft) * 1px;
             border-radius: root.width * 0.018;
             border-width: 1px;
             border-color: root.notify-border.transparentize(40%);
         }
+        // The date and time fade as the page is peeled.
+        property <float> clock-fade: 1 - clamp((root.lock-s - root.w * 0.09) / (root.w * 0.18), 0, 1);
         Text {
             x: root.width * 0.0625;
             y: root.height * 0.6;
             text: root.date;
             color: root.date-color;
             font-size: root.height * 0.05;
+            opacity: parent.clock-fade;
         }
         lock-time := Text {
             x: root.width * 0.058;
@@ -1097,6 +1554,7 @@ component VitaStage inherits Rectangle {
             text: root.clock;
             color: root.date-color;
             font-size: root.height * 0.2;
+            opacity: parent.clock-fade;
         }
         Text {
             x: lock-time.x + lock-time.width + root.width * 0.012;
@@ -1104,30 +1562,32 @@ component VitaStage inherits Rectangle {
             text: root.ampm;
             color: root.date-color;
             font-size: root.height * 0.07;
+            opacity: parent.clock-fade;
         }
-        // The peel corner: grows as it is dragged toward the bottom-left.
+        // Peeled away: the blue underneath, inside the frame.
+        Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.w;
+            viewbox-height: root.h;
+            fill: @radial-gradient(circle, #2cb0ff 0%, #138df5 50%, #0a62d8 100%);
+            commands: Peel.gone(root.fl, root.ft, root.fr, root.fb, root.lock-s);
+        }
+        // The flap folded back over the crease (silver).
+        Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: root.w;
+            viewbox-height: root.h;
+            fill: @linear-gradient(135deg, #f4f4f4 0%, #b8b8b8 45%, #6e6e6e 100%);
+            commands: Peel.flap(root.fl, root.ft, root.fr, root.fb, root.lock-s);
+        }
+        // Then the blue fades to black before the home screen comes in.
         Rectangle {
-            property <length> s: min(root.width * 0.7, root.width * 0.1 + root.peel * 0.9);
-            x: root.width * 0.967 - self.s;
-            y: root.height * 0.118;
-            width: self.s;
-            height: self.s;
-            Path {
-                width: parent.width;
-                height: parent.height;
-                viewbox-width: 1;
-                viewbox-height: 1;
-                fill: @linear-gradient(45deg, #1d4fae 0%, #3f7be0 100%);
-                commands: "M 0 0 L 1 0 L 1 1 Z";
-            }
-            Path {
-                width: parent.width;
-                height: parent.height;
-                viewbox-width: 1;
-                viewbox-height: 1;
-                fill: @linear-gradient(225deg, #f4f8ef 0%, #c9d6c2 100%);
-                commands: "M 0 0 L 1 1 L 0 1 Z";
-            }
+            width: root.width;
+            height: root.height;
+            background: black;
+            opacity: root.blackout;
         }
         SimInfoBar {
             y: 0;
@@ -1140,16 +1600,54 @@ component VitaStage inherits Rectangle {
             home: false;
         }
     }
-
+    // The whole unlock sequence takes ~1 s; then the home screen comes in.
+    Timer {
+        interval: 1050ms;
+        running: root.unlocking;
+        triggered => {
+            root.unlocking = false;
+            root.wave-fade-at = root.t;
+            root.locked = false;
+        }
+    }
+    // An app peels away, then the bubbles come back.
+    Timer {
+        interval: 560ms;
+        running: root.la-close-at >= 0;
+        triggered => {
+            root.la-index = -1;
+            root.la-close-at = -1;
+            root.away-at = -1;
+            root.intro-at = root.t;
+        }
+    }
+    Timer {
+        interval: 260ms;
+        running: root.folder-close-at >= 0;
+        triggered => {
+            root.folder-index = -1;
+            root.folder-close-at = -1;
+            root.away-at = -1;
+            root.intro-at = root.t;
+        }
+    }
+    Timer {
+        interval: 190ms;
+        running: root.notice-close-at >= 0;
+        triggered => {
+            root.notice-at = -1;
+            root.notice-close-at = -1;
+        }
+    }
     Timer {
         interval: 260ms;
         running: root.wheel-cool;
         triggered => { root.wheel-cool = false; }
     }
     ta := TouchArea {
-        mouse-cursor: root.locked ? MouseCursor.pointer : self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        mouse-cursor: root.locked ? MouseCursor.pointer : root.home-idle ? (self.pressed ? MouseCursor.grabbing : MouseCursor.grab) : MouseCursor.pointer;
         scroll-event(e) => {
-            if root.locked || root.wheel-cool {
+            if !root.home-idle || root.wheel-cool {
                 return accept;
             }
             if e.delta-y < 0 && root.page < root.page-count - 1 {
@@ -1168,12 +1666,31 @@ component VitaStage inherits Rectangle {
                 root.armed = false;
             }
             if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
-                if root.locked {
+                if root.unlocking {
+                    // The unlock sequence plays out on its own.
+                } else if root.locked {
                     // A drag toward the bottom-left, or a tap on the corner, peels it open.
                     if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.18
                         || (self.pressed-x > root.width * 0.8 && self.pressed-y < root.height * 0.4) {
-                        root.locked = false;
-                        root.sound("peel");
+                        root.start-unlock();
+                    }
+                } else if root.notice-at >= 0 {
+                    // Any tap closes the notification bubble.
+                    if root.notice-close-at < 0 && root.notice-in >= 1 {
+                        root.notice-close-at = root.t;
+                        root.sound("back");
+                    }
+                } else if root.la-index >= 0 {
+                    // Peel the card's corner (drag or tap), or tap the left arrow.
+                    if (self.pressed-x - self.mouse-x) + (self.mouse-y - self.pressed-y) > root.width * 0.15
+                        || (self.pressed-x > root.width * 0.82 && self.pressed-y < root.height * 0.3)
+                        || self.pressed-x < root.width * 0.06 {
+                        root.close-app();
+                    }
+                } else if root.folder-index >= 0 {
+                    // The back button, or anywhere outside the circle, closes the folder.
+                    if root.folder-in >= 1 {
+                        root.close-folder();
                     }
                 } else if self.mouse-y - self.pressed-y < -root.height * 0.12 && root.page < root.page-count - 1 {
                     root.page += 1;
@@ -1181,9 +1698,20 @@ component VitaStage inherits Rectangle {
                 } else if self.mouse-y - self.pressed-y > root.height * 0.12 && root.page > 0 {
                     root.page -= 1;
                     root.sound("swipe");
-                } else if root.armed && abs(self.mouse-y - self.pressed-y) < 8px {
-                    // A tap on a bubble opens its app on the console.
-                    root.sound("open");
+                } else if abs(self.mouse-y - self.pressed-y) < 8px && abs(self.mouse-x - self.pressed-x) < 8px {
+                    if root.armed && root.armed-index >= 0 && root.armed-index < root.bubbles.length {
+                        // A tap on a bubble: a folder opens, anything else launches.
+                        if root.bubbles[root.armed-index].kind == 1 {
+                            root.open-folder(root.armed-index);
+                        } else {
+                            root.open-app(root.armed-index);
+                        }
+                    } else if self.pressed-x > root.width * 0.88 && self.pressed-y < root.height * 0.2 {
+                        // The notice circle, top right.
+                        root.notice-at = root.t;
+                        root.notice-close-at = -1;
+                        root.sound("tap");
+                    }
                 }
                 root.armed = false;
             }
@@ -1249,6 +1777,7 @@ component SimPanel inherits Panel {
                 dot-other: Creator.sim-dot-other;
                 custom-dots: Creator.sim-custom-dots;
                 wave: Creator.sim-wave;
+                unlock-request: Creator.sim-unlock-request;
                 page <=> Creator.sim-page;
                 locked <=> Creator.sim-locked;
                 sound(s) => { Creator.sim-sound(s); }
@@ -1259,14 +1788,14 @@ component SimPanel inherits Panel {
             Text {
                 text: Creator.sim-locked ? "Peel the top-right corner to unlock."
                     : Creator.sim-page >= 2 ? "Extra page: the owner's games go here."
-                    : "Scroll or drag to change pages.";
+                    : "Tap bubbles, the folder or the top-right circle.";
                 color: Palette.text-lo;
                 font-size: Type.label-md;
                 wrap: word-wrap;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
-            // Back to the lock (splash) screen, or straight to the home screen.
+            // Back to the lock (splash) screen, or on to the home screen.
             Btn {
                 text: Creator.sim-locked ? "Home Screen" : "Lock Screen";
                 icon: Icons.lock;
@@ -1274,8 +1803,13 @@ component SimPanel inherits Panel {
                 compact: true;
                 kind: ButtonKind.secondary;
                 clicked => {
-                    Creator.sim-sound(Creator.sim-locked ? "peel" : "back");
-                    Creator.sim-locked = !Creator.sim-locked;
+                    if Creator.sim-locked {
+                        // Plays the peel, like unlocking on the console.
+                        Creator.sim-unlock-request += 1;
+                    } else {
+                        Creator.sim-sound("back");
+                        Creator.sim-locked = true;
+                    }
                 }
             }
         }
