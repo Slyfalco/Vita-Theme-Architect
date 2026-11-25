@@ -290,7 +290,7 @@ const FAKE_UKEY: &str = r#"
 
 fn init_script() -> String {
     #[allow(unused_mut)]
-    let mut s = API_SHIM.to_string();
+    let mut s = format!("{API_SHIM}\n{UPLOAD_KEY}");
     #[cfg(debug_assertions)]
     {
         if std::env::var("VTA_DEV_SUBMIT_SPY").is_ok() {
@@ -303,6 +303,27 @@ fn init_script() -> String {
     }
     s
 }
+
+/// The repository's upload reply (POST upload.php) is JSON such as
+/// `{"code":4,"id":"<theme id>","ukey":"<user key>","message":...}`; when it
+/// carries a user key (a new one is generated if none was attached), hand it to
+/// the app. This is exact; the on-page watcher above is the fallback.
+const UPLOAD_KEY: &str = r#"
+(function () {
+    var open = XMLHttpRequest.prototype.open, send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) { this.__vtaUp = /upload\.php/.test(String(u)); return open.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function () {
+        var x = this;
+        if (x.__vtaUp) x.addEventListener('load', function () {
+            try {
+                var r = JSON.parse(x.responseText);
+                if (r && typeof r.ukey === 'string' && r.ukey) window.ipc.postMessage('newkey:' + r.ukey);
+            } catch (_) {}
+        });
+        return send.apply(this, arguments);
+    };
+})();
+"#;
 
 /// The `pywebview.api` the scripts call, bridged to Rust over the IPC channel.
 const API_SHIM: &str = r#"
@@ -328,6 +349,8 @@ struct Session {
     shown: bool,
     /// The repository user key from Settings (empty = none), attached on submit.php.
     user_key: String,
+    /// New keys already offered to the user this session.
+    offered: Vec<String>,
 }
 
 thread_local! {
@@ -570,9 +593,18 @@ fn on_ipc(message: &str) {
         }
         m if m.starts_with("newkey:") => {
             let key = m["newkey:".len()..].trim().to_string();
-            // Only offered when no key was attached (the repository makes one then).
-            let had_key = SESSION.with(|s| s.borrow().as_ref().is_some_and(|s| !s.user_key.is_empty()));
-            if key.is_empty() || had_key {
+            // Offered once, and only for a key the user did not attach themselves
+            // (the repository generates one when none was attached or accepted).
+            let offer = SESSION.with(|s| {
+                let mut b = s.borrow_mut();
+                let Some(s) = b.as_mut() else { return false };
+                if key.is_empty() || key == s.user_key || s.offered.contains(&key) {
+                    return false;
+                }
+                s.offered.push(key.clone());
+                true
+            });
+            if !offer {
                 return;
             }
             if let Some(app) = APP.with(|a| a.borrow().as_ref().and_then(|w| w.upgrade())) {
@@ -726,6 +758,7 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
             zip,
             shown: false,
             user_key: user_key(),
+            offered: Vec::new(),
         })
     });
     // The native window exists once the event loop has run; attach the web view then.
@@ -783,37 +816,47 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
     std::mem::forget(timer);
 }
 
-/// The repository showed a brand-new user key after a submission: show it in the
-/// app, with Copy and Save to Settings (so it is attached next time).
+/// The repository issued a brand-new user key after a submission: save it to
+/// Settings (so it is attached next time) and copy it to the clipboard right
+/// away, then tell the user in the app.
 fn offer_new_key(app: &AppWindow, key: String) {
     let copy = |key: &str| arboard::Clipboard::new().and_then(|mut c| c.set_text(key.to_string())).is_ok();
+    let copied = copy(&key);
+    // Debug test runs with a made-up result page never touch the real settings.
+    #[allow(unused_mut)]
+    let mut persist = true;
+    #[cfg(debug_assertions)]
+    if std::env::var("VTA_DEV_FAKE_DONE").is_ok() {
+        persist = false;
+    }
+    let saved = persist
+        && SETTINGS.with(|s| {
+            s.borrow().as_ref().is_some_and(|s| {
+                let mut s = s.borrow_mut();
+                s.set("psvt_user_key", key.clone());
+                s.save().is_ok()
+            })
+        });
+    let status = match (saved, copied) {
+        (true, true) => "It has been saved to Settings and copied to the clipboard.",
+        (true, false) => "It has been saved to Settings (the clipboard could not be used).",
+        (false, true) => "It has been copied to the clipboard (it could not be saved to Settings).",
+        (false, false) => "It could not be saved or copied automatically, so please copy it from this message.",
+    };
     dialogs::ask(
         app,
         DialogIcon::Success,
         "Your new repository user key",
         &format!(
-            "The repository created a user key for you:\n\n{key}\n\nKeep it safe like a password: it cannot be recovered if lost. Save it to Settings and it will be attached to your future submissions automatically."
+            "The repository created a user key for you:\n\n{key}\n\n{status} It will be attached to your future submissions automatically. Keep it safe like a password: the repository cannot recover it if lost."
         ),
         "",
-        &[("Copy", dialogs::Kind::Secondary), ("Save to Settings & Copy", dialogs::Kind::Primary)],
+        &[("Copy again", dialogs::Kind::Secondary), ("OK", dialogs::Kind::Primary)],
         move |app, choice| {
-            let copied = copy(&key);
-            if choice == 1 {
-                SETTINGS.with(|s| {
-                    if let Some(s) = s.borrow().as_ref() {
-                        let mut s = s.borrow_mut();
-                        s.set("psvt_user_key", key.clone());
-                        let _ = s.save();
-                    }
-                });
+            if choice == 0 {
+                let ok = copy(&key);
+                crate::show_toast(app, if ok { "User key copied to the clipboard." } else { "Could not access the clipboard." }, !ok);
             }
-            let msg = match (choice, copied) {
-                (1, true) => "User key saved to Settings and copied to the clipboard.",
-                (1, false) => "User key saved to Settings (could not access the clipboard).",
-                (_, true) => "User key copied to the clipboard.",
-                _ => "Could not access the clipboard.",
-            };
-            crate::show_toast(app, msg, !copied);
         },
     );
 }
