@@ -5,7 +5,7 @@
 //! themes are installed on real PS Vita hardware: the schema (including Sony's
 //! `InfomationProperty` spelling), the fixed asset file names and the AARRGGBB colour
 //! encoding are not ours to change. `tests/golden.rs` checks this against output
-//! recorded from the Python app (`scripts/v3_golden.py`).
+//! recorded from the Python (v2) app.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

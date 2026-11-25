@@ -1,5 +1,6 @@
 //! theme.xml parity: the Rust reader/writer must match the v2 (Python) app exactly.
-//! Golden files come from `scripts/v3_golden.py`, which runs the v2 code itself.
+//! The golden files were recorded by running the v2 code itself (a script on the
+//! v2 `main` branch, `scripts/v3_golden.py`); they are fixed reference data now.
 
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
