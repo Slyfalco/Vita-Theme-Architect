@@ -1085,7 +1085,7 @@ component VitaStage inherits Rectangle {
     property <int> wall-to: 0;
     property <float> wall-at: -100000;
     changed page => {
-        self.wall-from = clamp((self.t - self.wall-at - 220) / 280, 0, 1) >= 0.5 ? self.wall-to : self.wall-from;
+        self.wall-from = clamp((self.t - self.wall-at - 300) / 250, 0, 1) >= 0.5 ? self.wall-to : self.wall-from;
         self.wall-to = self.page;
         self.wall-at = self.t;
     }
@@ -1203,20 +1203,22 @@ component VitaStage inherits Rectangle {
         image-fit: fill;
     }
     // The page wallpaper. Unlike the bubbles it doesn't scroll: on the console
-    // the next page's image loads a moment after the page changes, then fades
-    // in over the old one (a page with no wallpaper shows just the wave).
+    // the old image fades away when the page changes, briefly showing the wave
+    // beneath, then the next page's image loads and fades in (a page with no
+    // wallpaper just shows the wave).
     Image {
         width: root.width;
         height: root.height;
         source: root.wall-from < root.pages.length ? root.pages[root.wall-from] : @image-url("");
         image-fit: cover;
+        opacity: 1 - clamp((root.t - root.wall-at) / 200, 0, 1);
     }
     Image {
         width: root.width;
         height: root.height;
         source: root.wall-to < root.pages.length ? root.pages[root.wall-to] : @image-url("");
         image-fit: cover;
-        opacity: clamp((root.t - root.wall-at - 220) / 280, 0, 1);
+        opacity: clamp((root.t - root.wall-at - 300) / 250, 0, 1);
     }    // After unlocking, the home fades up from black.
     Rectangle {
         width: root.width;
