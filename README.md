@@ -78,6 +78,12 @@ should not be modified or passed off as official, and unofficial builds are not
 authorized to use the online service. Builds you compile yourself from source for
 your own use are not restricted by those reservations.
 
+**Credit the original creator.** If you redistribute the app or its source, or share
+a modified version or anything based on it, you must clearly credit the original
+creator, for example: *"Based on VitaTheme Architect by Slyfalco —
+https://github.com/Slyfalco/Vita-Theme-Architect"*, in its documentation or
+description and on its About/credits screen if it has one.
+
 > This is a summary, not legal advice.
 
 ## Third-party licenses

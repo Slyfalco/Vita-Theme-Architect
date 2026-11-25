@@ -61,10 +61,22 @@ not agree to these terms, do not install or use the Official Build.
        endorsed by the Publisher, when it is not;
 
    3.3 remove or obscure any copyright or other proprietary notice contained in
-       the Official Build; or
+       the Official Build;
 
    3.4 use the Official Build to infringe the rights of any third party or in
-       violation of any applicable law.
+       violation of any applicable law; or
+
+   3.4A redistribute or modify the Application, or share any work based on it or
+        on the Software, without crediting the original creator. Wherever such
+        redistribution or modification is permitted (by this Agreement, by the
+        Source License, or by the Publisher's written permission), it must give
+        clear and visible credit, for example "Based on VitaTheme Architect by
+        Slyfalco - https://github.com/Slyfalco/Vita-Theme-Architect", in its
+        accompanying documentation or description and, where it has an "About"
+        or credits screen, on that screen; and existing credits to the original
+        creator must not be removed or obscured. Such credit does not imply that
+        the Publisher produced, endorses, or supports the redistributed or
+        modified version.
 
    3.5 The Official Build includes proprietary components that protect the
        integrity and authenticity of Official Builds and that enable access to
@@ -114,20 +126,19 @@ not agree to these terms, do not install or use the Official Build.
    separately under their own terms, which take precedence for those components.
    These include, without limitation:
 
-     - Qt (used via PySide6) - GNU Lesser General Public License, version 3
-       (LGPL-3.0);
-     - VLC / libVLC (media playback) - GNU Lesser General Public License;
-     - libsndfile and the associated audio codec libraries (including FLAC, Ogg,
-       Vorbis, Opus, mpg123, and LAME) - under their respective LGPL, BSD, and
-       other open-source licenses;
-     - the Python runtime - under the Python Software Foundation License; and
+     - the Slint user-interface toolkit - under its own license terms;
+     - the Inter and JetBrains Mono fonts - SIL Open Font License 1.1;
+     - the Material Symbols icons - Apache License 2.0;
+     - Rust libraries (such as wry, cpal, image, zip, and ureq) - under their
+       respective MIT, Apache-2.0, and other open-source licenses; and
      - other open-source components.
 
    Copies of the applicable license texts and notices are provided with the
-   Official Build and/or in the project's documentation. Where a component is
-   licensed under the GNU Lesser General Public License, the Official Build ships
-   that component as separate, replaceable files so that you may replace it with
-   a compatible version as permitted by that license.
+   Official Build and/or in the project's documentation. Components that the
+   Application uses from your operating system (such as the system web view)
+   and software that the optional AI features download on request (see
+   Section 7) are not distributed with the Official Build and remain under their
+   own terms.
 
 
 7. OPTIONAL AI FEATURES

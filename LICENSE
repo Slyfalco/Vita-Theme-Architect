@@ -12,11 +12,27 @@ Copyright (c) 2026 Slyfalco
    You are granted a worldwide, royalty-free permission to use, study, modify,
    and compile the Software, and to redistribute the Software and your
    modifications in source form, provided that:
-   (a) this license and the above copyright notice are retained in copies; and
+   (a) this license and the above copyright notice are retained in copies;
    (b) modified versions are clearly marked as modified and are not presented as
-       official, or as produced or endorsed by the copyright holder.
+       official, or as produced or endorsed by the copyright holder; and
+   (c) the original creator is credited, as set out in Section 2A.
    Nothing in this license restricts what you may do with builds you compile
    yourself from the Software for your own use.
+
+2A. Credit to the original creator
+   Any redistribution of the Software, and any modified version of it (or any
+   work based on it) that you share with others in any form, must give clear
+   and visible credit to the original creator, for example:
+
+       Based on VitaTheme Architect by Slyfalco
+       https://github.com/Slyfalco/Vita-Theme-Architect
+
+   The credit must appear in the documentation or description that accompanies
+   the distribution (such as its README or release notes) and, where the work
+   has an "About", credits or similar screen, on that screen as well. You may
+   not remove or obscure existing credits to the original creator. The credit
+   identifies the origin of the work only; it does not imply that the copyright
+   holder produced, endorses, or supports your version (see Section 2(b)).
 
 3. Official Builds and Service — reserved
    The Official Builds and the Service are reserved to the copyright holder.
@@ -32,13 +48,12 @@ Copyright (c) 2026 Slyfalco
 
 4. Third-party components
    The Software is used together with third-party components that are licensed
-   separately under their own terms, including the Qt libraries (used via
-   PySide6) under the GNU Lesser General Public License, version 3 (LGPL-3.0),
-   and other open-source libraries. Those components remain governed by their
-   own licenses, which take precedence for those components. In particular, an
-   Official Build includes the Qt libraries as separate, replaceable files so
-   that a recipient may replace them as required by the LGPL; see the README for
-   details and notices.
+   separately under their own terms, including the Slint user-interface toolkit,
+   the Inter and JetBrains Mono fonts (SIL Open Font License 1.1), the Material
+   Symbols icons (Apache License 2.0), and other open-source libraries. Those
+   components remain governed by their own licenses, which take precedence for
+   those components; their license texts and notices are included with Official
+   Builds and in the source repository (see the README).
 
 5. No warranty
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
