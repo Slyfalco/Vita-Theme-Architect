@@ -97,16 +97,29 @@ pub fn load(app: &AppWindow, theme: Option<&LibraryTheme>) {
                 Ok(track) => {
                     detail.bgm_info = track.describe().into();
                     lib.set_bgm_length(audio::format_time(track.duration_secs()).into());
-                    lib.set_bgm_wave(ModelRc::new(VecModel::from(track.waveform(WAVE_BINS))));
+                    lib.set_detail(detail);
+                    let track = Arc::new(track);
                     let play = BGM.with(|b| {
                         let mut b = b.borrow_mut();
-                        b.track = Some(Arc::new(track));
+                        b.track = Some(track.clone());
                         b.play_when_ready
                     });
-                    lib.set_detail(detail);
+                    // Playback streams, so it can start now without waiting for the
+                    // waveform; compute that in the background and fill it in.
                     if play {
                         toggle_play(&app);
                     }
+                    let weak = app.as_weak();
+                    let wtrack = track.clone();
+                    std::thread::spawn(move || {
+                        let peaks = wtrack.compute_waveform();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            let Some(app) = weak.upgrade() else { return };
+                            if BGM.with(|b| b.borrow().generation == generation) {
+                                app.global::<Library>().set_bgm_wave(ModelRc::new(VecModel::from(audio::downsample(&peaks, WAVE_BINS))));
+                            }
+                        });
+                    });
                 }
                 Err(e) => {
                     detail.bgm_info = "Could not decode this BGM".into();
@@ -200,21 +213,10 @@ pub fn extract(app: &AppWindow, state: &SharedLibrary, index: i32) {
     else {
         return;
     };
-    let cached = BGM.with(|b| {
-        let b = b.borrow();
-        if b.path.as_deref() == Some(src.as_path()) {
-            b.track.clone()
-        } else {
-            None
-        }
-    });
     crate::show_toast(app, "Converting audio…", false);
     let weak = app.as_weak();
     std::thread::spawn(move || {
-        let result = match cached {
-            Some(t) => audio::write_wav(&t, &dest).map_err(|e| e.to_string()),
-            None => audio::decode_file(&src).and_then(|t| audio::write_wav(&t, &dest).map_err(|e| e.to_string())),
-        };
+        let result = audio::decode_to_wav(&src, &dest);
         let _ = slint::invoke_from_event_loop(move || {
             if let Some(app) = weak.upgrade() {
                 match result {

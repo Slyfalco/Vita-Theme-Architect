@@ -348,6 +348,15 @@ fn dev_preselect(app: &App) {
     if let Some(m) = std::env::var("VTA_DEV_SIMMODE").ok().and_then(|v| v.parse().ok()) {
         app.window.global::<Creator>().set_sim_mode(m);
     }
+    if std::env::var("VTA_DEV_BGM").is_ok() {
+        // Select a theme, then play its BGM once decoded (smoke-tests streaming).
+        let w = app.window.as_weak();
+        Timer::single_shot(Duration::from_secs(3), move || {
+            if let Some(app) = w.upgrade() {
+                app.global::<Library>().invoke_bgm_toggle_play();
+            }
+        });
+    }
     if let Some(i) = std::env::var("VTA_DEV_CSELECT").ok().and_then(|v| v.parse::<i32>().ok()) {
         // Community data loads asynchronously; select after it has arrived.
         let w = app.window.as_weak();
