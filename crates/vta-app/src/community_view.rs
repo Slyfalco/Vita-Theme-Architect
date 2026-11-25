@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use vta_online::{Entry, Field, Filter, Sort, PAGE};
+use vta_online::{Entry, Field, Filter, Sort};
 
 #[derive(Default)]
 struct State {
@@ -31,6 +31,8 @@ const FIELDS: [Field; 3] = [Field::Title, Field::Author, Field::Tags];
 const SORTS: [Sort; 5] = [Sort::Newest, Sort::Oldest, Sort::Az, Sort::Za, Sort::Downloads];
 // Matches the category chips in community.slint (All / Verified / Top Rated / Staff Picks).
 const FILTERS: [Filter; 4] = [Filter::All, Filter::Verified, Filter::TopRated, Filter::StaffPicks];
+/// Per-page options for the dropdown (v2 used a fixed 50); default is the last.
+const PAGE_SIZES: [usize; 3] = [12, 24, 50];
 
 fn compact_count(n: i64) -> String {
     if n >= 1_000_000 {
@@ -144,15 +146,16 @@ pub fn show_page(app: &AppWindow, page: i32, fresh: bool) {
     let field = FIELDS[c.get_field().clamp(0, 2) as usize];
     let sort = SORTS[c.get_sort().clamp(0, 4) as usize];
     let filter = FILTERS[c.get_filter().clamp(0, 3) as usize];
+    let per_page = PAGE_SIZES[c.get_page_size().clamp(0, PAGE_SIZES.len() as i32 - 1) as usize];
     c.set_loading(true);
     c.set_error("".into());
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let weak = app.as_weak();
     std::thread::spawn(move || {
         let result = vta_online::count(&search, field, filter, fresh).and_then(|total| {
-            let pages = total.div_ceil(PAGE).max(1) as i32;
+            let pages = total.div_ceil(per_page).max(1) as i32;
             let page = page.clamp(1, pages);
-            vta_online::get(&search, field, filter, sort, page as usize, PAGE, false).map(|list| (total, pages, page, list))
+            vta_online::get(&search, field, filter, sort, page as usize, per_page, false).map(|list| (total, pages, page, list))
         });
         let _ = weak.upgrade_in_event_loop(move |app| {
             if GENERATION.load(Ordering::SeqCst) != generation {
@@ -434,6 +437,8 @@ pub fn wire(app: &AppWindow, settings: &crate::library_actions::SharedSettings) 
     c.on_sort_changed(move |_| show_page(&a.unwrap(), 1, false));
     let a = app.as_weak();
     c.on_filter_changed(move |_| show_page(&a.unwrap(), 1, false));
+    let a = app.as_weak();
+    c.on_page_size_changed(move |_| show_page(&a.unwrap(), 1, false));
     let a = app.as_weak();
     c.on_show_page(move |p| show_page(&a.unwrap(), p, false));
     let a = app.as_weak();

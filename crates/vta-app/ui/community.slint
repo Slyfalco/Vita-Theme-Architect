@@ -39,6 +39,7 @@ export global Community {
     in-out property <int> field: 0;    // title, author, tags
     in-out property <int> sort: 0;     // newest, oldest, az, za, downloads
     in-out property <int> filter: 0;   // all, verified, top rated, staff picks
+    in-out property <int> page-size: 2; // index into [12, 24, 50]
     in-out property <string> goto-page: "1";
     in-out property <int> selected: -1;
     // Detail
@@ -67,6 +68,7 @@ export global Community {
     callback field-changed(int);
     callback sort-changed(int);
     callback filter-changed(int);
+    callback page-size-changed(int);
     callback show-page(int);
     callback reload();
     callback select(int);
@@ -80,6 +82,13 @@ export global Community {
 component ThemeTile inherits Rectangle {
     in property <RemoteTheme> theme;
     in property <bool> selected;
+    // Everything inside scales with the card width so nothing clips as cards
+    // resize: `s` is the card width relative to a ~280px reference, clamped.
+    property <float> s: max(0.62, min(1.35, root.width / 280px));
+    property <length> pad: 12px * self.s;
+    property <length> pill-h: 22px * self.s;
+    property <length> pill-fs: max(8px, 11px * self.s);
+    property <bool> tiny: root.width < 190px;
     border-radius: Palette.radius-card;
     background: root.selected ? Palette.surface3 : touch.has-hover ? Palette.surface2.brighter(5%) : Palette.surface2;
     border-width: 1px;
@@ -96,11 +105,11 @@ component ThemeTile inherits Rectangle {
         }
     }
     VerticalLayout {
-        padding: 12px;
-        spacing: 8px;
+        padding: root.pad;
+        spacing: 7px * root.s;
         Rectangle {
-            height: self.width * 9 / 16;
-            border-radius: 10px;
+            height: self.width * 9 / 16;   // keep the 16:9 preview aspect
+            border-radius: 10px * root.s;
             background: Palette.inset;
             clip: true;
             if root.theme.has-preview: Image {
@@ -111,32 +120,32 @@ component ThemeTile inherits Rectangle {
             }
             if !root.theme.has-preview: Icon {
                 source: Icons.image;
-                size: 30px;
+                size: 30px * root.s;
                 tint: Palette.text-lo;
             }
             // Repository badge (top-left): Verified (clean validation) or Community.
             Rectangle {
-                x: 8px;
-                y: 8px;
-                width: badge-row.preferred-width + 16px;
-                height: 24px;
-                border-radius: 12px;
+                x: 6px * root.s;
+                y: 6px * root.s;
+                width: badge-row.preferred-width + 14px * root.s;
+                height: root.pill-h;
+                border-radius: self.height / 2;
                 background: root.theme.verified ? #0f2b1dbf : #1e293bbf;
                 border-width: 1px;
                 border-color: root.theme.verified ? Palette.success.transparentize(50%) : #ffffff1f;
                 badge-row := HorizontalLayout {
-                    x: 8px;
-                    spacing: 4px;
+                    x: 7px * root.s;
+                    spacing: 3px * root.s;
                     alignment: center;
-                    if root.theme.verified: Icon {
+                    if root.theme.verified && !root.tiny: Icon {
                         source: Icons.check-circle;
-                        size: 13px;
+                        size: root.pill-fs + 2px;
                         tint: Palette.success-text;
                     }
                     Text {
                         text: root.theme.verified ? "Verified" : "Community";
                         color: root.theme.verified ? Palette.success-text : Palette.text-mid;
-                        font-size: Type.label-sm;
+                        font-size: root.pill-fs;
                         font-weight: 600;
                         vertical-alignment: center;
                     }
@@ -144,21 +153,21 @@ component ThemeTile inherits Rectangle {
             }
             // Star rating (bottom-right).
             if root.theme.stars > 0: Rectangle {
-                x: parent.width - self.width - 8px;
-                y: parent.height - self.height - 8px;
-                width: star-row.preferred-width + 16px;
-                height: 24px;
-                border-radius: 12px;
+                x: parent.width - self.width - 6px * root.s;
+                y: parent.height - self.height - 6px * root.s;
+                width: star-row.preferred-width + 14px * root.s;
+                height: root.pill-h;
+                border-radius: self.height / 2;
                 background: #0b1220cc;
                 star-row := HorizontalLayout {
-                    x: 8px;
-                    spacing: 4px;
+                    x: 7px * root.s;
+                    spacing: 3px * root.s;
                     alignment: center;
-                    Text { text: "★"; color: Palette.success-text; font-size: 13px; vertical-alignment: center; }
+                    Text { text: "★"; color: Palette.success-text; font-size: root.pill-fs; vertical-alignment: center; }
                     Text {
                         text: root.theme.rating;
                         color: Palette.text-hi;
-                        font-size: Type.label-md;
+                        font-size: root.pill-fs;
                         font-weight: 600;
                         vertical-alignment: center;
                     }
@@ -168,51 +177,55 @@ component ThemeTile inherits Rectangle {
         Text {
             text: root.theme.title;
             color: Palette.text-hi;
-            font-size: Type.headline-md;
+            font-size: max(11px, 15px * root.s);
             font-weight: 600;
             overflow: elide;
         }
         HorizontalLayout {
-            spacing: 6px;
+            spacing: 5px * root.s;
             Text {
                 text: "by";
                 color: Palette.text-mid;
-                font-size: Type.body-sm;
+                font-size: max(9px, 12px * root.s);
+                vertical-alignment: center;
             }
             Text {
                 text: root.theme.author;
                 color: Palette.text-hi;
-                font-size: Type.body-sm;
+                font-size: max(9px, 12px * root.s);
                 font-weight: 600;
                 overflow: elide;
                 horizontal-stretch: 1;
+                vertical-alignment: center;
             }
-            Text {
+            if !root.tiny: Text {
                 text: "v" + root.theme.version;
                 color: Palette.text-lo;
                 font-family: Palette.mono-font;
-                font-size: Type.label-sm;
+                font-size: max(8px, 10px * root.s);
+                vertical-alignment: center;
             }
         }
         HorizontalLayout {
-            spacing: 6px;
+            spacing: 5px * root.s;
             Icon {
                 source: Icons.download;
-                size: 15px;
+                size: max(11px, 14px * root.s);
                 tint: Palette.text-lo;
             }
             Text {
                 text: root.theme.downloads;
                 color: Palette.text-mid;
-                font-size: Type.body-sm;
+                font-size: max(9px, 12px * root.s);
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
             Btn {
-                text: Community.auto-deploy ? "Quick Deploy" : "Quick Install";
+                text: root.tiny ? "" : Community.auto-deploy ? "Quick Deploy" : "Quick Install";
                 icon: Icons.download;
                 has-icon: true;
                 compact: true;
+                font-size: max(10px, 12px * root.s);
                 enabled: !Community.loading;
                 clicked => { Community.quick-install(root.theme.index); }
             }
@@ -536,6 +549,15 @@ export component CommunityPage inherits Rectangle {
                 }
                 VerticalLayout {
                     alignment: center;
+                    Dropdown {
+                        min-width: 120px;
+                        options: ["12 / page", "24 / page", "50 / page"];
+                        current-index <=> Community.page-size;
+                        selected(i) => { Community.page-size-changed(i); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
                     Btn {
                         text: "Reload";
                         icon: Icons.refresh;
@@ -586,24 +608,27 @@ export component CommunityPage inherits Rectangle {
                         horizontal-alignment: center;
                         width: parent.width - 40px;
                     }
+                    // Responsive card grid: the column count follows the available
+                    // width, cards (and their contents) resize to fit, and the whole
+                    // grid scrolls so a full page of cards is never cut off.
                     scroller := ScrollView {
-                        content-width: self.visible-width;
                         property <int> version: Community.list-version;
                         changed version => { self.content-y = 0; }
-                        grid := Rectangle {
-                            property <int> cols: Density.narrow ? 2 : 3;
-                            property <length> gap: 14px;
-                            property <length> cell-w: (self.width - 12px - (self.cols - 1) * self.gap) / self.cols;
-                            property <length> cell-h: self.cell-w * 9 / 16 + 112px;
-                            height: ceil(Community.themes.length / self.cols) * (self.cell-h + self.gap);
-                            for t[i] in Community.themes: ThemeTile {
-                                theme: t;
-                                selected: t.index == Community.selected;
-                                x: mod(i, grid.cols) * (grid.cell-w + grid.gap);
-                                y: floor(i / grid.cols) * (grid.cell-h + grid.gap);
-                                width: grid.cell-w;
-                                height: grid.cell-h;
-                            }
+                        property <length> gap: 14px;
+                        property <length> min-card: 240px;
+                        property <int> cols: max(1, floor((self.visible-width + self.gap) / (self.min-card + self.gap)));
+                        property <length> cell-w: (self.visible-width - (self.cols - 1) * self.gap) / self.cols;
+                        property <length> cell-h: self.cell-w * 9 / 16 + self.cell-w * 0.44;
+                        property <int> rows: max(1, ceil(Community.themes.length / self.cols));
+                        content-width: self.visible-width;
+                        content-height: self.rows * self.cell-h + (self.rows - 1) * self.gap;
+                        for t[i] in Community.themes: ThemeTile {
+                            theme: t;
+                            selected: t.index == Community.selected;
+                            x: mod(i, scroller.cols) * (scroller.cell-w + scroller.gap);
+                            y: floor(i / scroller.cols) * (scroller.cell-h + scroller.gap);
+                            width: scroller.cell-w;
+                            height: scroller.cell-h;
                         }
                     }
                 }

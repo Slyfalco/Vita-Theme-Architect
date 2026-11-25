@@ -19,7 +19,7 @@ const WAVEFORM_RES: usize = 256;
 /// buffer (the bundled chime). Both decode/seek on demand.
 enum Source {
     At9(Box<at9codec::StreamingDecoder>),
-    Mem { samples: Arc<Vec<i16>>, channels: u16, rate: u32, pos: usize },
+    Mem { samples: Arc<Vec<i16>>, channels: u16, pos: usize },
 }
 
 impl Source {
@@ -48,12 +48,6 @@ impl Source {
             Source::Mem { channels, .. } => *channels,
         }
     }
-    fn sample_rate(&self) -> u32 {
-        match self {
-            Source::At9(d) => d.sample_rate(),
-            Source::Mem { rate, .. } => *rate,
-        }
-    }
 }
 
 /// A playable track: metadata + the compressed source, from which a [`Player`]
@@ -65,7 +59,6 @@ pub struct Track {
     /// Loop region in frames (start, inclusive end), if the file defines one.
     pub loop_region: Option<(u64, u64)>,
     pub bitrate_kbps: u32,
-    waveform: Vec<f32>,
     kind: TrackSource,
 }
 
@@ -78,15 +71,8 @@ enum TrackSource {
 }
 
 impl Track {
-    pub fn frames(&self) -> u64 {
-        self.total_frames
-    }
     pub fn duration_secs(&self) -> f64 {
         self.total_frames as f64 / self.sample_rate.max(1) as f64
-    }
-    /// Peak levels (0..1) in `bins` slices, for the waveform display.
-    pub fn waveform(&self, bins: usize) -> Vec<f32> {
-        downsample(&self.waveform, bins)
     }
     pub fn describe(&self) -> String {
         let ch = match self.channels {
@@ -104,7 +90,7 @@ impl Track {
                 let d = at9codec::StreamingDecoder::new(bytes).map_err(|e| format!("Could not decode the AT9 audio: {e}"))?;
                 Ok(Source::At9(Box::new(d)))
             }
-            TrackSource::Pcm(samples) => Ok(Source::Mem { samples: samples.clone(), channels: self.channels, rate: self.sample_rate, pos: 0 }),
+            TrackSource::Pcm(samples) => Ok(Source::Mem { samples: samples.clone(), channels: self.channels, pos: 0 }),
         }
     }
 }
@@ -144,7 +130,7 @@ pub fn decode_file(path: &Path) -> Result<Track, String> {
         total_frames: container.total_samples as u64,
         loop_region,
         bitrate_kbps: container.avg_bytes_per_sec * 8 / 1000,
-        waveform: Vec::new(),
+
         kind: TrackSource::At9(Arc::new(buf)),
     })
 }
@@ -413,12 +399,11 @@ struct Resampler {
     phase: f64,
     prev: Vec<f32>,
     have_prev: bool,
-    src_ch: usize,
 }
 
 impl Resampler {
     fn new(src_ch: usize) -> Self {
-        Resampler { phase: 0.0, prev: vec![0.0; src_ch], have_prev: false, src_ch }
+        Resampler { phase: 0.0, prev: vec![0.0; src_ch], have_prev: false }
     }
     fn reset(&mut self) {
         self.phase = 0.0;
@@ -527,7 +512,7 @@ fn parse_wav16(bytes: &[u8]) -> Option<Track> {
         total_frames: total,
         loop_region: None,
         bitrate_kbps: 0,
-        waveform: Vec::new(),
+
         kind: TrackSource::Pcm(Arc::new(samples)),
     })
 }
@@ -586,7 +571,7 @@ mod tests {
             let mut sd = at9codec::StreamingDecoder::from_container(&container, &at9).unwrap();
             let (c, r, t, lr) = (sd.channels(), sd.sample_rate(), sd.total_frames(), sd.loop_region());
             let _ = sd.read(&mut [0i16; 4]);
-            Track { channels: c, sample_rate: r, total_frames: t, loop_region: lr, bitrate_kbps: 0, waveform: Vec::new(), kind: TrackSource::At9(Arc::new(at9)) }
+            Track { channels: c, sample_rate: r, total_frames: t, loop_region: lr, bitrate_kbps: 0, kind: TrackSource::At9(Arc::new(at9)) }
         };
         let p = Player::new(Arc::new(track), false).unwrap();
         p.play();
@@ -598,6 +583,6 @@ mod tests {
     fn chime_parses() {
         let t = super::parse_wav16(include_bytes!("../../../Assets/Sounds/done.wav")).unwrap();
         assert_eq!((t.channels, t.sample_rate), (1, 22_050));
-        assert!(t.frames() > 1000);
+        assert!(t.total_frames > 1000);
     }
 }
