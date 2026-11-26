@@ -101,20 +101,24 @@ component NavItem inherits Rectangle {
     drop-shadow-color: Palette.primary.transparentize(55%);
     animate background { duration: 150ms; }
     HorizontalLayout {
-        padding-left: 16px;
-        spacing: 14px;
+        padding-left: Density.narrow ? 12px : 16px;
+        padding-right: 10px;
+        spacing: Density.narrow ? 10px : 14px;
         Icon {
             source: root.icon;
-            size: 22px;
+            size: Density.narrow ? 20px : 22px;
             tint: root.active ? Palette.on-primary : Palette.text-mid;
         }
+        // Same weight active or not, so the label never grows wider when
+        // highlighted; long labels elide rather than overflow the rail.
         Text {
             text: root.text;
             color: root.active ? Palette.on-primary : Palette.text-hi;
-            font-size: Type.body-lg;
-            font-weight: root.active ? 600 : 500;
+            font-size: Density.narrow ? Type.body-md : Type.body-lg;
+            font-weight: 600;
             vertical-alignment: center;
             horizontal-stretch: 1;
+            overflow: elide;
         }
     }
     touch := TouchArea {

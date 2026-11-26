@@ -608,22 +608,6 @@ export component CommunityPage inherits Rectangle {
                 }
             }
         }
-        // Category chips — data-driven (the catalog has no genre tags): All, plus
-        // filters derived from each theme's repository validation.
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            for label[i] in ["All Themes", "Verified", "Top Rated", "Staff Picks"]: Segment {
-                text: label;
-                selected: Community.filter == i;
-                clicked => {
-                    if (Community.filter != i) {
-                        Community.filter = i;
-                        Community.filter-changed(i);
-                    }
-                }
-            }
-        }
         cbody := HorizontalLayout {
             spacing: 0px;
             vertical-stretch: 1;
@@ -635,7 +619,41 @@ export component CommunityPage inherits Rectangle {
                 horizontal-stretch: 1;
                 spacing: 12px;
                 HorizontalLayout {
-                    Caption { text: "REPOSITORY CATALOG"; }
+                    spacing: 18px;
+                    VerticalLayout {
+                        alignment: center;
+                        Caption { text: "REPOSITORY CATALOG"; }
+                    }
+                    // Catalog filters, inline with the title: plain text, the
+                    // selected one in the accent colour with an underline.
+                    // Data-driven (the catalog has no genre tags): All, plus
+                    // filters derived from each theme's repository validation.
+                    for label[i] in ["All Themes", "Verified", "Top Rated", "Staff Picks"]: Rectangle {
+                        property <bool> on: Community.filter == i;
+                        width: ft.preferred-width;
+                        ft := Text {
+                            text: label;
+                            color: parent.on ? Palette.accent : ta.has-hover ? Palette.text-hi : Palette.text-lo;
+                            font-size: Type.body-sm;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            y: parent.height - 2px;
+                            height: 2px;
+                            border-radius: 1px;
+                            background: parent.on ? Palette.accent : transparent;
+                        }
+                        ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                if (Community.filter != i) {
+                                    Community.filter = i;
+                                    Community.filter-changed(i);
+                                }
+                            }
+                        }
+                    }
                     Rectangle { horizontal-stretch: 1; }
                     Text {
                         text: Community.loading ? "Loading…" : Community.total-text;
