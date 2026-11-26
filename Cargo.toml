@@ -9,14 +9,6 @@ license-file = "LICENSE"
 repository = "https://github.com/Slyfalco/Vita-Theme-Architect"
 authors = ["Slyfalco"]
 
-# DEV override: build against the local at9codec checkout (sibling folder) so the
-# new StreamingDecoder is available before at9codec is published. RELEASE: cut a
-# new at9codec tag with the streaming decoder, bump the `tag` in the crates'
-# dependencies, and REMOVE this patch (CI has no sibling checkout). Per the
-# release-ordering rule, at9codec must be released before the app build.
-[patch."https://github.com/Slyfalco/at9codec"]
-at9codec = { path = "../at9codec/crates/at9codec" }
-
 [profile.release]
 opt-level = 3
 lto = "thin"
