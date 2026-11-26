@@ -27,7 +27,7 @@ base64 = "0.22"
 sha1 = "0.10"
 htmlize = { version = "1", features = ["unescape"] }
 vta-online = { path = "../vta-online" }
-at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v2" }
+at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v2.1" }
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 hmac = "0.12"

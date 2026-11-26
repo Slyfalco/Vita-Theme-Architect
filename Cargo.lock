@@ -431,8 +431,8 @@ dependencies = [
 
 [[package]]
 name = "at9codec"
-version = "0.1.0"
-source = "git+https://github.com/Slyfalco/at9codec?tag=v2#18b38c4d02a18ffcb12a2d81960899291f489408"
+version = "2.1.0"
+source = "git+https://github.com/Slyfalco/at9codec?tag=v2.1#24605eba48eae2615d73bb62166dc5fa1d8b245d"
 
 [[package]]
 name = "atk"

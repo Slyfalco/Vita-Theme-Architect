@@ -18,7 +18,7 @@ slint = { version = "1.19", features = ["unstable-winit-030", "raw-window-handle
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v2" }
+at9codec = { git = "https://github.com/Slyfalco/at9codec", tag = "v2.1" }
 cpal = "0.18"
 rfd = "0.18"
 arboard = { version = "3", default-features = false }
