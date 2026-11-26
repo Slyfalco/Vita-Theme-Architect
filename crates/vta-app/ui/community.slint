@@ -125,19 +125,21 @@ component ThemeTile inherits Rectangle {
                 tint: Palette.text-lo;
             }
             // Repository badge (top-left): Verified (clean validation) or Community.
+            // The pill is sized by its own layout (padding included), so the label
+            // always fits inside it at every card size.
             Rectangle {
                 x: 6px * root.s;
                 y: 6px * root.s;
-                width: badge-row.preferred-width + 14px * root.s;
+                width: badge-row.preferred-width;
                 height: root.pill-h;
                 border-radius: self.height / 2;
                 background: root.theme.verified ? #0f2b1dbf : #1e293bbf;
                 border-width: 1px;
                 border-color: root.theme.verified ? Palette.success.transparentize(50%) : #ffffff1f;
                 badge-row := HorizontalLayout {
-                    x: 7px * root.s;
-                    spacing: 3px * root.s;
-                    alignment: center;
+                    padding-left: 8px * root.s;
+                    padding-right: 9px * root.s;
+                    spacing: 4px * root.s;
                     if root.theme.verified && !root.tiny: Icon {
                         source: Icons.check-circle;
                         size: root.pill-fs + 2px;
