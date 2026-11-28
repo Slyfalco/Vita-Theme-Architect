@@ -5,7 +5,7 @@ use crate::dialogs;
 use crate::library_actions::SharedSettings;
 use crate::library_view::{rescan, select, SharedLibrary};
 use crate::{AppWindow, AssetSlot, ColorPicker, ColorSlot, Creator, DialogIcon, IconGroup, Library, PageSlot, Shell, SimBubble};
-use slint::{ComponentHandle, Image, ModelRc, VecModel};
+use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -643,6 +643,7 @@ fn reset(app: &AppWindow) {
     // Like the console, the simulator wakes on the lock screen.
     c.set_sim_page(0);
     c.set_sim_locked(true);
+    c.set_sim_open_apps(ModelRc::default());
     c.set_selected_page(-1);
     c.set_icon_search("".into());
     c.set_icon_filter(0);
@@ -907,6 +908,27 @@ pub fn wire(app: &AppWindow, library: &SharedLibrary, settings: &SharedSettings)
         if a.upgrade().is_some_and(|app| !app.global::<Creator>().get_sim_muted()) {
             crate::audio::play_sim_sound(&name);
         }
+    });
+    // Open apps in the simulator (shown in its info bar), oldest first. Like the
+    // console, at most 6 stay open: opening a 7th closes the oldest.
+    const MAX_OPEN_APPS: usize = 6;
+    let a = app.as_weak();
+    c.on_sim_app_opened(move |i| {
+        let Some(app) = a.upgrade() else { return };
+        let c = app.global::<Creator>();
+        let mut open: Vec<i32> = c.get_sim_open_apps().iter().filter(|&x| x != i).collect();
+        open.push(i);
+        while open.len() > MAX_OPEN_APPS {
+            open.remove(0);
+        }
+        c.set_sim_open_apps(ModelRc::new(VecModel::from(open)));
+    });
+    let a = app.as_weak();
+    c.on_sim_app_closed(move |i| {
+        let Some(app) = a.upgrade() else { return };
+        let c = app.global::<Creator>();
+        let open: Vec<i32> = c.get_sim_open_apps().iter().filter(|&x| x != i).collect();
+        c.set_sim_open_apps(ModelRc::new(VecModel::from(open)));
     });
     // A tapped bubble spins into its LiveArea: render its 3D spin frames now.
     let a = app.as_weak();

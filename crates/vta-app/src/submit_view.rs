@@ -14,7 +14,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use vta_online::{Entry, Field, Sort, PAGE};
-use wry::{PageLoadEvent, Rect, WebView, WebViewBuilder};
+use wry::{PageLoadEvent, Rect, WebContext, WebView, WebViewBuilder};
 
 const NEW_URL: &str = "https://psvt.ovh/index.php#submit";
 /// After a successful upload the result page stays up this long, then closes.
@@ -367,6 +367,8 @@ struct Session {
 
 thread_local! {
     static SESSION: RefCell<Option<Session>> = const { RefCell::new(None) };
+    /// The submit window's browser profile (kept for the app's lifetime).
+    static WEB_CONTEXT: RefCell<Option<WebContext>> = const { RefCell::new(None) };
     /// The main window (for messages raised from the web page).
     static APP: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
     /// Settings, for the user key.
@@ -812,7 +814,15 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
             let b = s.borrow();
             let Some(sess) = b.as_ref() else { return Some(Err("closed".to_string())) };
             let handle = sess.window.window().window_handle();
-            let builder = WebViewBuilder::new()
+            // Browser data (cache, cookies) goes in the app's data folder, never
+            // beside the exe (WebView2's default is "<exe>.WebView2" next to it).
+            WEB_CONTEXT.with(|wc| {
+            let mut wc = wc.borrow_mut();
+            let ctx = wc.get_or_insert_with(|| {
+                let dir = crate::DATA_DIRS.with(|d| d.borrow().as_ref().map(|d| d.app_support.join("webview")));
+                WebContext::new(dir)
+            });
+            let builder = WebViewBuilder::new_with_web_context(ctx)
                 .with_url(url.clone())
                 .with_bounds(Rect {
                     position: wry::dpi::LogicalPosition::new(0, 0).into(),
@@ -831,6 +841,7 @@ fn open_window(app: &AppWindow, url: String, zip: PathBuf) {
                 Err(e) if tries.get() > 60 => Some(Err(e.to_string())),
                 Err(_) => None,
             }
+            })
         });
         match built {
             None => {}

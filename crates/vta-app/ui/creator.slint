@@ -123,6 +123,9 @@ export global Creator {
     in-out property <bool> sim-muted: true;
     in property <[image]> sim-spin-frames;      // the launched bubble spinning in 3D
     callback sim-launch(int);                   // render those frames for a bubble
+    in property <[int]> sim-open-apps;          // open apps, oldest first (max 6)
+    callback sim-app-opened(int);
+    callback sim-app-closed(int);
     in-out property <int> sim-unlock-request: 0;
     in property <bool> ai-available: false;
     in-out property <string> icon-search;
@@ -1006,6 +1009,11 @@ component VitaStage inherits Rectangle {
     in property <int> unlock-request;   // bumped by the "Home Screen" button
     in property <[image]> spin-frames;  // the launched bubble spinning in 3D
     callback launch(int);
+    // Apps currently open (bubble indices, oldest first, at most 6); kept by the
+    // app, shown as icons in the info bar next to the home icon.
+    in property <[int]> open-apps;
+    callback app-opened(int);
+    callback app-closed(int);
     in-out property <int> page;
     in-out property <bool> locked;
     // UI sound to play: tap, open, swipe, peel, back.
@@ -1153,6 +1161,7 @@ component VitaStage inherits Rectangle {
     }
     function open-app(i: int) {
         root.la-home = false;
+        root.app-opened(i);
         root.launch(i);
         root.la-index = i;
         root.la-at = root.t;
@@ -1161,6 +1170,27 @@ component VitaStage inherits Rectangle {
         root.la-from-y = root.armed-y;
         root.away-at = root.t;
         root.sound("open");
+    }
+    // A tap in the info bar on an open app's icon switches to that app.
+    function tap-bar(x: length) -> bool {
+        if root.locked || root.unlocking || root.notice-at >= 0 || root.folder-index >= 0 || root.open-apps.length == 0 {
+            return false;
+        }
+        let s = root.bar-h * 0.74;
+        let k = floor((x - (root.width / 2 + root.bar-h * 0.55)) / (s + root.bar-h * 0.3));
+        if k < 0 || k >= root.open-apps.length {
+            return false;
+        }
+        let a = root.open-apps[k];
+        if a != root.la-index || root.la-home {
+            root.la-index = a;
+            root.la-home = false;
+            root.la-close-at = -1;
+            root.la-at = root.t - 1000;
+            root.away-at = root.t;
+            root.sound("swipe");
+        }
+        return true;
     }
     function close-app() {
         if root.la-index >= 0 && root.la-close-at < 0 && root.card-in >= 1 {
@@ -1194,19 +1224,23 @@ component VitaStage inherits Rectangle {
     // the old image fades away when the page changes, briefly showing the wave
     // beneath, then the next page's image loads and fades in (a page with no
     // wallpaper just shows the wave).
+    // While an app is open in front, only the wave shows behind it (the home
+    // wallpaper fades away and comes back when the app closes or slides aside).
+    property <float> wall-show: root.la-index >= 0 && !root.la-home && root.la-close-at < 0 ? 0 : 1;
+    animate wall-show { duration: 300ms; easing: ease-in-out; }
     Image {
         width: root.width;
         height: root.height;
         source: root.wall-from < root.pages.length ? root.pages[root.wall-from] : @image-url("");
         image-fit: cover;
-        opacity: 1 - clamp((root.t - root.wall-at) / 200, 0, 1);
+        opacity: (1 - clamp((root.t - root.wall-at) / 200, 0, 1)) * root.wall-show;
     }
     Image {
         width: root.width;
         height: root.height;
         source: root.wall-to < root.pages.length ? root.pages[root.wall-to] : @image-url("");
         image-fit: cover;
-        opacity: clamp((root.t - root.wall-at - 300) / 250, 0, 1);
+        opacity: clamp((root.t - root.wall-at - 300) / 250, 0, 1) * root.wall-show;
     }    // After unlocking, the home fades up from black.
     Rectangle {
         width: root.width;
@@ -1433,7 +1467,7 @@ component VitaStage inherits Rectangle {
                 viewbox-height: 16;
                 fill: #ffffffc0;
                 commands: "M8 0 L0 8 L8 16 Z";
-                opacity: la.content * root.card-in;
+                opacity: root.la-home ? 0 : la.content * root.card-in;
             }
         }
     }
@@ -1579,6 +1613,28 @@ component VitaStage inherits Rectangle {
         ampm: root.ampm;
         reserve: root.width * 120 / 960 * 0.95;
     }
+    // Open apps: a small icon each, to the right of the home icon (tap to go
+    // back to that app).
+    for a[k] in root.open-apps: Rectangle {
+        property <length> s: root.bar-h * 0.74;
+        x: root.width / 2 + root.bar-h * 0.55 + k * (self.s + root.bar-h * 0.3);
+        y: (root.bar-h - self.s) / 2;
+        width: self.s;
+        height: self.s;
+        if a >= 0 && a < root.bubbles.length: BubbleFace {
+            width: parent.width;
+            height: parent.height;
+            b: root.bubbles[a];
+            unit: root.height;
+        }
+        Rectangle {
+            visible: a == root.la-index && !root.la-home;
+            y: parent.height + 1px;
+            height: 2px;
+            border-radius: 1px;
+            background: root.indicator-color;
+        }
+    }
     // The notice image sits in line with the info bar, over its top-right
     // corner (the console draws it on top of the bar).
     Image {
@@ -1588,7 +1644,6 @@ component VitaStage inherits Rectangle {
         height: root.height * 110 / 544;
         source: root.notice;
         image-fit: contain;
-        opacity: root.la-index >= 0 && !root.la-home ? 0 : 1;
     }
 
     // ---- lock screen
@@ -1712,6 +1767,7 @@ component VitaStage inherits Rectangle {
         interval: 560ms;
         running: root.la-close-at >= 0;
         triggered => {
+            root.app-closed(root.la-index);
             root.la-index = -1;
             root.la-close-at = -1;
             root.la-home = false;
@@ -1775,7 +1831,10 @@ component VitaStage inherits Rectangle {
                 root.released-s = root.locked
                     ? (root.fr - self.mouse-x / 1px) + (self.mouse-y / 1px - root.ft)
                     : (root.cr - self.mouse-x / 1px) + (self.mouse-y / 1px - root.ct);
-                if root.unlocking {
+                if self.pressed-y < root.bar-h && abs(self.mouse-x - self.pressed-x) < 8px && abs(self.mouse-y - self.pressed-y) < 8px
+                    && root.tap-bar(self.pressed-x) {
+                    // Switched to an open app from its info-bar icon.
+                } else if root.unlocking {
                     // The unlock sequence plays out on its own.
                 } else if root.locked {
                     // Peeled far enough, the page comes away; otherwise it falls back.
@@ -1907,6 +1966,9 @@ component SimPanel inherits Panel {
                 unlock-request: Creator.sim-unlock-request;
                 spin-frames: Creator.sim-spin-frames;
                 launch(i) => { Creator.sim-launch(i); }
+                open-apps: Creator.sim-open-apps;
+                app-opened(i) => { Creator.sim-app-opened(i); }
+                app-closed(i) => { Creator.sim-app-closed(i); }
                 page <=> Creator.sim-page;
                 locked <=> Creator.sim-locked;
                 sound(s) => { Creator.sim-sound(s); }

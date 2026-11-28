@@ -70,6 +70,21 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 /// The runtime data files v2 shipped next to the exe.
+/// Remove every empty folder under `dir` (deepest first), so a package never
+/// carries folders with nothing in them.
+fn prune_empty_dirs(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            prune_empty_dirs(&p);
+            if std::fs::read_dir(&p).map(|mut r| r.next().is_none()).unwrap_or(false) {
+                let _ = std::fs::remove_dir(&p);
+            }
+        }
+    }
+}
+
 fn stage_data(root: &Path, dest: &Path, ai: bool) -> Result<(), String> {
     let assets = root.join("Assets");
     let e = |r: std::io::Result<()>| r.map_err(|e| e.to_string());
@@ -177,7 +192,12 @@ fn build_edition(edition: &str) -> Result<PathBuf, String> {
     // v3 output lives in its own folder so it never overwrites v2 build artifacts.
     let dist = root.join("dist").join("v3");
     let folder = dist.join(format!("{APP_FOLDER}-{tag}"));
-    let _ = std::fs::remove_dir_all(&folder);
+    // Start from an empty folder every time, so nothing left by an earlier build or
+    // a test run from it (e.g. a browser profile) can reach the package.
+    if folder.exists() {
+        std::fs::remove_dir_all(&folder)
+            .map_err(|e| format!("could not clear {} (is the app still running from it?): {e}", folder.display()))?;
+    }
     let (app_root, exe_dir) = if cfg!(target_os = "macos") {
         let app = folder.join(MAC_APP);
         let macos = app.join("Contents/MacOS");
@@ -195,6 +215,7 @@ fn build_edition(edition: &str) -> Result<PathBuf, String> {
     let exe = exe_dir.join(&exe_name);
     std::fs::copy(&built, &exe).map_err(|e| format!("copy exe: {e}"))?;
     stage_data(&root, &exe_dir, ai)?;
+    prune_empty_dirs(&folder);
 
     // Integrity manifest (Windows/Linux; macOS uses its code signature) — after
     // every shipped file is in place, before the release hook and signing.
