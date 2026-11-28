@@ -81,13 +81,17 @@ def back():
 
 
 def swipe():
-    """An airy rising 'shff': bright noise swelling over ~70 ms, then a quick cut."""
-    t = t_axis(90)
-    n = biquad(biquad(RNG.standard_normal(len(t)), "hp", 9000), "lp", 19000)
-    n += 0.25 * biquad(RNG.standard_normal(len(t)), "bp", 10000, q=2.0)
-    env = np.minimum(1.0, (t / 0.07) ** 1.6) * np.where(t > 0.072, np.exp(-(t - 0.072) / 0.006), 1.0)
-    return fade_edges(n * env)
+    """An airy rising 'shff': noise swelling over ~85 ms, then a quick cut.
 
+    The console's own swipe sits almost entirely above 9 kHz (over half of it
+    above 16 kHz), which most speakers and adult ears barely pick up, so this
+    one keeps its shape but lives in the clearly audible 2.5-10 kHz band.
+    """
+    t = t_axis(110)
+    n = biquad(biquad(RNG.standard_normal(len(t)), "hp", 2500), "lp", 10000)
+    n += 0.5 * biquad(RNG.standard_normal(len(t)), "bp", 6000, q=1.2)
+    env = np.minimum(1.0, (t / 0.085) ** 1.6) * np.where(t > 0.088, np.exp(-(t - 0.088) / 0.008), 1.0)
+    return fade_edges(n * env)
 
 def peel():
     """Paper crinkle: sparse noise bursts in a 1.5-8 kHz band whose top slides down."""
