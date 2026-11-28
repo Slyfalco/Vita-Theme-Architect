@@ -123,7 +123,21 @@ def open_chime():
     shimmer = biquad(RNG.standard_normal(len(t)), "bp", 7500, q=1.5) * np.exp(-t / 0.12) * np.minimum(1.0, t / 0.01)
     x += 0.35 * shimmer
     swell = np.interp(t, [0, 0.21, 1.8], [0.55, 1.0, 1.0])
-    return fade_edges(x * swell, ms=20)
+    x = fade_edges(x * swell, ms=20)
+    # Let the bell tail ring on and fade smoothly to silence (it used to stop
+    # at 1.8 s while still audible). The first 1.2 s are unchanged.
+    t2 = t_axis(2600)
+    tail = np.zeros(len(t2))
+    for k, f in enumerate(notes):
+        tt = np.clip(t2 - 0.04 * k, 0, None)
+        tone = np.sin(2 * math.pi * f * tt) + 0.3 * np.sin(2 * math.pi * 2 * f * tt) + 0.08 * np.sin(2 * math.pi * 2.76 * f * tt)
+        tail += tone * np.exp(-tt / 0.55) * (0.9 - 0.08 * k)
+    # By 1.2 s the shimmer has died away and the sound is just these bell
+    # partials, so switching to `tail` there is seamless.
+    cross = int(SR * 1.2)
+    out = np.concatenate([x[:cross], tail[cross:]])
+    fade = np.interp(t2, [0, 1.2, 2.6], [1.0, 1.0, 0.0]) ** 2
+    return out * fade
 
 
 if __name__ == "__main__":
