@@ -88,7 +88,18 @@ def tap():
 
 
 def back():
-    return fade_edges(tick(5300, 60, 3.0, body=0.3))
+    """Shaped after the console's cancel (measured, not copied): the click's
+    6 kHz tone with its 3rd harmonic, but with no snap or echo - it holds
+    for ~6 ms then rounds off to silence by ~16 ms, at about half the level."""
+    RNG.standard_normal(int(SR * 0.06))  # keep the shared noise stream as before (other sounds unchanged)
+    t = t_axis(66)
+    env = np.clip(1 - (t / 0.0165) ** 2, 0, None) ** 1.15
+    x = (np.sin(2 * math.pi * 6000 * t) + 0.25 * np.sin(2 * math.pi * 18000 * t)) * env
+    # Its peak is a tiny high snap in the first fraction of a millisecond; the
+    # tone itself sits well below it.
+    snap = biquad(np.random.default_rng(6001).standard_normal(len(t)), "hp", 12000) * np.exp(-t / 0.0004)
+    x += 1.1 * snap / (np.abs(snap).max() + 1e-12)
+    return fade_edges(x, ms=0.05)
 
 
 def swipe():
@@ -158,7 +169,7 @@ if __name__ == "__main__":
     # the same action: tap -25.7, back -27.2, swipe -23.3, peel -35.4 and
     # open -34.9 LUFS-style units.
     save("tap.wav", tap(), -12.6)
-    save("back.wav", back(), -18.4)
+    save("back.wav", back(), -20.0)
     save("swipe.wav", swipe(), -12.2)
     save("peel.wav", peel(), -15.9)
     save("open.wav", open_chime(), -19.8)
