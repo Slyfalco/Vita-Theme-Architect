@@ -110,7 +110,7 @@ def peel():
 
 def open_chime():
     """A bright major-chord bloom: bell notes rolled upward, a soft shimmer, a long tail."""
-    t = t_axis(1800)
+    t = t_axis(1850)
     x = np.zeros(len(t))
     notes = [587.33, 739.99, 880.0, 1174.66, 1479.98]  # D major, rolled
     for k, f in enumerate(notes):
@@ -122,22 +122,11 @@ def open_chime():
         x += tone * env * (0.9 - 0.08 * k)
     shimmer = biquad(RNG.standard_normal(len(t)), "bp", 7500, q=1.5) * np.exp(-t / 0.12) * np.minimum(1.0, t / 0.01)
     x += 0.35 * shimmer
-    swell = np.interp(t, [0, 0.21, 1.8], [0.55, 1.0, 1.0])
-    x = fade_edges(x * swell, ms=20)
-    # Let the bell tail ring on and fade smoothly to silence (it used to stop
-    # at 1.8 s while still audible). The first 1.2 s are unchanged.
-    t2 = t_axis(2600)
-    tail = np.zeros(len(t2))
-    for k, f in enumerate(notes):
-        tt = np.clip(t2 - 0.04 * k, 0, None)
-        tone = np.sin(2 * math.pi * f * tt) + 0.3 * np.sin(2 * math.pi * 2 * f * tt) + 0.08 * np.sin(2 * math.pi * 2.76 * f * tt)
-        tail += tone * np.exp(-tt / 0.55) * (0.9 - 0.08 * k)
-    # By 1.2 s the shimmer has died away and the sound is just these bell
-    # partials, so switching to `tail` there is seamless.
-    cross = int(SR * 1.2)
-    out = np.concatenate([x[:cross], tail[cross:]])
-    fade = np.interp(t2, [0, 1.2, 2.6], [1.0, 1.0, 0.0]) ** 2
-    return out * fade
+    swell = np.interp(t, [0, 0.21, 1.85], [0.55, 1.0, 1.0])
+    # The console's sound lasts ~1.85 s and dies away over its last ~0.4 s:
+    # same here, fading smoothly to silence instead of being cut off.
+    fade = np.interp(t, [0, 1.4, 1.85], [1.0, 1.0, 0.0])
+    return x * swell * fade
 
 
 if __name__ == "__main__":
