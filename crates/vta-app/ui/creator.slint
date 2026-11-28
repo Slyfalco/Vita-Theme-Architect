@@ -1538,17 +1538,19 @@ component VitaStage inherits Rectangle {
         width: root.width;
         height: root.height;
         Rectangle {
-            // (measured on the console: centred, top just under the info bar)
-            property <length> r: fv.d0 / 2 + (root.width * 0.426 - fv.d0 / 2) * fv.fe;
+            // (measured on the console: centred on the screen, radius 0.43 of its width,
+            // so the whole ring shows down both sides)
+            property <length> r: fv.d0 / 2 + (root.width * 0.43 - fv.d0 / 2) * fv.fe;
             property <length> cx: fv.bx + (root.width * 0.5 - fv.bx) * fv.fe;
-            property <length> cy: fv.by + (root.height * 0.81 - fv.by) * fv.fe;
+            property <length> cy: fv.by + (root.height * 0.535 - fv.by) * fv.fe;
             x: self.cx - self.r;
             y: self.cy - self.r;
             width: self.r * 2;
             height: self.r * 2;
             border-radius: self.r;
             // Glass: clear in the middle, a soft bright band toward the rim, no hard edge.
-            background: @radial-gradient(circle, #ffffff0c 0%, #ffffff10 68%, #ffffff36 87%, #ffffff80 97%, #ffffff40 100%);
+            // (A circle gradient's 100% is the corner, so the rim is at 70.7%.)
+            background: @radial-gradient(circle, #ffffff12 0%, #ffffff16 51%, #ffffff40 62%, #ffffff90 67%, #ffffffc8 69.6%, #ffffff70 70.6%, #ffffff00 70.8%);
         }
         // The folder's name: from under the bubble up to the top centre.
         Text {
