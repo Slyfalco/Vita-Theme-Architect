@@ -1631,38 +1631,39 @@ component VitaStage inherits Rectangle {
                 opacity: fv.fe;
             }
         }
-        // Back button: a dark navy disc tucked into the bottom-left corner
-        // (partly off screen), a grey-blue face and a white return arrow.
+        // Back button (measured from the console): a dark navy disc tucked into
+        // the bottom-left corner, mostly off screen; on it a domed face, light
+        // grey at the top darkening into the navy below; and a bold white
+        // return arrow (big head, thick hooked shaft) in the visible part.
         Rectangle {
-            property <length> bd: root.height * 0.19;
-            x: root.width * 0.035 - self.bd / 2;
-            y: root.height * 0.955 - self.bd / 2;
+            property <length> bd: root.height * 0.213;
+            x: root.width * 0.026 - self.bd / 2;
+            y: root.height * 0.97 - self.bd / 2;
             width: self.bd;
             height: self.bd;
             border-radius: self.bd / 2;
-            background: #26324f;
+            background: #283656;
             opacity: fv.fe;
             Rectangle {
-                width: parent.width * 0.82;
+                width: parent.width * 0.84;
                 height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
+                x: (parent.width - self.width) / 2 - parent.width * 0.035;
+                y: (parent.height - self.height) / 2 - parent.height * 0.06;
                 border-radius: self.width / 2;
-                background: @linear-gradient(180deg, #9aa0b3 0%, #7b8299 45%, #5b6480 100%);
+                background: @linear-gradient(180deg, #a8adbd 0%, #8d93a8 22%, #5e6886 42%, #34426a 58%, #2b3858 100%);
             }
             Path {
-                width: parent.width * 0.42;
+                width: root.height * 0.072;
                 height: self.width;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                viewbox-width: 24;
-                viewbox-height: 24;
-                fill: #f2f3f6;
-                commands: "M9 5 L3 10 L9 15 V11.5 H14 A4 4 0 0 1 14 19.5 H10 V21.5 H14 A6 6 0 0 0 14 9.5 H9 Z";
+                x: root.width * 0.035 - parent.x - self.width / 2;
+                y: root.height * 0.942 - parent.y - self.height / 2;
+                viewbox-width: 22;
+                viewbox-height: 22;
+                fill: @linear-gradient(180deg, #ffffff 0%, #e9ebf1 60%, #c9cdd8 100%);
+                commands: "M1 7.5 L9 1 V14 Z M8.5 6 H14.5 A6.5 6.5 0 0 1 14.5 19 H12 A1.6 1.6 0 0 1 12 15.8 H14.5 A3.3 3.3 0 0 0 14.5 9.2 H8.5 Z";
             }
         }
-    }
-    // ---- notifications: tapping the notice circle opens a bubble from the
+    }    // ---- notifications: tapping the notice circle opens a bubble from the
     // corner. With nothing new (as recorded) the screen dims and a white bubble
     // says so; with notifications (console screenshots) it is the system's own
     // blue speech bubble, never themed: a thick white frame, the sender's
