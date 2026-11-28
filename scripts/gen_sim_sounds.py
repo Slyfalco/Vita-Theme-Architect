@@ -70,10 +70,21 @@ def tick(freq, length_ms, tau_ms, body=0.35):
 
 
 def tap():
-    x = tick(5800, 100, 3.5)
-    echo = int(SR * 0.045)
-    x[echo:] += 0.12 * x[: len(x) - echo]
-    return fade_edges(x)
+    """Shaped after the console's click (measured, not copied): a 6 kHz tone
+    with its 3rd harmonic (18 kHz, -12 dB) dying away almost linearly in
+    ~17 ms, then a faint 4 ms blip around 6-7 kHz at ~38 ms."""
+    RNG.standard_normal(int(SR * 0.1))  # keep the shared noise stream as before (other sounds unchanged)
+    own = np.random.default_rng(6000)
+    t = t_axis(106)
+    # A sharp first ~2 ms, then a lower body fading almost linearly.
+    env = np.clip(1 - t / 0.0178, 0, None) ** 0.9 * (0.55 + 0.45 * np.exp(-t / 0.0012))
+    x = (np.sin(2 * math.pi * 6000 * t) + 0.25 * np.sin(2 * math.pi * 18000 * t)) * env
+    # A hint of very high 'tick' right at the start.
+    x += 0.35 * biquad(own.standard_normal(len(t)), "hp", 12000) * np.exp(-t / 0.0008)
+    blip_at, blip_len = int(SR * 0.038), int(SR * 0.004)
+    blip = biquad(own.standard_normal(blip_len), "bp", 6300, q=2.0) * np.hanning(blip_len)
+    x[blip_at:blip_at + blip_len] += 0.33 * blip / (np.abs(blip).max() + 1e-12)
+    return fade_edges(x, ms=0.3)
 
 
 def back():
@@ -146,7 +157,7 @@ if __name__ == "__main__":
     # K-weighted, over its audible part) matches the console's own sound for
     # the same action: tap -25.7, back -27.2, swipe -23.3, peel -35.4 and
     # open -34.9 LUFS-style units.
-    save("tap.wav", tap(), -14.7)
+    save("tap.wav", tap(), -12.6)
     save("back.wav", back(), -18.4)
     save("swipe.wav", swipe(), -12.2)
     save("peel.wav", peel(), -15.9)
