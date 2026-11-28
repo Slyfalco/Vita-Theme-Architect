@@ -406,6 +406,27 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     }
 
     let src = |st: &mut State, id: &str| st.sources.get(id).cloned().filter(|p| !p.is_empty()).map(|p| thumb(st, &p).0);
+    // The lock wallpaper's average colour near the peel corner (the folded
+    // flap shows the back of the wallpaper in these colours).
+    if let Some(p) = st.sources.get("lockpaper.png").filter(|p| !p.is_empty()) {
+        if let Ok(img) = image::open(p) {
+            let small = img.thumbnail(96, 52).to_rgb8();
+            let (w, h) = small.dimensions();
+            let (mut sum, mut n) = ([0u64; 3], 0u64);
+            for y in 0..(h * 35 / 100).max(1) {
+                for x in (w * 75 / 100)..w {
+                    let px = small.get_pixel(x, y);
+                    for c in 0..3 {
+                        sum[c] += px[c] as u64;
+                    }
+                    n += 1;
+                }
+            }
+            if n > 0 {
+                c.set_sim_lock_tint(slint::Color::from_rgb_u8((sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8));
+            }
+        }
+    }
     let lock = src(st, "lockpaper.png");
     c.set_sim_has_lockpaper(lock.is_some());
     c.set_sim_lockpaper(lock.unwrap_or_default());
