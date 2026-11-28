@@ -1059,6 +1059,8 @@ component VitaStage inherits Rectangle {
     property <float> la-from-x;             // where the launched bubble started
     property <float> la-from-y;
     property <int> folder-index: -1;
+    property <float> folder-x;              // where the folder bubble sits on screen
+    property <float> folder-y;
     property <float> folder-at: -1;
     property <float> folder-close-at: -1;
     property <float> notice-at: -1;
@@ -1139,7 +1141,7 @@ component VitaStage inherits Rectangle {
     // ---- folder
     property <float> folder-in: root.folder-index < 0 ? 0
         : root.folder-close-at >= 0 ? 1 - clamp((root.t - root.folder-close-at) / 250, 0, 1)
-        : clamp((root.t - root.folder-at) / 300, 0, 1);
+        : clamp((root.t - root.folder-at) / 250, 0, 1);
 
     // ---- notification bubble
     property <float> notice-in: root.notice-at < 0 ? 0
@@ -1214,6 +1216,8 @@ component VitaStage inherits Rectangle {
         }
     }
     function open-folder(i: int) {
+        root.folder-x = root.armed-x;
+        root.folder-y = root.armed-y;
         root.folder-index = i;
         root.folder-at = root.t;
         root.folder-close-at = -1;
@@ -1311,7 +1315,7 @@ component VitaStage inherits Rectangle {
             }
             // Faded per piece (face, label), not as a group: a translucent
             // group is redrawn into its own layer every frame.
-            property <float> alpha: bi == root.la-index && !root.home-shown ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
+            property <float> alpha: (bi == root.la-index && !root.home-shown) || bi == root.folder-index ? 0 : min(1, self.ip * 2.5) * (1 - self.zo);
             visible: b.page < root.page-count && self.alpha > 0.001;
             x: self.ccx * 1px - self.d / 2;
             y: b.page * root.pitch + self.ccy * 1px - self.d / 2;
@@ -1517,83 +1521,104 @@ component VitaStage inherits Rectangle {
         commands: "M0 0 L8 8 L0 16 Z";
     }
 
-    // ---- folder: a large glass circle holding the folder's apps.
+    // ---- folder: as on the console, the folder bubble itself grows from its
+    // place into a large glass circle (~250 ms), its minis growing and moving
+    // out to their spots and its name rising to the top; closing reverses it.
     if root.folder-index >= 0 && root.folder-index < root.bubbles.length: fv := Rectangle {
         property <SimBubble> fold: root.bubbles[root.folder-index];
         property <float> fe: 1 - (1 - root.folder-in) * (1 - root.folder-in);
+        property <length> d0: root.diam;                     // the bubble it grows from
+        property <length> bx: root.folder-x * 1px;
+        property <length> by: root.folder-y * 1px;
+        // Mini geometry inside the bubble (as drawn by BubbleFace).
+        property <length> m0: self.d0 * 0.22;
+        property <length> s0: self.d0 * 0.235;
+        property <length> ox0: self.bx - self.d0 / 2 + self.d0 * 0.16;
+        property <length> oy0: self.by - self.d0 / 2 + self.d0 * 0.26;
         width: root.width;
         height: root.height;
-        opacity: root.folder-in;
         Rectangle {
-            property <length> r: root.width * 0.45 * (0.85 + 0.15 * parent.fe);
-            x: root.width * 0.48 - self.r;
-            y: root.height * 0.92 - self.r;
+            // (measured on the console: centred, top just under the info bar)
+            property <length> r: fv.d0 / 2 + (root.width * 0.426 - fv.d0 / 2) * fv.fe;
+            property <length> cx: fv.bx + (root.width * 0.5 - fv.bx) * fv.fe;
+            property <length> cy: fv.by + (root.height * 0.81 - fv.by) * fv.fe;
+            x: self.cx - self.r;
+            y: self.cy - self.r;
             width: self.r * 2;
             height: self.r * 2;
             border-radius: self.r;
-            background: @radial-gradient(circle, #ffffff00 55%, #ffffff18 92%, #ffffff40 100%);
-            border-width: 1px;
-            border-color: #ffffff70;
+            // Glass: clear in the middle, a soft bright band toward the rim, no hard edge.
+            background: @radial-gradient(circle, #ffffff0c 0%, #ffffff10 68%, #ffffff36 87%, #ffffff80 97%, #ffffff40 100%);
         }
+        // The folder's name: from under the bubble up to the top centre.
         Text {
-            x: root.width * 0.48 - self.width / 2;
-            y: root.height * 0.075;
-            text: "Folder";
-            color: #ffffffe0;
-            font-size: root.height * 0.04;
+            property <length> fs: root.height * (0.034 + 0.016 * fv.fe);
+            x: fv.bx + (root.width * 0.5 - fv.bx) * fv.fe - self.width / 2;
+            y: (fv.by + fv.d0 / 2 + root.height * 0.005) + (root.height * 0.09 - (fv.by + fv.d0 / 2 + root.height * 0.005)) * fv.fe;
+            text: fv.fold.label;
+            color: #ffffffe8;
+            font-size: self.fs;
         }
         for m[j] in fv.fold.minis: Rectangle {
-            property <length> md: root.diam * 0.72 * (0.85 + 0.15 * fv.fe);
-            x: root.width * root.cxs[j] - self.md / 2;
-            y: root.height * (root.cys[j] + 0.04) - self.md / 2;
+            property <length> sx: fv.ox0 + mod(j, 3) * fv.s0 + fv.m0 / 2;
+            property <length> sy: fv.oy0 + (j < 3 ? 0px : fv.s0) + fv.m0 / 2;
+            // Full-size bubbles in rows of three (console: x 0.29/0.5/0.71, first row at 0.3).
+            property <length> ex: root.width * (0.29 + 0.21 * mod(j, 3));
+            property <length> ey: root.height * (0.3 + 0.3 * floor(j / 3));
+            property <length> md: fv.m0 + (root.diam * 0.98 - fv.m0) * fv.fe;
+            x: self.sx + (self.ex - self.sx) * fv.fe - self.md / 2;
+            y: self.sy + (self.ey - self.sy) * fv.fe - self.md / 2;
             width: self.md;
             height: self.md;
-            Rectangle {
+            Image {
+                source: m;
                 width: parent.width;
                 height: parent.height;
-                border-radius: self.width / 2;
-                clip: true;
-                Image {
-                    source: m;
-                    width: parent.width;
-                    height: parent.height;
-                    image-fit: cover;
-                }
+                image-fit: contain;
             }
             Text {
-                y: parent.height + root.height * 0.005;
+                y: parent.height + root.height * 0.012;
                 x: (parent.width - self.width) / 2;
                 width: root.width * 0.2;
                 text: j < fv.fold.mini-labels.length ? fv.fold.mini-labels[j] : "";
-                color: #ffffffe0;
-                font-size: root.height * 0.03;
+                color: #ffffff;
+                font-size: root.height * 0.034;
                 horizontal-alignment: center;
                 overflow: elide;
+                opacity: fv.fe;
             }
         }
-        // Back button, bottom left.
+        // Back button: a dark navy disc tucked into the bottom-left corner
+        // (partly off screen), a grey-blue face and a white return arrow.
         Rectangle {
-            x: root.width * 0.01;
-            y: root.height * 0.88;
-            width: root.height * 0.1;
-            height: self.width;
-            border-radius: self.width / 2;
-            background: #00000060;
-            border-width: 1px;
-            border-color: #ffffff90;
+            property <length> bd: root.height * 0.19;
+            x: root.width * 0.035 - self.bd / 2;
+            y: root.height * 0.955 - self.bd / 2;
+            width: self.bd;
+            height: self.bd;
+            border-radius: self.bd / 2;
+            background: #26324f;
+            opacity: fv.fe;
+            Rectangle {
+                width: parent.width * 0.82;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                background: @linear-gradient(180deg, #9aa0b3 0%, #7b8299 45%, #5b6480 100%);
+            }
             Path {
-                width: parent.width * 0.55;
+                width: parent.width * 0.42;
                 height: self.width;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 viewbox-width: 24;
                 viewbox-height: 24;
-                fill: white;
+                fill: #f2f3f6;
                 commands: "M9 5 L3 10 L9 15 V11.5 H14 A4 4 0 0 1 14 19.5 H10 V21.5 H14 A6 6 0 0 0 14 9.5 H9 Z";
             }
         }
     }
-
     // ---- notifications: the screen dims and a speech bubble grows from the corner.
     if root.notice-at >= 0: Rectangle {
         property <float> ne: 1 - (1 - root.notice-in) * (1 - root.notice-in);
