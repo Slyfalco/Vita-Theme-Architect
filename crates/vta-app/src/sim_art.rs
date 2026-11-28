@@ -47,10 +47,10 @@ pub fn sphere(src: &Image) -> Image {
                 continue;
             }
             let z = (1.0 - r * r).sqrt();
-            // Wrap: the picture is laid over the visible half of the sphere, so
-            // it is squeezed toward the rim (equal-angle mapping).
-            let k = if r > 1e-4 { (r.asin() / std::f32::consts::FRAC_PI_2) / r } else { 1.0 };
-            let (su, sv) = (u * k * 0.98, v * k * 0.98);
+            // The picture is laid flat under the glass (no wrap): wrapping it
+            // round the sphere magnified the middle ~1.6x, while the console
+            // (compared with themes' LiveArea previews) shows the whole icon.
+            let (su, sv) = (u * 0.98, v * 0.98);
             let c = sample((su * 0.5 + 0.5) * sw - 0.5, (sv * 0.5 + 0.5) * sh - 0.5);
             let alpha = c[3] / 255.0;
             // A transparent icon still reads as a glass ball.
@@ -172,9 +172,8 @@ pub fn spin_frames_px(buf: Option<SharedPixelBuffer<Rgba8Pixel>>, frames: usize,
                     let n_local = normalise([hit[0], hit[1], hit[2] / THICK]);
                     let n = to_world(n_local);
                     // The picture is on the front face; the back shows it mirrored.
-                    let rr = (hit[0] * hit[0] + hit[1] * hit[1]).sqrt().min(1.0);
-                    let k = if rr > 1e-4 { (rr.asin() / std::f32::consts::FRAC_PI_2) / rr } else { 1.0 };
-                    let (tx, ty) = if hit[2] >= 0.0 { (hit[0] * k, hit[1] * k) } else { (-hit[0] * k, hit[1] * k) };
+                    // Laid flat, as on the resting bubble (see `sphere`).
+                    let (tx, ty) = if hit[2] >= 0.0 { (hit[0], hit[1]) } else { (-hit[0], hit[1]) };
                     let col = sample(tx * 0.98, ty * 0.98);
                     let al = col[3] / 255.0;
                     let base = [col[0] * al + 225.0 * (1.0 - al), col[1] * al + 232.0 * (1.0 - al), col[2] * al + 240.0 * (1.0 - al)];

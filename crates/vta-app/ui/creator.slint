@@ -111,7 +111,16 @@ export global Creator {
     in property <color> sim-indicator-color: #ffffff;
     in property <color> sim-date-color: #ffffff;
     in property <color> sim-notify-border: #cccccc;
-    in property <image> sim-notice;             // noNotice.png (top-right of home)
+    in property <image> sim-notice;             // noNotice.png (top-right, nothing new)
+    in property <image> sim-new-notice;         // newNotice.png (top-right, unread notifications)
+    in property <color> sim-notice-font: #ffffff;
+    in property <color> sim-notice-glow: #ca0000;
+    in property <color> sim-notify-bg: #ffffff;
+    in property <color> sim-notify-font: #ffffff;
+    in property <image> sim-friend-icon;        // the Friends bubble (sample notification)
+    // Unread sample notifications ("Send a notification" button); reading them
+    // (opening the notice bubble on the home screen) clears them.
+    in-out property <int> sim-notifications: 0;
     in property <image> sim-dot-current;        // screen_current.png
     in property <image> sim-dot-other;          // screen_other.png
     in property <bool> sim-custom-dots: false;
@@ -1001,7 +1010,14 @@ component VitaStage inherits Rectangle {
     in property <color> indicator-color;
     in property <color> date-color;
     in property <color> notify-border;
+    in property <color> notify-bg;
+    in property <color> notify-font;
+    in property <image> friend-icon;
     in property <image> notice;
+    in property <image> new-notice;
+    in property <color> notice-font;
+    in property <color> notice-glow;
+    in-out property <int> notifications;
     in property <image> dot-current;
     in property <image> dot-other;
     in property <bool> custom-dots;
@@ -1601,7 +1617,7 @@ component VitaStage inherits Rectangle {
             drop-shadow-blur: 6px;
             drop-shadow-color: #00000060;
             Text {
-                text: "There are no notifications.";
+                text: root.notifications > 0 ? "You have Friend requests." : "There are no notifications.";
                 color: #3a3a3a;
                 font-size: root.height * 0.034;
                 opacity: root.notice-close-at >= 0 ? 0 : clamp((root.t - root.notice-at - 280) / 150, 0, 1);
@@ -1659,8 +1675,27 @@ component VitaStage inherits Rectangle {
         y: 0;
         width: root.width * 120 / 960;
         height: root.height * 110 / 544;
-        source: root.notice;
+        // noNotice when there's nothing new; newNotice with the unread count
+        // (notice font colour, with the notice glow) when there is.
+        source: root.notifications > 0 ? root.new-notice : root.notice;
         image-fit: contain;
+        if root.notifications > 0: Rectangle {
+            property <length> fs: root.height * 0.06;
+            for o in [[-1, 0], [1, 0], [0, -1], [0, 1], [-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]: Text {
+                x: (parent.width - self.width) / 2 + o[0] * parent.fs * 0.09;
+                y: (parent.height - self.height) / 2 + o[1] * parent.fs * 0.09;
+                text: root.notifications;
+                color: root.notice-glow.transparentize(35%);
+                font-size: parent.fs;
+                font-weight: 700;
+            }
+            Text {
+                text: root.notifications;
+                color: root.notice-font;
+                font-size: parent.fs;
+                font-weight: 700;
+            }
+        }
     }
 
     // ---- lock screen
@@ -1709,6 +1744,38 @@ component VitaStage inherits Rectangle {
         }
         // The date and time fade as the page is peeled.
         property <float> clock-fade: 1 - clamp((root.lock-s - root.w * 0.09) / (root.w * 0.18), 0, 1);
+        // Unread notifications, listed in the frame as on the console (measured
+        // from a theme's lock-screen preview): an opaque box in the notify
+        // background colour, outlined in the notify border colour, with the
+        // Friends bubble and the text in the notify font colour.
+        if root.notifications > 0: Rectangle {
+            x: root.width * 0.065;
+            y: root.height * 0.158;
+            width: root.width * 0.727;
+            height: root.height * 0.14;
+            border-radius: root.height * 0.03;
+            background: root.notify-bg;
+            border-width: max(1px, root.height / 272);
+            border-color: root.notify-border;
+            opacity: parent.clock-fade;
+            Image {
+                x: root.width * 0.026;
+                y: (parent.height - self.height) / 2;
+                width: root.height * 0.1;
+                height: self.width;
+                source: root.friend-icon;
+                image-fit: contain;
+            }
+            Text {
+                x: root.width * 0.083;
+                width: parent.width - root.width * 0.1;
+                text: "You have Friend requests.";
+                color: root.notify-font;
+                font-size: root.height * 0.058;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
         Text {
             x: root.width * 0.0625;
             y: root.height * 0.6;
@@ -1806,6 +1873,7 @@ component VitaStage inherits Rectangle {
         triggered => {
             root.notice-at = -1;
             root.notice-close-at = -1;
+            root.notifications = 0;   // read
         }
     }
     Timer {
@@ -1944,6 +2012,17 @@ component SimPanel inherits Panel {
                 font-size: Type.body-sm;
                 vertical-alignment: center;
             }
+            // A sample notification, to see the theme's new-notice image and
+            // its colours on the lock screen and in the notice bubble.
+            IconBtn {
+                icon: Icons.notifications;
+                scale: 0.8;
+                tooltip: "Send a sample notification";
+                clicked => {
+                    Creator.sim-notifications = min(9, Creator.sim-notifications + 1);
+                    Creator.sim-sound("tap");
+                }
+            }
             IconBtn {
                 icon: Creator.sim-muted ? Icons.volume-off : Icons.volume-up;
                 scale: 0.8;
@@ -1972,7 +2051,14 @@ component SimPanel inherits Panel {
                 indicator-color: Creator.sim-indicator-color;
                 date-color: Creator.sim-date-color;
                 notify-border: Creator.sim-notify-border;
+                notify-bg: Creator.sim-notify-bg;
+                notify-font: Creator.sim-notify-font;
+                friend-icon: Creator.sim-friend-icon;
                 notice: Creator.sim-notice;
+                new-notice: Creator.sim-new-notice;
+                notice-font: Creator.sim-notice-font;
+                notice-glow: Creator.sim-notice-glow;
+                notifications <=> Creator.sim-notifications;
                 dot-current: Creator.sim-dot-current;
                 dot-other: Creator.sim-dot-other;
                 custom-dots: Creator.sim-custom-dots;

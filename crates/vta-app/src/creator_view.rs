@@ -321,6 +321,10 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     c.set_sim_indicator_color(col(st, "m_indicatorColor", "ffffffff"));
     c.set_sim_date_color(col(st, "m_dateColor", "ffffffff"));
     c.set_sim_notify_border(col(st, "m_notifyBorderColor", "ffcccccc"));
+    c.set_sim_notify_bg(col(st, "m_notifyBgColor", "ffffffff"));
+    c.set_sim_notify_font(col(st, "m_notifyFontColor", "ffffffff"));
+    c.set_sim_notice_font(col(st, "m_noticeFontColor", "ffffffff"));
+    c.set_sim_notice_glow(col(st, "m_noticeGlowColor", "ffca0000"));
 
     // Page 1 (br1) then every additional page; a page with no wallpaper stays dark.
     // Labels use the global font colour, or each page's own when that is enabled.
@@ -390,6 +394,10 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
         }
     });
     SIM_FLAT.with(|f| *f.borrow_mut() = flat);
+    // The sample notification is a friend request, shown with the Friends bubble.
+    if let Some(b) = bubbles.iter().find(|b| b.kind == 0 && b.label == "Friends") {
+        c.set_sim_friend_icon(b.icon.clone());
+    }
     c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
     c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
     c.set_sim_font_colors(ModelRc::new(VecModel::from(fonts)));
@@ -401,9 +409,9 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     let lock = src(st, "lockpaper.png");
     c.set_sim_has_lockpaper(lock.is_some());
     c.set_sim_lockpaper(lock.unwrap_or_default());
-    // With no notifications the console shows the image in the "new notice"
-    // slot (m_newNoticeFilePath): the stock theme's blue circle, as recorded.
-    c.set_sim_notice(src(st, "newNotice.png").unwrap_or_default());
+    // noNotice while there's nothing new; newNotice once a (sample) notification arrives.
+    c.set_sim_notice(src(st, "noNotice.png").unwrap_or_default());
+    c.set_sim_new_notice(src(st, "newNotice.png").unwrap_or_default());
     let (cur, other) = (src(st, "screen_current.png"), src(st, "screen_other.png"));
     c.set_sim_custom_dots(cur.is_some() && other.is_some());
     c.set_sim_dot_current(cur.unwrap_or_default());
