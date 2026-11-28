@@ -109,24 +109,36 @@ def peel():
 
 
 def open_chime():
-    """A bright major-chord bloom: bell notes rolled upward, a soft shimmer, a long tail."""
+    """The launch: shaped after the console's own (measured, not copied).
+
+    - 0-0.25 s: a bright sparkle, a high ~7.3 kHz ring over airy 7-11 kHz noise;
+    - from 0.1 s: a strong bell on E6 (~1.32 kHz), peaking around 0.2 s;
+    - then an A major 6th chord (A, C#, E, F# over several octaves) whose notes
+      enter one by one, rising, so the sound climbs as it fades;
+    - ~1.85 s long, dying away smoothly over the last ~0.45 s.
+    """
     t = t_axis(1850)
-    x = np.zeros(len(t))
-    notes = [587.33, 739.99, 880.0, 1174.66, 1479.98]  # D major, rolled
-    for k, f in enumerate(notes):
-        start = 0.04 * k
+
+    def bell(f, start, attack, tau, overtone=0.18):
         tt = np.clip(t - start, 0, None)
-        on = (t >= start).astype(float)
-        env = on * np.minimum(1.0, tt / 0.015) * np.exp(-tt / 0.55)
-        tone = np.sin(2 * math.pi * f * tt) + 0.3 * np.sin(2 * math.pi * 2 * f * tt) + 0.08 * np.sin(2 * math.pi * 2.76 * f * tt)
-        x += tone * env * (0.9 - 0.08 * k)
-    shimmer = biquad(RNG.standard_normal(len(t)), "bp", 7500, q=1.5) * np.exp(-t / 0.12) * np.minimum(1.0, t / 0.01)
-    x += 0.35 * shimmer
-    swell = np.interp(t, [0, 0.21, 1.85], [0.55, 1.0, 1.0])
-    # The console's sound lasts ~1.85 s and dies away over its last ~0.4 s:
-    # same here, fading smoothly to silence instead of being cut off.
-    fade = np.interp(t, [0, 1.4, 1.85], [1.0, 1.0, 0.0])
-    return x * swell * fade
+        env = (t >= start) * np.minimum(1.0, tt / attack) * np.exp(-tt / tau)
+        return (np.sin(2 * math.pi * f * tt) + overtone * np.sin(2 * math.pi * 2 * f * tt)) * env
+
+    # Sparkle: the high ring and its airy noise, held ~0.2 s then gone.
+    hold = np.interp(t, [0, 0.004, 0.2, 0.45], [0, 1, 1, 0])
+    sparkle = 0.55 * np.sin(2 * math.pi * 7336 * t) * hold
+    sparkle += 0.6 * biquad(biquad(RNG.standard_normal(len(t)), "hp", 7000), "lp", 11000) * hold
+    # The main bell, with a softer note a third below.
+    main = bell(1318.5, 0.10, 0.012, 0.32) + 0.35 * bell(1108.7, 0.10, 0.012, 0.28)
+    main *= np.interp(t, [0, 0.1, 0.2, 0.3, 1.85], [0, 0.8, 1.0, 0.5, 0.5])
+    # The rising A6 chord: notes enter in order, low to high.
+    chord = [440.0, 659.3, 740.0, 880.0, 1108.7, 1318.5, 1480.0, 1760.0, 2217.5, 2637.0, 2960.0, 3520.0]
+    pad = np.zeros(len(t))
+    for k, f in enumerate(chord):
+        pad += bell(f, 0.22 + 0.09 * k, 0.05, 0.8, overtone=0.1) * (0.55 - 0.035 * k)
+    x = sparkle + main + 0.55 * pad
+    fade = np.interp(t, [0, 1.5, 1.85], [1.0, 1.0, 0.0])
+    return fade_edges(x * fade)
 
 
 if __name__ == "__main__":
