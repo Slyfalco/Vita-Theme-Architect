@@ -1117,6 +1117,8 @@ component VitaStage inherits Rectangle {
     property <bool> home-idle: !root.locked && !root.unlocking && (root.la-index < 0 || root.la-home) && root.folder-index < 0 && root.notice-at < 0;
     // Viewing the home screen while an app's LiveArea stays open to the right.
     property <bool> la-home: false;
+    // Move the parked card without its slide (set when another app closes).
+    property <bool> la-snap: false;
     // Pages sit 512/544 of the screen apart, so the bubble rows run on evenly
     // from one page into the next as you scroll (measured on the console).
     property <length> pitch: root.height * 512 / 544;
@@ -1468,7 +1470,8 @@ component VitaStage inherits Rectangle {
         // aside to the right to show the home screen (the app stays open).
         Rectangle {
             x: root.la-home ? root.width * 0.94 : 0px;
-            animate x { duration: 320ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.0); }
+            // (snaps when an app is parked there after another closes)
+            animate x { duration: root.la-snap ? 0ms : 320ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1.0); }
             width: root.width;
             height: root.height;
             // Faded per piece, not as one full-screen group (a translucent
@@ -2061,10 +2064,20 @@ component VitaStage inherits Rectangle {
         interval: 830ms;
         running: root.la-close-at >= 0;
         triggered => {
+            // Only this app closes: the list updates at once, and any apps still
+            // open keep waiting to the right of the home screen (the latest one
+            // first), as on the console.
             root.app-closed(root.la-index);
-            root.la-index = -1;
             root.la-close-at = -1;
-            root.la-home = false;
+            if root.open-apps.length > 0 {
+                root.la-snap = true;
+                root.la-index = root.open-apps[root.open-apps.length - 1];
+                root.la-at = root.t - 1000;
+                root.la-home = true;
+            } else {
+                root.la-index = -1;
+                root.la-home = false;
+            }
         }
     }
     Timer {
@@ -2118,6 +2131,7 @@ component VitaStage inherits Rectangle {
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {
                 root.armed = false;
+                root.la-snap = false;
             }
             if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
                 root.peeling-was = self.pressed-x > root.width * 0.7 && self.pressed-y < root.height * 0.45;
