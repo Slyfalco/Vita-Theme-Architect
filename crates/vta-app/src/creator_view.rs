@@ -97,6 +97,11 @@ struct State {
     templates: HashMap<String, Image>,
 }
 
+/// Closes the simulator's BGM player before the app exits (while its thread is still running).
+pub fn release_audio() {
+    SIM_BGM.with(|s| s.borrow_mut().1 = None);
+}
+
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
     /// Keeps the simulator clock ticking.

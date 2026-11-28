@@ -40,6 +40,11 @@ fn reset_ui(app: &AppWindow) {
     lib.set_bgm_wave(ModelRc::new(VecModel::from(Vec::<f32>::new())));
 }
 
+/// Closes the player before the app exits (while its thread is still running).
+pub fn release() {
+    BGM.with(|b| b.borrow_mut().player = None);
+}
+
 /// Stop playback and forget the loaded track (e.g. before deleting a theme).
 pub fn stop(app: &AppWindow) {
     BGM.with(|b| {

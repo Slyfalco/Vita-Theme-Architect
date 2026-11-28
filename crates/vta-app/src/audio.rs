@@ -205,6 +205,8 @@ pub struct Player {
     shared: Arc<Shared>,
     _stream: cpal::Stream,
     thread: Option<JoinHandle<()>>,
+    /// Signalled when the decode thread has finished.
+    done: std::sync::mpsc::Receiver<()>,
 }
 
 impl Drop for Player {
@@ -212,7 +214,11 @@ impl Drop for Player {
         self.shared.stop.store(true, Ordering::SeqCst);
         self.shared.wake.notify_all();
         if let Some(t) = self.thread.take() {
-            let _ = t.join();
+            // Join only a thread that has really finished: at process exit Windows
+            // has already ended it, and joining it then panics.
+            if self.done.recv_timeout(std::time::Duration::from_secs(1)).is_ok() {
+                let _ = t.join();
+            }
         }
     }
 }
@@ -247,11 +253,15 @@ impl Player {
             other => return Err(format!("Unsupported audio output format: {other:?}")),
         }?;
         stream.play().map_err(|e| format!("Audio output error: {e}"))?;
+        let (done_tx, done) = std::sync::mpsc::channel();
         let thread = {
             let shared = shared.clone();
-            std::thread::spawn(move || decode_loop(shared, source))
+            std::thread::spawn(move || {
+                decode_loop(shared, source);
+                let _ = done_tx.send(());
+            })
         };
-        Ok(Player { shared, _stream: stream, thread: Some(thread) })
+        Ok(Player { shared, _stream: stream, thread: Some(thread), done })
     }
 
     pub fn play(&self) {
@@ -519,6 +529,13 @@ fn parse_wav16(bytes: &[u8]) -> Option<Track> {
 
 thread_local! {
     static CHIME: std::cell::RefCell<Option<Player>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Stops the chime and simulator sounds (called before the app exits, while
+/// their threads are still running).
+pub fn stop_all() {
+    CHIME.with(|c| c.borrow_mut().take());
+    SFX.with(|s| s.borrow_mut().clear());
 }
 
 /// v2 `play_done_sound`: a short chime when a long task finishes.

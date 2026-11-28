@@ -570,6 +570,9 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     slint::run_event_loop_until_quit()?;
+    creator_view::release_audio();
+    bgm_view::release();
+    audio::stop_all();
     icongen_view::cleanup();
     drop(app_slot);
     Ok(())
