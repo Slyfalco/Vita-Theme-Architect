@@ -400,6 +400,16 @@ fn set_simulator(c: &Creator, st: &mut State, icons: &HashMap<String, Image>) {
     }
     c.set_sim_bubbles(ModelRc::new(VecModel::from(bubbles)));
     c.set_sim_pages(ModelRc::new(VecModel::from(pages)));
+    // The console draws the home labels well below the font colour's full
+    // brightness: measured from console screenshots at ~55-70% (FNF 15ed1d ->
+    // ~0,130,0; Corpse Party bf0006 -> ~104,10,5; white -> ~178), so 60% here.
+    let fonts: Vec<slint::Color> = fonts
+        .into_iter()
+        .map(|c| {
+            let k = |v: u8| (v as f32 * 0.6).round() as u8;
+            slint::Color::from_argb_u8(c.alpha(), k(c.red()), k(c.green()), k(c.blue()))
+        })
+        .collect();
     c.set_sim_font_colors(ModelRc::new(VecModel::from(fonts)));
     if c.get_sim_page() >= count {
         c.set_sim_page(count - 1);
