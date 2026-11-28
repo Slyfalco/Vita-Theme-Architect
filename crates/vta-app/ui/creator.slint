@@ -1354,14 +1354,17 @@ component VitaStage inherits Rectangle {
                 unit: root.height;
                 alpha: parent.alpha;
             }
-            // Labels in the page font colour with the console's dark shadow (m_fontShadow).
-            Text {
-                opacity: parent.alpha * 0.75;
-                y: parent.height / 2 + root.height * 0.128 - self.height / 2 + 1.5px;
-                x: (parent.width - self.width) / 2 + 1.5px;
+            // Labels in the page font colour with the console's shadow
+            // (m_fontShadow): a soft dark blur right behind the text, a touch
+            // down-right; built from faint copies in a ring, since Slint can't
+            // blur text.
+            for o in [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7], [2, 0.4], [-2, 0.4], [0.4, 2], [0.4, -2]]: Text {
+                opacity: parent.alpha;
+                y: parent.height / 2 + root.height * 0.128 - self.height / 2 + (0.8 + o[1] * 1.1) * 1px;
+                x: (parent.width - self.width) / 2 + (0.6 + o[0] * 1.1) * 1px;
                 width: root.width * 0.24;
                 text: b.label;
-                color: #000000a0;
+                color: #00000024;
                 font-size: root.height * 0.034;
                 horizontal-alignment: center;
                 overflow: elide;
