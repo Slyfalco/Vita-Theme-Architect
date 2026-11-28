@@ -1914,14 +1914,16 @@ component VitaStage inherits Rectangle {
                 width: root.height * 0.085;
                 height: self.width;
             }
-            // The console shadows the text (it stays readable even in the box colour).
-            Text {
-                x: root.width * 0.093 + 1.5px;
-                y: 1.5px;
+            // The console's soft shadow behind the text (faint copies in a ring,
+            // as Slint can't blur text); it keeps the text readable even in the
+            // box colour.
+            for o in [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7], [2, 0.4], [-2, 0.4], [0.4, 2], [0.4, -2]]: Text {
+                x: root.width * 0.093 + (0.6 + o[0] * 1.1) * 1px;
+                y: (0.8 + o[1] * 1.1) * 1px;
                 width: parent.width - root.width * 0.11;
                 height: parent.height;
                 text: "You have Friend requests.";
-                color: #00000090;
+                color: #00000030;
                 font-size: root.height * 0.048;
                 vertical-alignment: center;
                 overflow: elide;
@@ -1936,28 +1938,29 @@ component VitaStage inherits Rectangle {
                 overflow: elide;
             }
         }
-        // The date and time carry the console's dark shadow too.
-        Text {
-            x: root.width * 0.0625 + 2px;
-            y: root.height * 0.6 + 2px;
+        // The date and time carry the console's soft shadow too (a blur right
+        // behind the text, a touch down-right; faint copies in a ring).
+        for o in [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7], [2, 0.4], [-2, 0.4], [0.4, 2], [0.4, -2]]: Text {
+            x: root.width * 0.0625 + (0.8 + o[0] * 1.4) * 1px;
+            y: root.height * 0.6 + (1 + o[1] * 1.4) * 1px;
             text: root.date;
-            color: #00000080;
+            color: #00000026;
             font-size: root.height * 0.05;
             opacity: parent.clock-fade;
         }
-        Text {
-            x: lock-time.x + 3px;
-            y: lock-time.y + 3px;
+        for o in [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7], [2, 0.4], [-2, 0.4], [0.4, 2], [0.4, -2]]: Text {
+            x: lock-time.x + (1.5 + o[0] * 2.4) * 1px;
+            y: lock-time.y + (2 + o[1] * 2.4) * 1px;
             text: root.clock;
-            color: #00000080;
+            color: #00000026;
             font-size: root.height * 0.2;
             opacity: parent.clock-fade;
         }
-        Text {
-            x: lock-time.x + lock-time.width + root.width * 0.012 + 2px;
-            y: lock-time.y + lock-time.height - self.height - root.height * 0.035 + 2px;
+        for o in [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7], [2, 0.4], [-2, 0.4], [0.4, 2], [0.4, -2]]: Text {
+            x: lock-time.x + lock-time.width + root.width * 0.012 + (1 + o[0] * 1.6) * 1px;
+            y: lock-time.y + lock-time.height - self.height - root.height * 0.035 + (1.2 + o[1] * 1.6) * 1px;
             text: root.ampm;
-            color: #00000080;
+            color: #00000026;
             font-size: root.height * 0.07;
             opacity: parent.clock-fade;
         }
