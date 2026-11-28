@@ -596,6 +596,31 @@ pub fn play_sim_sound(name: &str) {
 mod tests {
     use super::*;
 
+    /// The simulator's sounds are final (approved 2026-11-28): this fails if any
+    /// shipped file changes, e.g. after an accidental regeneration.
+    const TAP_FNV: u64 = 0x0c6b_76b3_f5a8_a9d9;
+    const BACK_FNV: u64 = 0x28be_2a40_e3b8_9681;
+    const SWIPE_FNV: u64 = 0xa87a_e91d_8c74_d444;
+    const PEEL_FNV: u64 = 0x0e86_41b0_e03d_17e2;
+    const OPEN_FNV: u64 = 0x222b_23b2_cb81_8f6f;
+
+    #[test]
+    fn sim_sounds_unchanged() {
+        fn fnv(b: &[u8]) -> u64 {
+            b.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &x| (h ^ x as u64).wrapping_mul(0x0100_0000_01b3))
+        }
+        let files: [(&str, &[u8], u64); 5] = [
+            ("tap.wav", include_bytes!("../../../Assets/Sounds/sim/tap.wav"), TAP_FNV),
+            ("back.wav", include_bytes!("../../../Assets/Sounds/sim/back.wav"), BACK_FNV),
+            ("swipe.wav", include_bytes!("../../../Assets/Sounds/sim/swipe.wav"), SWIPE_FNV),
+            ("peel.wav", include_bytes!("../../../Assets/Sounds/sim/peel.wav"), PEEL_FNV),
+            ("open.wav", include_bytes!("../../../Assets/Sounds/sim/open.wav"), OPEN_FNV),
+        ];
+        for (name, bytes, want) in files {
+            assert_eq!(fnv(bytes), want, "{name} changed: the simulator sounds are final");
+        }
+    }
+
     /// Needs an audio output device: a short sound keeps playing until its
     /// queued audio has been heard, not just decoded.
     #[test]

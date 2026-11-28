@@ -1,18 +1,27 @@
-"""Generate the Vita simulator's UI sounds (Assets/Sounds/sim/*.wav).
+"""Generate the Vita simulator's UI sounds.
 
 Every sound is synthesised from scratch here (sine partials, filtered noise and
-envelopes) so the app ships only its own audio. Re-run after changing a recipe:
+envelopes) so the app ships only its own audio.
 
-    python scripts/gen_sim_sounds.py
+The shipped sounds in Assets/Sounds/sim/ are FINAL (approved 2026-11-28) and are
+embedded in every build as they are; a test (audio::tests::sim_sounds_unchanged)
+fails if any of them changes. Regenerating can alter them (a different numpy,
+for one), so by default this writes to a scratch folder for listening:
+
+    python scripts/gen_sim_sounds.py              # -> <temp>/vta_sim_sounds
+    python scripts/gen_sim_sounds.py --overwrite  # replace the shipped files (then update the test)
 """
 import math
 import os
+import sys
+import tempfile
 import wave
 
 import numpy as np
 
 SR = 48_000
-OUT = os.path.join(os.path.dirname(__file__), "..", "Assets", "Sounds", "sim")
+SHIPPED = os.path.join(os.path.dirname(__file__), "..", "Assets", "Sounds", "sim")
+OUT = SHIPPED if "--overwrite" in sys.argv[1:] else os.path.join(tempfile.gettempdir(), "vta_sim_sounds")
 RNG = np.random.default_rng(1729)  # fixed seed: the files are reproducible
 
 
